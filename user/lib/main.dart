@@ -22,6 +22,76 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        // Set Figtree as the default font family for all text
+        fontFamily: 'Figtree',
+        // Configure text themes - all using Figtree
+        textTheme: const TextTheme(
+          // Display styles - use Figtree with bold weight
+          displayLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.bold,
+          ),
+          displayMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.bold,
+          ),
+          displaySmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.bold,
+          ),
+          // Headline styles - use Figtree with semi-bold weight
+          headlineLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          headlineMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          headlineSmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          // Title styles - use Figtree with semi-bold weight
+          titleLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          titleMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          titleSmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          // Body styles - use Figtree regular
+          bodyLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.normal,
+          ),
+          bodyMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.normal,
+          ),
+          bodySmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.normal,
+          ),
+          // Label styles - use Figtree medium
+          labelLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w500,
+          ),
+          labelMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w500,
+          ),
+          labelSmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ),
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
