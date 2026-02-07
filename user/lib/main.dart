@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'splashscreen/splash_screen.dart';
+import 'features/near_me/Screen/nearme_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +23,76 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
+        // Set Figtree as the default font family for all text
+        fontFamily: 'Figtree',
+        // Configure text themes - all using Figtree
+        textTheme: const TextTheme(
+          // Display styles - use Figtree with bold weight
+          displayLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.bold,
+          ),
+          displayMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.bold,
+          ),
+          displaySmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.bold,
+          ),
+          // Headline styles - use Figtree with semi-bold weight
+          headlineLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          headlineMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          headlineSmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          // Title styles - use Figtree with semi-bold weight
+          titleLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          titleMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          titleSmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w600,
+          ),
+          // Body styles - use Figtree regular
+          bodyLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.normal,
+          ),
+          bodyMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.normal,
+          ),
+          bodySmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.normal,
+          ),
+          // Label styles - use Figtree medium
+          labelLarge: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w500,
+          ),
+          labelMedium: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w500,
+          ),
+          labelSmall: TextStyle(
+            fontFamily: 'Figtree',
+            fontWeight: FontWeight.w500,
+          ),
+        ),
       ),
       home: const AuthWrapper(),
       debugShowCheckedModeBanner: false,
@@ -51,15 +122,10 @@ class _AuthWrapperState extends State<AuthWrapper> {
           );
         }
 
-        // If user is logged in, show home screen (you can replace this with your home screen)
+        // If user is logged in, show near me screen
         if (snapshot.hasData && snapshot.data != null) {
-          // User is logged in - navigate to home screen
-          // TODO: Replace with your actual home screen
-          return const Scaffold(
-            body: Center(
-              child: Text('Home Screen - User is logged in'),
-            ),
-          );
+          // User is logged in - navigate to near me screen
+          return const NearMeScreen();
         }
 
         // User is not logged in - show splash screen
