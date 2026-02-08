@@ -55,5 +55,21 @@ export const UserService = {
     });
     return createUser;
   },
-  //  ====
+  // LOGIN USER ====================================================================
+  async loginUser(data) {
+    // Validations
+    const user = await User.findOne({ email: data.email });
+    if (!user) {
+      const error = new Error("Email not found");
+      throw error;
+    }
+
+    const isMatch = await bcrypt.compare(data.password, user.password);
+    if (!isMatch) {
+      const error = new Error("Invalid password");
+      throw error;
+    }
+
+    return user;
+  },
 };
