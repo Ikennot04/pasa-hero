@@ -84,4 +84,17 @@ export const UserService = {
 
     return user;
   },
+  // GET USER BY ID ===================================================================
+  async getUserById(id) {
+    const user = await User.findById(id);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    return user;
+    },
+  // GET ALL USERS ===================================================================
+  async getAllUsers() {
+    const users = await User.find();
+    return users;
+  }
 };
