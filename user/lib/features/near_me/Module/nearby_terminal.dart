@@ -29,43 +29,37 @@ class NearbyTerminal extends StatelessWidget {
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.directions_bus,
-                  color: Color(0xFF3B82F6),
-                  size: 20,
-                ),
+              const Icon(
+                Icons.directions_bus,
+                color: Color(0xFF3B82F6),
+                size: 36,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       terminalName,
                       style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
                         color: Color(0xFF1F2937),
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       distance,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF6B7280),
+                        color: Color(0xFF5D5D5D),
                       ),
                     ),
                   ],
@@ -78,31 +72,32 @@ class NearbyTerminal extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: routeTags.map((tag) {
-              Color tagColor;
+              Color backgroundColor;
+              Color textColor;
+              
               if (tag.startsWith('MI-')) {
-                tagColor = const Color(0xFFF97316); // Orange
+                backgroundColor = const Color(0xFFFBB432);
+                textColor = Colors.black;
               } else if (tag.contains('B')) {
-                tagColor = const Color(0xFF10B981); // Green
+                backgroundColor = const Color(0xFF508867);
+                textColor = Colors.white;
               } else {
-                tagColor = const Color(0xFFEF4444); // Red
+                backgroundColor = const Color(0xFFC54742);
+                textColor = Colors.white;
               }
               
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: tagColor.withOpacity(0.1),
+                  color: backgroundColor,
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: tagColor.withOpacity(0.3),
-                    width: 1,
-                  ),
                 ),
                 child: Text(
                   tag,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: tagColor,
+                    color: textColor,
                   ),
                 ),
               );
@@ -128,13 +123,13 @@ class NearbyTerminalsList extends StatelessWidget {
             'Nearby Terminals',
             style: TextStyle(
               fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.bold,
               color: Color(0xFF1F2937),
             ),
           ),
         ),
         SizedBox(
-          height: 140,
+          height: 165,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
