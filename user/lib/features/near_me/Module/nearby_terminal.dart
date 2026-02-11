@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
+import '../Screen/terminal_screen.dart';
 
 class NearbyTerminal extends StatelessWidget {
   final String terminalName;
   final String distance;
   final List<String> routeTags;
+  final VoidCallback? onTap;
 
   const NearbyTerminal({
     super.key,
     required this.terminalName,
     required this.distance,
     required this.routeTags,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       width: 160,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -105,6 +110,7 @@ class NearbyTerminal extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 }
@@ -133,23 +139,47 @@ class NearbyTerminalsList extends StatelessWidget {
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: const [
+            children: [
               NearbyTerminal(
                 terminalName: 'Tamiya Terminal',
                 distance: '0.2 miles',
                 routeTags: ['MI-04A', '21B', '13C'],
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TerminalScreen(),
+                    ),
+                  );
+                },
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               NearbyTerminal(
                 terminalName: 'Tamiya Terminal',
                 distance: '0.2 miles',
                 routeTags: ['MI-04A', '21B', '13C'],
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TerminalScreen(),
+                    ),
+                  );
+                },
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               NearbyTerminal(
                 terminalName: 'Tamiya Terminal',
                 distance: '0.2 miles',
                 routeTags: ['MI-04A', '21B', '13C'],
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TerminalScreen(),
+                    ),
+                  );
+                },
               ),
             ],
           ),
