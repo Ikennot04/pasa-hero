@@ -29,3 +29,15 @@ export const getRouteById = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const updateRouteById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    const route = await RouteService.updateRouteById(id, updateData);
+    res.status(200).json({ success: true, data: route });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};

@@ -5,14 +5,14 @@ const routeSchema = new mongoose.Schema(
     route_name: { type: String, required: true },
     route_code: { type: String, required: true },
     start_terminal_id: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String,
       ref: "Terminal",
-      required: true
+      required: true,
     },
     end_terminal_id: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String,
       ref: "Terminal",
-      required: true
+      required: true,
     },
     estimated_duration: { type: Number }, // minutes
     status: {
