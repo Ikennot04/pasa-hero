@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const routeSchema = new mongoose.Schema(
   {
     route_name: { type: String, required: true },
+    route_code: { type: String, required: true },
     start_terminal_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Terminal",
