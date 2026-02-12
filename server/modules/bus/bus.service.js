@@ -3,12 +3,12 @@ import Bus from "./bus.model.js";
 export const BusService = {
   // GET ALL BUSES ===================================================================
   async getAllBuses() {
-    const buses = await Bus.find();
+    const buses = await Bus.find({ is_deleted: false });
     return buses;
   },
   // GET BUS BY ID ===================================================================
   async getBusById(id) {
-    const bus = await Bus.findById(id);
+    const bus = await Bus.findOne({ _id: id, is_deleted: false });
     if (!bus) {
       const error = new Error("Bus not found.");
       error.statusCode = 404;
@@ -19,6 +19,7 @@ export const BusService = {
   // CREATE BUS ===================================================================
   async createBus(busData) {
     const existing = await Bus.findOne({
+      is_deleted: false,
       $or: [
         { bus_number: busData.bus_number },
         { plate_number: busData.plate_number },
@@ -38,7 +39,7 @@ export const BusService = {
   },
   // UPDATE BUS BY ID ===================================================================
   async updateBusById(id, updateData) {
-    const bus = await Bus.findById(id);
+    const bus = await Bus.findOne({ _id: id, is_deleted: false });
     if (!bus) {
       const error = new Error("Bus not found.");
       error.statusCode = 404;
@@ -48,6 +49,7 @@ export const BusService = {
     const plate_number = updateData.plate_number ?? bus.plate_number;
     const existing = await Bus.findOne({
       _id: { $ne: id },
+      is_deleted: false,
       $or: [
         { bus_number },
         { plate_number },
@@ -66,6 +68,21 @@ export const BusService = {
       new: true,
       runValidators: true,
     });
+    return updated;
+  },
+  // DELETE BUS BY ID (soft delete) ==================================================
+  async deleteBusById(id) {
+    const bus = await Bus.findOne({ _id: id, is_deleted: false });
+    if (!bus) {
+      const error = new Error("Bus not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    const updated = await Bus.findByIdAndUpdate(
+      id,
+      { is_deleted: true, deleted_at: new Date() },
+      { new: true },
+    );
     return updated;
   },
 };
