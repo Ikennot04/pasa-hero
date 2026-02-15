@@ -23,6 +23,18 @@ class AuthService {
     );
     return _googleSignIn!;
   }
+  
+  // Store the Google account from getGoogleUserEmail() to reuse in signUpWithGoogle()
+  // Use static to persist across AuthService instances
+  static GoogleSignInAccount? _cachedGoogleAccount;
+  
+  // Getter for cached account
+  GoogleSignInAccount? get cachedGoogleAccount => _cachedGoogleAccount;
+  
+  // Setter for cached account
+  void setCachedGoogleAccount(GoogleSignInAccount? account) {
+    _cachedGoogleAccount = account;
+  }
 
   // Get the Web OAuth Client ID from Firebase options
   // This is needed for Android/iOS Google Sign-In
@@ -417,6 +429,11 @@ class AuthService {
         throw Exception('Google Sign-Up was cancelled.');
       }
       
+      // Store the Google account for later use in signUpWithGoogle()
+      // Use static setter to persist across instances
+      setCachedGoogleAccount(googleUser);
+      print('✅ Google account cached: ${googleUser.email}');
+      
       // Return email and display name without authenticating
       return {
         'email': googleUser.email,
@@ -442,53 +459,76 @@ class AuthService {
     try {
       GoogleSignInAccount? googleUser;
       
-      // Check if user is already signed in (from getGoogleUserEmail call)
-      googleUser = await googleSignIn.signInSilently();
+      print('🔐 signUpWithGoogle: Looking for cached Google account...');
       
-      // If not signed in silently, try regular sign in
+      // First, try to use the cached Google account from getGoogleUserEmail()
+      // Use static getter to access cached account across instances
+      final cachedAccount = cachedGoogleAccount;
+      if (cachedAccount != null) {
+        print('   ✅ Using cached Google account: ${cachedAccount.email}');
+        googleUser = cachedAccount;
+      }
+      
+      // If no cached account, try to get the current user
       if (googleUser == null) {
-        // For web, skip signInSilently to avoid FedCM errors and warnings
-        // signInSilently always fails for first-time users and creates noise
-        // Go straight to signIn() which shows the popup
-        if (kIsWeb) {
-          try {
-            googleUser = await googleSignIn.signIn();
-          } catch (signInError) {
-          // Handle popup_closed error as cancellation
-          final errorStr = signInError.toString().toLowerCase();
-          if (errorStr.contains('popup_closed') || 
-              errorStr.contains('popup closed') ||
-              errorStr.contains('cancelled')) {
-            throw Exception('Google Sign-Up was cancelled.');
-          }
-          // Handle CORS/COOP errors
-          if (errorStr.contains('cross-origin') ||
-              errorStr.contains('crossorigin') ||
-              errorStr.contains('opener-policy') ||
-              errorStr.contains('coop')) {
-            throw Exception(
-              'Google Sign-Up failed due to browser security settings. '
-              'Please check your browser settings or try a different browser.'
-            );
-          }
-          // Handle other FedCM/unknown errors
-          if (errorStr.contains('unknown_reason') ||
-              errorStr.contains('networkerror') ||
-              errorStr.contains('not signed in')) {
-            throw Exception('Google Sign-Up failed. Please try again.');
-          }
-          rethrow;
-          }
-        } else {
-          // For mobile platforms, use regular signIn
-          googleUser = await googleSignIn.signIn();
+        googleUser = googleSignIn.currentUser;
+        if (googleUser != null) {
+          print('   ✅ Found current user: ${googleUser.email}');
         }
+      }
+      
+      // If still null, try signInSilently (works better on mobile)
+      if (googleUser == null) {
+        try {
+          googleUser = await googleSignIn.signInSilently();
+          if (googleUser != null) {
+            print('   ✅ Retrieved via signInSilently: ${googleUser.email}');
+            // Cache it for future use (static)
+            setCachedGoogleAccount(googleUser);
+          }
+        } catch (e) {
+          // signInSilently may fail, that's okay - we'll try other methods
+          print('   ⚠️ signInSilently failed (expected on web): $e');
+        }
+      }
+      
+      // If still null, check if we're on web and try to get it without popup
+      if (googleUser == null && kIsWeb) {
+        // On web, try to check if there's a cached session
+        // Wait a bit for the session to be established
+        await Future.delayed(const Duration(milliseconds: 200));
+        googleUser = googleSignIn.currentUser;
+        if (googleUser != null) {
+          print('   ✅ Found current user after delay: ${googleUser.email}');
+          setCachedGoogleAccount(googleUser);
+        }
+      }
+      
+      // If still null, only then show the popup (shouldn't happen if getGoogleUserEmail worked)
+      if (googleUser == null) {
+        print('   ❌ ERROR: No existing Google sign-in found!');
+        print('   ❌ Cached account: ${cachedGoogleAccount?.email ?? "null"}');
+        print('   ❌ Current user: ${googleSignIn.currentUser?.email ?? "null"}');
+        print('   ❌ This should not happen if getGoogleUserEmail() was called first');
+        print('   ❌ Throwing error instead of showing popup to prevent unexpected behavior');
+        
+        // Instead of showing popup, throw an error
+        // This prevents the unexpected popup and gives a clear error message
+        throw Exception(
+          'Google sign-in session expired. Please try signing up with Google again from the beginning.'
+        );
       }
       
       // VALIDATION STEP 1: Check if googleUser is valid
       if (googleUser == null) {
+        // Clear cached account if sign-in failed
+        setCachedGoogleAccount(null);
         throw Exception('Google Sign-Up was cancelled.');
       }
+      
+      // Update cached account if we got a new one (static)
+      setCachedGoogleAccount(googleUser);
+      print('   ✅ Using Google account: ${googleUser.email}');
       
       // Obtain the auth details from the request
       // CRITICAL: The People API 403 error happens AFTER token retrieval
@@ -496,10 +536,14 @@ class AuthService {
       // We need to get the tokens even if People API fails
       GoogleSignInAuthentication? googleAuth;
       
+      print('   🔑 Getting authentication tokens from Google account...');
+      print('   ⚠️ Note: This should NOT trigger a popup if account is already signed in');
       try {
         // Try to get authentication - this may throw due to People API 403
         // but the tokens should still be available in the response
+        // This should NOT trigger a popup if the account is already signed in
         googleAuth = await googleUser.authentication;
+        print('   ✅ Authentication tokens retrieved successfully');
       } catch (e) {
         
         final errorStr = e.toString().toLowerCase();
@@ -731,6 +775,7 @@ class AuthService {
     try {
       await _auth.signOut();
       await googleSignIn.signOut(); // Also sign out from Google
+      setCachedGoogleAccount(null); // Clear cached Google account (static)
     } catch (e) {
       throw Exception('Sign out failed: $e');
     }
@@ -744,6 +789,130 @@ class AuthService {
       throw _handleAuthException(e);
     } catch (e) {
       throw Exception('Failed to send password reset email: $e');
+    }
+  }
+
+  // Reset password after OTP verification
+  // Uses backend API with Firebase Admin SDK to update password
+  Future<void> resetPassword({
+    required String email,
+    required String newPassword,
+  }) async {
+    try {
+      // Validate inputs
+      final trimmedEmail = email.trim().toLowerCase();
+      final trimmedPassword = newPassword.trim();
+
+      if (trimmedEmail.isEmpty) {
+        throw Exception('Email address cannot be empty');
+      }
+
+      if (trimmedPassword.isEmpty) {
+        throw Exception('Password cannot be empty');
+      }
+
+      if (trimmedPassword.length < 6) {
+        throw Exception('Password must be at least 6 characters long');
+      }
+
+      // Server URL - same as OTP sending
+      String serverUrl = const String.fromEnvironment(
+        'SERVER_URL',
+        defaultValue: 'http://localhost:3000',
+      );
+
+      if (kIsWeb && serverUrl == 'http://localhost:3000') {
+        serverUrl = 'http://localhost:3000';
+      }
+
+      print('🔐 Resetting password for: $trimmedEmail');
+      print('   Server URL: $serverUrl');
+
+      // Check server status first
+      try {
+        final statusResponse = await http.get(
+          Uri.parse('$serverUrl/api/otp/status'),
+        ).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            throw Exception('Server status check timed out');
+          },
+        );
+
+        if (statusResponse.statusCode != 200) {
+          print('⚠️ Server status check failed: ${statusResponse.statusCode}');
+        }
+      } catch (statusError) {
+        final errorStr = statusError.toString().toLowerCase();
+        if (errorStr.contains('connection refused') ||
+            errorStr.contains('failed host lookup') ||
+            errorStr.contains('network is unreachable') ||
+            errorStr.contains('failed to fetch') ||
+            errorStr.contains('clientexception') ||
+            errorStr.contains('socketexception')) {
+          print('❌ Server status check failed: $statusError');
+          print('   Server URL: $serverUrl');
+          print('   ⚠️  Server appears to be offline or unreachable');
+          throw Exception(
+            'Server is not reachable. Please ensure the server is running.\n'
+            'Run: cd server && npm run dev'
+          );
+        }
+      }
+
+      // Call password reset API
+      final response = await http.post(
+        Uri.parse('$serverUrl/api/otp/reset-password'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'email': trimmedEmail,
+          'newPassword': trimmedPassword,
+        }),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Password reset request timed out. Server may be slow or unreachable.');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        if (responseData['success'] == true) {
+          print('✅ Password reset successful');
+          return;
+        } else {
+          throw Exception(responseData['error'] ?? 'Password reset failed');
+        }
+      } else {
+        final errorData = jsonDecode(response.body) as Map<String, dynamic>;
+        final errorMessage = errorData['error'] ?? errorData['message'] ?? 'Password reset failed';
+        final troubleshooting = errorData['troubleshooting'];
+        
+        String fullMessage = errorMessage;
+        if (troubleshooting != null) {
+          if (troubleshooting is List) {
+            fullMessage += '\n\nTroubleshooting:\n';
+            for (var item in troubleshooting) {
+              fullMessage += '  • $item\n';
+            }
+          } else {
+            fullMessage += '\n\n$troubleshooting';
+          }
+        }
+        
+        throw Exception(fullMessage);
+      }
+    } catch (e) {
+      print('❌ Password reset error: $e');
+      if (e.toString().contains('Password reset') ||
+          e.toString().contains('OTP') ||
+          e.toString().contains('User account not found') ||
+          e.toString().contains('Server is not reachable')) {
+        rethrow;
+      }
+      throw Exception('Failed to reset password: $e');
     }
   }
 
@@ -800,6 +969,62 @@ class AuthService {
     }
   }
 
+  // Check if email is already registered in Firebase Auth
+  // This is used to prevent duplicate registrations before sending OTP
+  Future<bool> isEmailAlreadyRegistered(String email) async {
+    try {
+      final normalizedEmail = email.trim().toLowerCase();
+      print('🔍 Checking if email is already registered: $normalizedEmail');
+      
+      // Method 1: Check Firestore first (more reliable since we store user data there)
+      print('   🔍 Method 1: Checking Firestore for email...');
+      try {
+        final users = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: normalizedEmail)
+            .limit(1)
+            .get();
+        
+        if (users.docs.isNotEmpty) {
+          print('   ✅ Email found in Firestore - account IS registered');
+          return true;
+        }
+        print('   ❌ Email not found in Firestore');
+      } catch (e) {
+        print('   ⚠️ Error checking Firestore: $e');
+      }
+      
+      // Method 2: Check Firebase Auth sign-in methods
+      print('   🔍 Method 2: Checking Firebase Auth sign-in methods...');
+      try {
+        final methods = await _auth.fetchSignInMethodsForEmail(normalizedEmail);
+        print('   📋 Sign-in methods found: $methods');
+        
+        if (methods.isNotEmpty) {
+          print('   ✅ Email found in Firebase Auth - account IS registered');
+          return true;
+        }
+        print('   ❌ No sign-in methods found in Firebase Auth');
+      } on FirebaseAuthException catch (e) {
+        print('   ⚠️ FirebaseAuthException: ${e.code} - ${e.message}');
+        if (e.code == 'invalid-email') {
+          print('   ❌ Invalid email format');
+          return false;
+        }
+      } catch (e) {
+        print('   ⚠️ Error checking Firebase Auth: $e');
+      }
+      
+      // If both methods return false, email is not registered
+      print('   ❌ Email IS NOT already registered (checked both Firestore and Firebase Auth)');
+      return false;
+    } catch (e) {
+      // On any unexpected error, log and assume email doesn't exist to be safe
+      print('   ❌ Unexpected error checking email, assuming not registered: $e');
+      return false;
+    }
+  }
+
   // Send OTP to email
   Future<void> sendOTP({required String email}) async {
     try {
@@ -818,24 +1043,55 @@ class AuthService {
       });
       
       // Send OTP via email using the backend server
+      // Server URL - update this to your server URL
+      // For local development: http://localhost:3000
+      // For production: your production server URL
+      // You can also set this via environment variable: --dart-define=SERVER_URL=http://your-server.com
+      String serverUrl = const String.fromEnvironment(
+        'SERVER_URL',
+        defaultValue: 'http://localhost:3000',
+      );
+      
+      // For web, if running on same machine, use localhost
+      // For production, you'll need to set the actual server URL
+      if (kIsWeb && serverUrl == 'http://localhost:3000') {
+        // Try to detect if we're in development or production
+        // In production, you should set SERVER_URL via --dart-define
+        serverUrl = 'http://localhost:3000';
+      }
+      
       try {
-        // Server URL - update this to your server URL
-        // For local development: http://localhost:3000
-        // For production: your production server URL
-        // You can also set this via environment variable: --dart-define=SERVER_URL=http://your-server.com
-        String serverUrl = const String.fromEnvironment(
-          'SERVER_URL',
-          defaultValue: 'http://localhost:3000',
-        );
         
-        // For web, if running on same machine, use localhost
-        // For production, you'll need to set the actual server URL
-        if (kIsWeb && serverUrl == 'http://localhost:3000') {
-          // Try to detect if we're in development or production
-          // In production, you should set SERVER_URL via --dart-define
-          serverUrl = 'http://localhost:3000';
+        // First, try to check if server is reachable
+        try {
+          final statusResponse = await http.get(
+            Uri.parse('$serverUrl/api/otp/status'),
+          ).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              throw Exception('Server status check timed out');
+            },
+          );
+          
+          if (statusResponse.statusCode != 200) {
+            print('⚠️ Server status check failed: ${statusResponse.statusCode}');
+          }
+        } catch (statusError) {
+          final errorStr = statusError.toString().toLowerCase();
+          if (errorStr.contains('connection refused') || 
+              errorStr.contains('failed host lookup') ||
+              errorStr.contains('network is unreachable') ||
+              errorStr.contains('failed to fetch') ||
+              errorStr.contains('clientexception') ||
+              errorStr.contains('socketexception')) {
+            print('❌ Server status check failed: $statusError');
+            print('   Server URL: $serverUrl');
+            print('   ⚠️  Server appears to be offline or unreachable');
+            print('   Will attempt to send OTP anyway, but it will likely fail...');
+            // Don't throw - continue to try sending anyway
+          }
         }
-        
+
         final response = await http.post(
           Uri.parse('$serverUrl/api/otp/send'),
           headers: {
@@ -848,14 +1104,74 @@ class AuthService {
         ).timeout(
           const Duration(seconds: 10),
           onTimeout: () {
-            throw Exception('Email sending request timed out');
+            throw Exception('Email sending request timed out. Server may be slow or unreachable.');
           },
         );
         
         if (response.statusCode != 200) {
+          final responseBody = jsonDecode(response.body);
+          print('⚠️ OTP email sending failed: ${response.statusCode}');
+          print('   Error: ${responseBody['error'] ?? 'Unknown error'}');
+          print('   Message: ${responseBody['message'] ?? 'No message'}');
+          if (responseBody['troubleshooting'] != null) {
+            print('   Troubleshooting:');
+            if (responseBody['troubleshooting'] is List) {
+              for (var tip in responseBody['troubleshooting']) {
+                print('     - $tip');
+              }
+            } else {
+              print('     - ${responseBody['troubleshooting']}');
+            }
+          }
           // Don't throw - OTP is stored, email sending is optional
+        } else {
+          print('✅ OTP email sent successfully');
         }
       } catch (e) {
+        final errorStr = e.toString().toLowerCase();
+        
+        // Provide helpful error messages for connection issues
+        if (errorStr.contains('connection refused') || 
+            errorStr.contains('failed host lookup') ||
+            errorStr.contains('network is unreachable') ||
+            errorStr.contains('failed to fetch') ||
+            errorStr.contains('clientexception') ||
+            errorStr.contains('socketexception')) {
+          print('❌ Server connection failed: $e');
+          print('   Server URL: $serverUrl');
+          print('   Error Type: Connection Refused (Server not running)');
+          print('');
+          print('   🔧 Troubleshooting Steps:');
+          print('   1. Start the server:');
+          print('      - Open a terminal/command prompt');
+          print('      - Navigate to: cd server');
+          print('      - Run: npm run dev');
+          print('      - Wait for: "Listening to port 3000" message');
+          print('');
+          print('   2. Verify server is running:');
+          print('      - Open in browser: $serverUrl/health');
+          print('      - Should show: {"status":"ok",...}');
+          print('');
+          print('   3. Check server port:');
+          print('      - Default port: 3000');
+          print('      - Check server/.env file for PORT setting');
+          print('      - If different port, update SERVER_URL in client');
+          print('');
+          print('   4. For web apps:');
+          print('      - Ensure server CORS allows your origin');
+          print('      - Check browser console for CORS errors');
+          print('');
+          print('   ⚠️  Note: OTP is saved in Firestore, but email cannot be sent until server is running.');
+        } else if (errorStr.contains('timeout')) {
+          print('⏱️ Request timed out: $e');
+          print('   Server URL: $serverUrl');
+          print('   The server may be slow or unreachable');
+          print('   Check server logs for errors');
+        } else {
+          print('⚠️ OTP email sending error: $e');
+          print('   Server URL: $serverUrl');
+          print('   Check server logs for more details');
+        }
         // Don't throw - OTP is stored in Firestore, email sending failure is not critical
       }
     } catch (e) {
@@ -880,39 +1196,113 @@ class AuthService {
   // Verify OTP
   Future<void> verifyOTP({required String email, required String otpCode}) async {
     try {
-      final otpDoc = await _firestore.collection('otp_verifications').doc(email.trim()).get();
+      // Normalize email (trim and lowercase for consistency)
+      final normalizedEmail = email.trim().toLowerCase();
+      final normalizedOtp = otpCode.trim();
+      
+      // Validate OTP format
+      if (normalizedOtp.isEmpty) {
+        throw Exception('OTP code cannot be empty.');
+      }
+      
+      if (!RegExp(r'^\d+$').hasMatch(normalizedOtp)) {
+        throw Exception('OTP code must contain only digits.');
+      }
+      
+      if (normalizedOtp.length < 4 || normalizedOtp.length > 8) {
+        throw Exception('OTP code must be between 4 and 8 digits.');
+      }
+      
+      // Debug logging
+      print('🔍 OTP Verification Debug:');
+      print('   Email (normalized): $normalizedEmail');
+      print('   OTP Code (normalized): $normalizedOtp');
+      print('   OTP Length: ${normalizedOtp.length}');
+      
+      // Get OTP document from Firestore
+      final otpDoc = await _firestore.collection('otp_verifications').doc(normalizedEmail).get();
       
       if (!otpDoc.exists) {
+        print('   ❌ OTP document not found for email: $normalizedEmail');
         throw Exception('OTP not found. Please request a new OTP code.');
       }
 
       final otpData = otpDoc.data()!;
-      final storedOTP = otpData['otp'] as String;
-      final expiresAt = DateTime.parse(otpData['expiresAt'] as String);
+      final storedOTP = (otpData['otp'] as String?)?.trim() ?? '';
+      final storedEmail = (otpData['email'] as String?)?.trim().toLowerCase() ?? '';
+      final expiresAtStr = otpData['expiresAt'] as String?;
       final isVerified = otpData['verified'] as bool? ?? false;
+
+      // Debug logging
+      print('   📦 Stored OTP: $storedOTP');
+      print('   📦 Stored Email: $storedEmail');
+      print('   📦 Stored OTP Length: ${storedOTP.length}');
+      print('   📦 Is Verified: $isVerified');
+      print('   📦 Expires At: $expiresAtStr');
 
       // Check if OTP is already verified
       if (isVerified) {
+        print('   ❌ OTP has already been used');
         throw Exception('This OTP has already been used.');
       }
 
       // Check if OTP is expired
-      if (DateTime.now().isAfter(expiresAt)) {
+      if (expiresAtStr == null) {
+        print('   ❌ ExpiresAt is null');
+        throw Exception('OTP expiration date is missing. Please request a new code.');
+      }
+      
+      final expiresAt = DateTime.parse(expiresAtStr);
+      final now = DateTime.now();
+      final isExpired = now.isAfter(expiresAt);
+      
+      print('   ⏰ Current Time: ${now.toIso8601String()}');
+      print('   ⏰ Expires At: ${expiresAt.toIso8601String()}');
+      print('   ⏰ Is Expired: $isExpired');
+      print('   ⏰ Time Remaining: ${expiresAt.difference(now).inSeconds} seconds');
+      
+      if (isExpired) {
+        print('   ❌ OTP has expired');
         throw Exception('OTP has expired. Please request a new code.');
       }
 
-      // Verify OTP code
-      if (storedOTP != otpCode.trim()) {
-        throw Exception('Invalid OTP code. Please try again.');
+      // Verify OTP code (compare as strings)
+      final otpMatch = storedOTP == normalizedOtp;
+      print('   🔐 OTP Comparison:');
+      print('      Stored: "$storedOTP" (length: ${storedOTP.length})');
+      print('      Entered: "$normalizedOtp" (length: ${normalizedOtp.length})');
+      print('      Match: $otpMatch');
+      
+      if (!otpMatch) {
+        // Additional debug: check character by character
+        if (storedOTP.length != normalizedOtp.length) {
+          print('   ❌ Length mismatch: stored=${storedOTP.length}, entered=${normalizedOtp.length}');
+          throw Exception('Invalid OTP code. Length mismatch. Please check and try again.');
+        }
+        
+        // Check each character
+        for (int i = 0; i < storedOTP.length; i++) {
+          if (storedOTP[i] != normalizedOtp[i]) {
+            print('   ❌ Character mismatch at position $i: stored="${storedOTP[i]}" (${storedOTP.codeUnitAt(i)}), entered="${normalizedOtp[i]}" (${normalizedOtp.codeUnitAt(i)})');
+            break;
+          }
+        }
+        
+        throw Exception('Invalid OTP code. Please check the code and try again.');
       }
+
+      print('   ✅ OTP verification successful!');
 
       // Mark OTP as verified
       await otpDoc.reference.update({
         'verified': true,
         'verifiedAt': FieldValue.serverTimestamp(),
       });
+      
+      print('   ✅ OTP marked as verified in Firestore');
     } catch (e) {
-      if (e.toString().contains('OTP')) {
+      print('   ❌ OTP Verification Error: $e');
+      if (e.toString().contains('OTP') || e.toString().contains('expired') || e.toString().contains('not found')) {
         rethrow;
       }
       throw Exception('Failed to verify OTP: $e');
@@ -925,7 +1315,7 @@ class AuthService {
       case 'weak-password':
         return Exception('The password provided is too weak.');
       case 'email-already-in-use':
-        return Exception('An account already exists for that email.');
+        return Exception('Account is already registered');
       case 'user-not-found':
         return Exception('No user found for that email.');
       case 'wrong-password':

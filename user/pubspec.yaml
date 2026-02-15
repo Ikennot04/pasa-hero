@@ -68,6 +68,8 @@ flutter:
   assets:
     - assets/images/logo/logo1.png
     - assets/images/logo/google-logo.png
+    - assets/images/logo/Rectangle.png
+    - assets/images/logo/SealCheck.png
     - assets/images/splashscreen/spalshscreen.png
     
 

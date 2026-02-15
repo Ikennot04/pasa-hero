@@ -33,11 +33,11 @@ class OTPCard extends StatefulWidget {
 
 class _OTPCardState extends State<OTPCard> {
   final List<TextEditingController> _otpControllers = List.generate(
-    6,
+    4,
     (index) => TextEditingController(),
   );
   final List<FocusNode> _focusNodes = List.generate(
-    6,
+    4,
     (index) => FocusNode(),
   );
   bool _isLoading = false;
@@ -91,7 +91,7 @@ class _OTPCardState extends State<OTPCard> {
       return;
     }
     
-    if (value.length == 1 && index < 5) {
+    if (value.length == 1 && index < 3) {
       _focusNodes[index + 1].requestFocus();
     } else if (value.isEmpty && index > 0) {
       _focusNodes[index - 1].requestFocus();
@@ -107,9 +107,9 @@ class _OTPCardState extends State<OTPCard> {
 
   Future<void> _verifyOTP() async {
     final otpCode = _getOTPCode();
-    if (otpCode.length != 6) {
+    if (otpCode.length != 4) {
       setState(() {
-        _errorMessage = 'Please enter the complete 6-digit code';
+        _errorMessage = 'Please enter the complete 4-digit code';
       });
       return;
     }
@@ -230,39 +230,32 @@ class _OTPCardState extends State<OTPCard> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    // Email icon
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E3A8A).withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.email_outlined,
-                        size: 40,
-                        color: Color(0xFF1E3A8A),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    // Title
+                    // Email Verification heading
                     const Text(
-                      'Verify Your Email',
+                      'Email Verification',
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A8A),
+                        color: Colors.black87,
                       ),
                     ),
                     const SizedBox(height: 12),
                     // Subtitle
                     Text(
-                      'We\'ve sent a 6-digit code to\n${widget.email}',
-                      textAlign: TextAlign.center,
+                      'Enter OTP Code we sent to your email',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey[700],
-                        height: 1.5,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Email address
+                    Text(
+                      widget.email,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
                       ),
                     ),
                     const SizedBox(height: 32),
@@ -270,10 +263,10 @@ class _OTPCardState extends State<OTPCard> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: List.generate(
-                        6,
+                        4,
                         (index) => SizedBox(
-                          width: 48,
-                          height: 56,
+                          width: 60,
+                          height: 70,
                           child: TextField(
                             controller: _otpControllers[index],
                             focusNode: _focusNodes[index],
@@ -284,7 +277,7 @@ class _OTPCardState extends State<OTPCard> {
                               FilteringTextInputFormatter.digitsOnly,
                             ],
                             style: const TextStyle(
-                              fontSize: 24,
+                              fontSize: 28,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 0,
                             ),
@@ -308,12 +301,12 @@ class _OTPCardState extends State<OTPCard> {
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: const BorderSide(
-                                  color: Color(0xFF1E3A8A),
+                                  color: Color(0xFF3B82F6),
                                   width: 2,
                                 ),
                               ),
                               filled: true,
-                              fillColor: Colors.grey[50],
+                              fillColor: Colors.white,
                             ),
                             onChanged: (value) => _handleOTPChange(index, value),
                           ),
@@ -346,71 +339,65 @@ class _OTPCardState extends State<OTPCard> {
                           ],
                         ),
                       ),
-                    // Verify Button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _verifyOTP,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E3A8A),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Text(
-                                'Verify',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                        // Submit Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _verifyOTP,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF3B82F6),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                      ),
-                    ),
+                              elevation: 0,
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Submit',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
                     const SizedBox(height: 16),
                     // Resend OTP
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Didn\'t receive the code? ',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _canResend && !_isLoading ? _resendOTP : null,
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          child: Text(
-                            _canResend
-                                ? 'Resend'
-                                : 'Resend in ${_resendTimer}s',
+                    Center(
+                      child: Wrap(
+                        children: [
+                          Text(
+                            'Don\'t receive code? ',
                             style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: _canResend
-                                  ? const Color(0xFF1E3A8A)
-                                  : Colors.grey[400]!,
+                              fontSize: 14,
+                              color: Colors.grey[600],
                             ),
                           ),
-                        ),
-                      ],
+                          GestureDetector(
+                            onTap: _canResend && !_isLoading ? _resendOTP : null,
+                            child: Text(
+                              'Resend',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: _canResend && !_isLoading
+                                    ? const Color(0xFF3B82F6)
+                                    : Colors.grey[400]!,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
