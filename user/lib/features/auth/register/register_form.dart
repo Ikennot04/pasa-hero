@@ -38,15 +38,20 @@ class _RegisterFormState extends State<RegisterForm> {
   Widget build(BuildContext context) {
     return BlocListener<AuthBlocBloc, AuthBlocState>(
       listener: (context, state) {
-        // Handle errors
-        if (state.error != null && !_hasNavigated) {
+        // Handle errors FIRST - this must come before navigation check
+        if (state.error != null) {
+          print('❌ RegisterForm: Error detected: ${state.error}');
           setState(() {
             _validationError = state.error.toString().replaceAll('Exception: ', '');
           });
+          // Don't navigate if there's an error
+          return;
         }
         
         // Navigate to OTP screen when OTP is sent (register event completes without error and not authenticated)
+        // IMPORTANT: Only navigate if there's NO error - if error exists, show it instead
         if (!state.isLoading && !state.isAuthenticated && state.error == null && !_hasNavigated) {
+          print('📱 RegisterForm: Navigating to OTP screen (no errors)');
           // Check if Google sign-up OTP was sent first (priority check)
           final bloc = context.read<AuthBlocBloc>();
           
@@ -131,19 +136,19 @@ class _RegisterFormState extends State<RegisterForm> {
             // Calculate available height for form
             final availableHeight = constraints.maxHeight;
             
-            // Responsive values - increased sizes to fill space
+            // Responsive values - adjusted to fit with errors visible (reduced to prevent overflow)
             final horizontalPadding = isSmallScreen ? 24.0 : 28.0;
-            final verticalPadding = isSmallScreen ? 16.0 : 20.0;
-            final titleFontSize = isSmallScreen ? 26.0 : 28.0;
-            final labelFontSize = isSmallScreen ? 16.0 : 17.0;
-            final inputFontSize = isSmallScreen ? 18.0 : 19.0;
-            final fieldHeight = isSmallScreen ? 64.0 : 68.0;
-            final buttonHeight = isSmallScreen ? 56.0 : 60.0;
+            final verticalPadding = isSmallScreen ? 10.0 : 14.0;
+            final titleFontSize = isSmallScreen ? 24.0 : 26.0;
+            final labelFontSize = isSmallScreen ? 15.0 : 16.0;
+            final inputFontSize = isSmallScreen ? 17.0 : 18.0;
+            final fieldHeight = isSmallScreen ? 56.0 : 60.0;
+            final buttonHeight = isSmallScreen ? 50.0 : 54.0;
             
-            // Dynamic spacing - reduced to minimize empty spaces
-            final baseSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 10.0 : 12.0);
-            final titleSpacing = availableHeight < 600 ? 12.0 : (availableHeight < 700 ? 16.0 : 20.0);
-            final fieldSpacing = availableHeight < 600 ? 14.0 : (availableHeight < 700 ? 18.0 : 20.0);
+            // Dynamic spacing - optimized to fit content with errors (reduced to prevent overflow)
+            final baseSpacing = availableHeight < 600 ? 5.0 : (availableHeight < 700 ? 7.0 : 9.0);
+            final titleSpacing = availableHeight < 600 ? 6.0 : (availableHeight < 700 ? 10.0 : 14.0);
+            final fieldSpacing = availableHeight < 600 ? 10.0 : (availableHeight < 700 ? 12.0 : 14.0);
             
             return Container(
               height: double.infinity,
@@ -179,8 +184,11 @@ class _RegisterFormState extends State<RegisterForm> {
                             
                             if (errorMessage != null) {
                               return Container(
-                                margin: EdgeInsets.only(bottom: fieldSpacing),
-                                padding: EdgeInsets.all(isSmallScreen ? 10.0 : 12.0),
+                                margin: EdgeInsets.only(bottom: baseSpacing),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isSmallScreen ? 10.0 : 12.0,
+                                  vertical: isSmallScreen ? 8.0 : 10.0,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.red.shade50,
                                   borderRadius: BorderRadius.circular(8),
@@ -190,11 +198,12 @@ class _RegisterFormState extends State<RegisterForm> {
                                   ),
                                 ),
                                 child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Icon(
                                       Icons.error_outline,
                                       color: Colors.red.shade700,
-                                      size: isSmallScreen ? 18.0 : 20.0,
+                                      size: isSmallScreen ? 16.0 : 18.0,
                                     ),
                                     SizedBox(width: isSmallScreen ? 6.0 : 8.0),
                                     Expanded(
@@ -202,7 +211,7 @@ class _RegisterFormState extends State<RegisterForm> {
                                         errorMessage,
                                         style: TextStyle(
                                           color: Colors.red.shade700,
-                                          fontSize: isSmallScreen ? 14.0 : 16.0,
+                                          fontSize: isSmallScreen ? 13.0 : 14.0,
                                           fontWeight: FontWeight.w500,
                                         ),
                                         maxLines: 2,
@@ -265,8 +274,8 @@ class _RegisterFormState extends State<RegisterForm> {
                                     ),
                                   ),
                                   contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: isSmallScreen ? 20.0 : 22.0,
+                                    horizontal: 18,
+                                    vertical: isSmallScreen ? 16.0 : 18.0,
                                   ),
                                 ),
                               ),
@@ -323,8 +332,8 @@ class _RegisterFormState extends State<RegisterForm> {
                                     ),
                                   ),
                                   contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: isSmallScreen ? 20.0 : 22.0,
+                                    horizontal: 18,
+                                    vertical: isSmallScreen ? 16.0 : 18.0,
                                   ),
                                 ),
                               ),
@@ -381,8 +390,8 @@ class _RegisterFormState extends State<RegisterForm> {
                           ),
                         ),
                         contentPadding: EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: isSmallScreen ? 20.0 : 22.0,
+                          horizontal: 18,
+                          vertical: isSmallScreen ? 16.0 : 18.0,
                         ),
                       ),
                     ),
@@ -428,8 +437,8 @@ class _RegisterFormState extends State<RegisterForm> {
                           ),
                         ),
                         contentPadding: EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: isSmallScreen ? 20.0 : 22.0,
+                          horizontal: 18,
+                          vertical: isSmallScreen ? 16.0 : 18.0,
                         ),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -509,7 +518,7 @@ class _RegisterFormState extends State<RegisterForm> {
                       );
                     },
                   ),
-                  SizedBox(height: fieldSpacing + 4),
+                  SizedBox(height: fieldSpacing),
                   // Separator
                   Row(
                     children: [
@@ -525,7 +534,7 @@ class _RegisterFormState extends State<RegisterForm> {
                           'Or, Sign Up With',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: isSmallScreen ? 14.0 : 16.0,
+                            fontSize: isSmallScreen ? 13.0 : 14.0,
                           ),
                         ),
                       ),
@@ -537,7 +546,7 @@ class _RegisterFormState extends State<RegisterForm> {
                       ),
                     ],
                   ),
-                  SizedBox(height: fieldSpacing + 4),
+                  SizedBox(height: fieldSpacing),
                   // Sign Up with Google Button
                   BlocBuilder<AuthBlocBloc, AuthBlocState>(
                     builder: (context, state) {
@@ -620,7 +629,7 @@ class _RegisterFormState extends State<RegisterForm> {
                           'Already have an account? ',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: isSmallScreen ? 14.0 : 16.0,
+                            fontSize: isSmallScreen ? 13.0 : 14.0,
                           ),
                         ),
                         TextButton(
@@ -644,7 +653,7 @@ class _RegisterFormState extends State<RegisterForm> {
                             'Sign In',
                             style: TextStyle(
                               color: const Color(0xFF3B82F6),
-                              fontSize: isSmallScreen ? 14.0 : 16.0,
+                              fontSize: isSmallScreen ? 13.0 : 14.0,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

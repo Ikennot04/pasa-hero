@@ -76,11 +76,22 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
   ) async {
     emit(state.copyWithoutError(isLoading: true));
     try {
-      // Send OTP instead of directly registering
+      print('📝 RegisterEvent: Checking if email is already registered...');
+      // Check if email is already registered BEFORE sending OTP
+      final isRegistered = await provider.authService.isEmailAlreadyRegistered(event.email);
+      if (isRegistered) {
+        print('   ❌ Email is already registered, throwing error');
+        throw Exception('Account is already registered');
+      }
+      
+      print('   ✅ Email is not registered, sending OTP...');
+      // Send OTP only if email is not already registered
       await provider.authService.sendOTP(email: event.email);
+      print('   ✅ OTP sent successfully');
       emit(state.copyWithoutError(isLoading: false));
       // Note: Registration will be completed in VerifyOTPAndRegisterEvent
     } catch (error) {
+      print('   ❌ Error in RegisterEvent: $error');
       emit(state.copy(error: error, isLoading: false));
     }
   }
@@ -116,11 +127,17 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
         throw Exception('Failed to get email from Google account.');
       }
       
+      // Check if email is already registered BEFORE sending OTP
+      final isRegistered = await provider.authService.isEmailAlreadyRegistered(email);
+      if (isRegistered) {
+        throw Exception('Account is already registered');
+      }
+      
       // Store Google user info temporarily
       _pendingGoogleEmail = email;
       _pendingGoogleDisplayName = displayName;
       
-      // Send OTP to the email
+      // Send OTP to the email only if not already registered
       try {
         await provider.authService.sendOTP(email: email);
       } catch (otpError) {

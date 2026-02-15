@@ -845,6 +845,62 @@ class AuthService {
     }
   }
 
+  // Check if email is already registered in Firebase Auth
+  // This is used to prevent duplicate registrations before sending OTP
+  Future<bool> isEmailAlreadyRegistered(String email) async {
+    try {
+      final normalizedEmail = email.trim().toLowerCase();
+      print('🔍 Checking if email is already registered: $normalizedEmail');
+      
+      // Method 1: Check Firestore first (more reliable since we store user data there)
+      print('   🔍 Method 1: Checking Firestore for email...');
+      try {
+        final users = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: normalizedEmail)
+            .limit(1)
+            .get();
+        
+        if (users.docs.isNotEmpty) {
+          print('   ✅ Email found in Firestore - account IS registered');
+          return true;
+        }
+        print('   ❌ Email not found in Firestore');
+      } catch (e) {
+        print('   ⚠️ Error checking Firestore: $e');
+      }
+      
+      // Method 2: Check Firebase Auth sign-in methods
+      print('   🔍 Method 2: Checking Firebase Auth sign-in methods...');
+      try {
+        final methods = await _auth.fetchSignInMethodsForEmail(normalizedEmail);
+        print('   📋 Sign-in methods found: $methods');
+        
+        if (methods.isNotEmpty) {
+          print('   ✅ Email found in Firebase Auth - account IS registered');
+          return true;
+        }
+        print('   ❌ No sign-in methods found in Firebase Auth');
+      } on FirebaseAuthException catch (e) {
+        print('   ⚠️ FirebaseAuthException: ${e.code} - ${e.message}');
+        if (e.code == 'invalid-email') {
+          print('   ❌ Invalid email format');
+          return false;
+        }
+      } catch (e) {
+        print('   ⚠️ Error checking Firebase Auth: $e');
+      }
+      
+      // If both methods return false, email is not registered
+      print('   ❌ Email IS NOT already registered (checked both Firestore and Firebase Auth)');
+      return false;
+    } catch (e) {
+      // On any unexpected error, log and assume email doesn't exist to be safe
+      print('   ❌ Unexpected error checking email, assuming not registered: $e');
+      return false;
+    }
+  }
+
   // Send OTP to email
   Future<void> sendOTP({required String email}) async {
     try {
@@ -1135,7 +1191,7 @@ class AuthService {
       case 'weak-password':
         return Exception('The password provided is too weak.');
       case 'email-already-in-use':
-        return Exception('An account already exists for that email.');
+        return Exception('Account is already registered');
       case 'user-not-found':
         return Exception('No user found for that email.');
       case 'wrong-password':

@@ -24,65 +24,12 @@ class OTPSuccessScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(flex: 2),
-              // Success Icon with badge design
-              Container(
-                width: 140,
-                height: 140,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      ValidationTheme.primaryBlue,
-                      ValidationTheme.primaryBlue.withOpacity(0.7),
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: ValidationTheme.primaryBlue.withOpacity(0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Decorative circles
-                    Positioned(
-                      top: -10,
-                      right: -10,
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: ValidationTheme.primaryBlue.withOpacity(0.2),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: -10,
-                      left: -10,
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: ValidationTheme.primaryBlue.withOpacity(0.2),
-                        ),
-                      ),
-                    ),
-                    // Checkmark icon
-                    const Icon(
-                      Icons.check,
-                      size: 80,
-                      color: Colors.white,
-                      weight: 3,
-                    ),
-                  ],
-                ),
+              // SealCheck image (larger, no background)
+              Image.asset(
+                'assets/images/logo/SealCheck.png',
+                width: 200,
+                height: 200,
+                fit: BoxFit.contain,
               ),
               const SizedBox(height: 40),
               // Success message

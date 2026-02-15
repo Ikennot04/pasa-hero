@@ -82,19 +82,19 @@ class _LoginFormState extends State<LoginForm> {
             // Calculate available height for form
             final availableHeight = constraints.maxHeight;
             
-            // Responsive values - increased sizes to fill space
+            // Responsive values - adjusted to fit with errors visible (reduced to prevent overflow)
             final horizontalPadding = isSmallScreen ? 24.0 : 28.0;
-            final verticalPadding = isSmallScreen ? 16.0 : 20.0;
-            final titleFontSize = isSmallScreen ? 26.0 : 28.0;
-            final labelFontSize = isSmallScreen ? 16.0 : 17.0;
-            final inputFontSize = isSmallScreen ? 18.0 : 19.0;
-            final fieldHeight = isSmallScreen ? 64.0 : 68.0;
-            final buttonHeight = isSmallScreen ? 56.0 : 60.0;
+            final verticalPadding = isSmallScreen ? 10.0 : 14.0;
+            final titleFontSize = isSmallScreen ? 24.0 : 26.0;
+            final labelFontSize = isSmallScreen ? 15.0 : 16.0;
+            final inputFontSize = isSmallScreen ? 17.0 : 18.0;
+            final fieldHeight = isSmallScreen ? 56.0 : 60.0;
+            final buttonHeight = isSmallScreen ? 50.0 : 54.0;
             
-            // Dynamic spacing based on available height
-            final baseSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 12.0 : 16.0);
-            final titleSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 12.0 : 18.0);
-            final fieldSpacing = availableHeight < 600 ? 10.0 : (availableHeight < 700 ? 12.0 : 16.0);
+            // Dynamic spacing - optimized to fit content with errors (reduced to prevent overflow)
+            final baseSpacing = availableHeight < 600 ? 5.0 : (availableHeight < 700 ? 7.0 : 9.0);
+            final titleSpacing = availableHeight < 600 ? 6.0 : (availableHeight < 700 ? 10.0 : 14.0);
+            final fieldSpacing = availableHeight < 600 ? 10.0 : (availableHeight < 700 ? 12.0 : 14.0);
             
             return Padding(
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
@@ -126,8 +126,11 @@ class _LoginFormState extends State<LoginForm> {
                             
                             if (errorMessage != null) {
                               return Container(
-                                margin: EdgeInsets.only(bottom: fieldSpacing),
-                                padding: EdgeInsets.all(isSmallScreen ? 10.0 : 12.0),
+                                margin: EdgeInsets.only(bottom: baseSpacing),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isSmallScreen ? 10.0 : 12.0,
+                                  vertical: isSmallScreen ? 8.0 : 10.0,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.red.shade50,
                                   borderRadius: BorderRadius.circular(8),
@@ -137,11 +140,12 @@ class _LoginFormState extends State<LoginForm> {
                                   ),
                                 ),
                                 child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Icon(
                                       Icons.error_outline,
                                       color: Colors.red.shade700,
-                                      size: isSmallScreen ? 18.0 : 20.0,
+                                      size: isSmallScreen ? 16.0 : 18.0,
                                     ),
                                     SizedBox(width: isSmallScreen ? 6.0 : 8.0),
                                     Expanded(
@@ -149,7 +153,7 @@ class _LoginFormState extends State<LoginForm> {
                                         errorMessage,
                                         style: TextStyle(
                                           color: Colors.red.shade700,
-                                          fontSize: isSmallScreen ? 14.0 : 16.0,
+                                          fontSize: isSmallScreen ? 13.0 : 14.0,
                                           fontWeight: FontWeight.w500,
                                         ),
                                         maxLines: 2,
@@ -207,8 +211,8 @@ class _LoginFormState extends State<LoginForm> {
                           ),
                         ),
                         contentPadding: EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: isSmallScreen ? 20.0 : 22.0,
+                          horizontal: 18,
+                          vertical: isSmallScreen ? 16.0 : 18.0,
                         ),
                       ),
                     ),
@@ -254,8 +258,8 @@ class _LoginFormState extends State<LoginForm> {
                           fontSize: inputFontSize,
                         ),
                         contentPadding: EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: isSmallScreen ? 20.0 : 22.0,
+                          horizontal: 18,
+                          vertical: isSmallScreen ? 16.0 : 18.0,
                         ),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -294,7 +298,7 @@ class _LoginFormState extends State<LoginForm> {
                         'Forgot password?',
                         style: TextStyle(
                           color: const Color(0xFF3B82F6),
-                          fontSize: isSmallScreen ? 14.0 : 16.0,
+                          fontSize: isSmallScreen ? 13.0 : 14.0,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -373,7 +377,7 @@ class _LoginFormState extends State<LoginForm> {
                           'Or, Sign In With',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: isSmallScreen ? 14.0 : 16.0,
+                            fontSize: isSmallScreen ? 13.0 : 14.0,
                           ),
                         ),
                       ),
@@ -456,7 +460,7 @@ class _LoginFormState extends State<LoginForm> {
                       );
                     },
                   ),
-                  SizedBox(height: availableHeight < 600 ? 8.0 : 14.0),
+                  SizedBox(height: availableHeight < 600 ? 6.0 : 10.0),
                   // Sign Up Link
                   Center(
                     child: Wrap(
@@ -467,7 +471,7 @@ class _LoginFormState extends State<LoginForm> {
                           'Don\'t have an account? ',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: isSmallScreen ? 14.0 : 16.0,
+                            fontSize: isSmallScreen ? 13.0 : 14.0,
                           ),
                         ),
                         TextButton(
@@ -491,7 +495,7 @@ class _LoginFormState extends State<LoginForm> {
                             'Sign up',
                             style: TextStyle(
                               color: const Color(0xFF3B82F6),
-                              fontSize: isSmallScreen ? 14.0 : 16.0,
+                              fontSize: isSmallScreen ? 13.0 : 14.0,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
