@@ -4,8 +4,7 @@ import '../login/login_sreen.dart';
 import '../auth_bloc/auth_bloc_bloc.dart';
 import '../auth_bloc/auth_bloc_event.dart';
 import '../auth_bloc/auth_bloc_state.dart';
-import '../../near_me/Screen/nearme_screen.dart';
-import '../otp/otp_card.dart';
+import '../otp/otp_screen.dart';
 
 class RegisterForm extends StatefulWidget {
   final TextEditingController firstNameController;
@@ -29,13 +28,6 @@ class _RegisterFormState extends State<RegisterForm> {
   bool _obscurePassword = true;
   String? _validationError;
   bool _hasNavigated = false; // Flag to prevent multiple navigations
-  bool _showOTPCard = false; // Flag to show/hide OTP card
-  String? _otpEmail;
-  String? _otpPassword;
-  String? _otpFirstName;
-  String? _otpLastName;
-  bool _isGoogleSignUp = false;
-  String? _googleDisplayName;
 
   @override
   void dispose() {
@@ -63,14 +55,25 @@ class _RegisterFormState extends State<RegisterForm> {
             final googleEmail = bloc.pendingGoogleEmail!;
             final googleDisplayName = bloc.pendingGoogleDisplayName ?? '';
             bloc.resetPendingGoogleInfo();
-            setState(() {
-              _showOTPCard = true;
-              _otpEmail = googleEmail;
-              _otpPassword = null;
-              _otpFirstName = null;
-              _otpLastName = null;
-              _isGoogleSignUp = true;
-              _googleDisplayName = googleDisplayName;
+            // Navigate to full screen OTP
+            // IMPORTANT: Pass the bloc to ensure same instance is used
+            final authBloc = BlocProvider.of<AuthBlocBloc>(context, listen: false);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: authBloc, // Pass the same bloc instance
+                      child: OTPScreen(
+                        email: googleEmail,
+                        isRegistration: true,
+                        isGoogleSignUp: true,
+                        googleDisplayName: googleDisplayName,
+                      ),
+                    ),
+                  ),
+                );
+              }
             });
             return; // Exit early to prevent regular registration check
           }
@@ -82,40 +85,31 @@ class _RegisterFormState extends State<RegisterForm> {
           final lastName = widget.lastNameController.text.trim();
           if (email.isNotEmpty && password.isNotEmpty && firstName.isNotEmpty && lastName.isNotEmpty) {
             _hasNavigated = true;
-            setState(() {
-              _showOTPCard = true;
-              _otpEmail = email;
-              _otpPassword = password;
-              _otpFirstName = firstName;
-              _otpLastName = lastName;
-              _isGoogleSignUp = false;
-              _googleDisplayName = null;
+            // Navigate to full screen OTP
+            // IMPORTANT: Pass the bloc to ensure same instance is used
+            final authBloc = BlocProvider.of<AuthBlocBloc>(context, listen: false);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: authBloc, // Pass the same bloc instance
+                      child: OTPScreen(
+                        email: email,
+                        password: password,
+                        firstName: firstName,
+                        lastName: lastName,
+                        isRegistration: true,
+                      ),
+                    ),
+                  ),
+                );
+              }
             });
           }
         }
-        // Navigate to near me screen on successful registration (after OTP verification)
-        if (state.isAuthenticated && state.user != null && !state.isLoading) {
-          // Close OTP card if it's open
-          if (_showOTPCard) {
-            setState(() {
-              _showOTPCard = false;
-            });
-          }
-          
-          // Use a post-frame callback to ensure navigation happens after build
-          WidgetsBinding.instance.addPostFrameCallback((_) async {
-            if (!mounted) return; // Don't navigate if widget is disposed
-            // Small delay to ensure state is fully updated and card is closed
-            await Future.delayed(const Duration(milliseconds: 200));
-            if (!mounted) return; // Check again after delay
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (context) => const NearMeScreen(),
-              ),
-              (route) => false, // Remove all previous routes
-            );
-          });
-        }
+        // Navigation to near me screen is handled by OTP screen after success
+        // No need to handle it here since OTP screen manages its own navigation
         // Clear validation error when auth state changes
         if (state.error != null || state.isAuthenticated) {
           setState(() {
@@ -126,8 +120,10 @@ class _RegisterFormState extends State<RegisterForm> {
       child: Stack(
         children: [
           Container(
+            width: double.infinity,
+            height: double.infinity,
             color: const Color(0xFFF5F5F5),
-        child: LayoutBuilder(
+            child: LayoutBuilder(
           builder: (context, constraints) {
             final screenWidth = MediaQuery.of(context).size.width;
             final isSmallScreen = screenWidth < 600;
@@ -135,26 +131,28 @@ class _RegisterFormState extends State<RegisterForm> {
             // Calculate available height for form
             final availableHeight = constraints.maxHeight;
             
-            // Responsive values
+            // Responsive values - increased sizes to fill space
             final horizontalPadding = isSmallScreen ? 24.0 : 28.0;
-            final verticalPadding = isSmallScreen ? 12.0 : 16.0;
-            final titleFontSize = isSmallScreen ? 22.0 : 24.0;
-            final labelFontSize = isSmallScreen ? 14.0 : 15.0;
-            final inputFontSize = isSmallScreen ? 16.0 : 17.0;
-            final fieldHeight = isSmallScreen ? 56.0 : 60.0;
-            final buttonHeight = isSmallScreen ? 48.0 : 50.0;
+            final verticalPadding = isSmallScreen ? 16.0 : 20.0;
+            final titleFontSize = isSmallScreen ? 26.0 : 28.0;
+            final labelFontSize = isSmallScreen ? 16.0 : 17.0;
+            final inputFontSize = isSmallScreen ? 18.0 : 19.0;
+            final fieldHeight = isSmallScreen ? 64.0 : 68.0;
+            final buttonHeight = isSmallScreen ? 56.0 : 60.0;
             
-            // Dynamic spacing based on available height
-            final baseSpacing = availableHeight < 600 ? 6.0 : (availableHeight < 700 ? 8.0 : 12.0);
-            final titleSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 12.0 : 16.0);
-            final fieldSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 12.0 : 16.0);
+            // Dynamic spacing - reduced to minimize empty spaces
+            final baseSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 10.0 : 12.0);
+            final titleSpacing = availableHeight < 600 ? 12.0 : (availableHeight < 700 ? 16.0 : 20.0);
+            final fieldSpacing = availableHeight < 600 ? 14.0 : (availableHeight < 700 ? 18.0 : 20.0);
             
-            return Padding(
+            return Container(
+              height: double.infinity,
               padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   SizedBox(height: baseSpacing),
                   // Title
                   Center(
@@ -204,7 +202,7 @@ class _RegisterFormState extends State<RegisterForm> {
                                         errorMessage,
                                         style: TextStyle(
                                           color: Colors.red.shade700,
-                                          fontSize: isSmallScreen ? 12.0 : 14.0,
+                                          fontSize: isSmallScreen ? 14.0 : 16.0,
                                           fontWeight: FontWeight.w500,
                                         ),
                                         maxLines: 2,
@@ -267,8 +265,8 @@ class _RegisterFormState extends State<RegisterForm> {
                                     ),
                                   ),
                                   contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                    vertical: isSmallScreen ? 16.0 : 18.0,
+                                    horizontal: 20,
+                                    vertical: isSmallScreen ? 20.0 : 22.0,
                                   ),
                                 ),
                               ),
@@ -325,8 +323,8 @@ class _RegisterFormState extends State<RegisterForm> {
                                     ),
                                   ),
                                   contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                    vertical: isSmallScreen ? 16.0 : 18.0,
+                                    horizontal: 20,
+                                    vertical: isSmallScreen ? 20.0 : 22.0,
                                   ),
                                 ),
                               ),
@@ -383,8 +381,8 @@ class _RegisterFormState extends State<RegisterForm> {
                           ),
                         ),
                         contentPadding: EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: isSmallScreen ? 16.0 : 18.0,
+                          horizontal: 20,
+                          vertical: isSmallScreen ? 20.0 : 22.0,
                         ),
                       ),
                     ),
@@ -430,8 +428,8 @@ class _RegisterFormState extends State<RegisterForm> {
                           ),
                         ),
                         contentPadding: EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: isSmallScreen ? 16.0 : 18.0,
+                          horizontal: 20,
+                          vertical: isSmallScreen ? 20.0 : 22.0,
                         ),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -511,7 +509,7 @@ class _RegisterFormState extends State<RegisterForm> {
                       );
                     },
                   ),
-                  SizedBox(height: fieldSpacing),
+                  SizedBox(height: fieldSpacing + 4),
                   // Separator
                   Row(
                     children: [
@@ -527,7 +525,7 @@ class _RegisterFormState extends State<RegisterForm> {
                           'Or, Sign Up With',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: isSmallScreen ? 12.0 : 14.0,
+                            fontSize: isSmallScreen ? 14.0 : 16.0,
                           ),
                         ),
                       ),
@@ -539,7 +537,7 @@ class _RegisterFormState extends State<RegisterForm> {
                       ),
                     ],
                   ),
-                  SizedBox(height: fieldSpacing),
+                  SizedBox(height: fieldSpacing + 4),
                   // Sign Up with Google Button
                   BlocBuilder<AuthBlocBloc, AuthBlocState>(
                     builder: (context, state) {
@@ -611,7 +609,7 @@ class _RegisterFormState extends State<RegisterForm> {
                       );
                     },
                   ),
-                  SizedBox(height: availableHeight < 600 ? 12.0 : 16.0),
+                  SizedBox(height: fieldSpacing),
                   // Sign In Link
                   Center(
                     child: Wrap(
@@ -622,7 +620,7 @@ class _RegisterFormState extends State<RegisterForm> {
                           'Already have an account? ',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: isSmallScreen ? 12.0 : 14.0,
+                            fontSize: isSmallScreen ? 14.0 : 16.0,
                           ),
                         ),
                         TextButton(
@@ -646,7 +644,7 @@ class _RegisterFormState extends State<RegisterForm> {
                             'Sign In',
                             style: TextStyle(
                               color: const Color(0xFF3B82F6),
-                              fontSize: isSmallScreen ? 12.0 : 14.0,
+                              fontSize: isSmallScreen ? 14.0 : 16.0,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -655,32 +653,13 @@ class _RegisterFormState extends State<RegisterForm> {
                     ),
                   ),
                   SizedBox(height: baseSpacing),
-                ],
+                  ],
+                ),
               ),
             );
           },
         ),
           ),
-          // OTP Card Overlay
-          if (_showOTPCard && _otpEmail != null)
-            Container(
-              color: Colors.black.withOpacity(0.5),
-              child: OTPCard(
-                email: _otpEmail!,
-                password: _otpPassword,
-                firstName: _otpFirstName,
-                lastName: _otpLastName,
-                isRegistration: true,
-                isGoogleSignUp: _isGoogleSignUp,
-                googleDisplayName: _googleDisplayName,
-                onClose: () {
-                  setState(() {
-                    _showOTPCard = false;
-                    _hasNavigated = false;
-                  });
-                },
-              ),
-            ),
         ],
       ),
     );

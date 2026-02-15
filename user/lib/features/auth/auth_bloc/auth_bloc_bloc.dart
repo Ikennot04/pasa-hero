@@ -143,22 +143,37 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     VerifyOTPAndGoogleSignUpEvent event,
     Emitter<AuthBlocState> emit,
   ) async {
+    print('🎯 AuthBloc: VerifyOTPAndGoogleSignUpEvent received');
+    print('   Email: ${event.email}');
+    print('   OTP Code: ${event.otpCode}');
+    print('   OTP Length: ${event.otpCode.length}');
+    
     emit(state.copyWithoutError(isLoading: true));
     try {
       // First verify OTP
+      print('   🔍 Verifying OTP...');
       await provider.authService.verifyOTP(
         email: event.email,
         otpCode: event.otpCode,
       );
+      print('   ✅ OTP verified successfully');
       
       // If OTP is verified, complete Google sign-up
+      print('   🔐 Completing Google sign-up...');
       final credential = await provider.authService.signUpWithGoogle();
+      print('   ✅ Google sign-up successful');
+      print('   📤 Emitting authenticated state with user: ${credential.user?.email ?? "null"}');
       
-      emit(state.copyWithoutError(
+      final newState = state.copyWithoutError(
         isLoading: false,
         user: credential.user,
-      ));
+      );
+      print('   📤 New state - isAuthenticated: ${newState.isAuthenticated}, user: ${newState.user?.email ?? "null"}, isLoading: ${newState.isLoading}');
+      emit(newState);
+      print('   ✅ State emitted successfully');
     } catch (error) {
+      print('   ❌ Error in VerifyOTPAndGoogleSignUpEvent: $error');
+      print('   ❌ Error type: ${error.runtimeType}');
       emit(state.copy(error: error, isLoading: false));
     }
   }
@@ -201,27 +216,38 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     VerifyOTPAndRegisterEvent event,
     Emitter<AuthBlocState> emit,
   ) async {
+    print('🎯 AuthBloc: VerifyOTPAndRegisterEvent received');
+    print('   Email: ${event.email}');
+    print('   OTP Code: ${event.otpCode}');
+    print('   OTP Length: ${event.otpCode.length}');
+    
     emit(state.copyWithoutError(isLoading: true));
     try {
       // First verify OTP
+      print('   🔍 Verifying OTP...');
       await provider.authService.verifyOTP(
         email: event.email,
         otpCode: event.otpCode,
       );
+      print('   ✅ OTP verified successfully');
       
       // If OTP is verified, create the account
+      print('   📝 Creating account...');
       final credential = await provider.authService.registerWithEmailAndPassword(
         email: event.email,
         password: event.password,
         firstName: event.firstName,
         lastName: event.lastName,
       );
+      print('   ✅ Account created successfully');
       
       emit(state.copyWithoutError(
         isLoading: false,
         user: credential.user,
       ));
     } catch (error) {
+      print('   ❌ Error in VerifyOTPAndRegisterEvent: $error');
+      print('   ❌ Error type: ${error.runtimeType}');
       emit(state.copy(error: error, isLoading: false));
     }
   }
@@ -230,25 +256,36 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     VerifyOTPAndLoginEvent event,
     Emitter<AuthBlocState> emit,
   ) async {
+    print('🎯 AuthBloc: VerifyOTPAndLoginEvent received');
+    print('   Email: ${event.email}');
+    print('   OTP Code: ${event.otpCode}');
+    print('   OTP Length: ${event.otpCode.length}');
+    
     emit(state.copyWithoutError(isLoading: true));
     try {
       // First verify OTP
+      print('   🔍 Verifying OTP...');
       await provider.authService.verifyOTP(
         email: event.email,
         otpCode: event.otpCode,
       );
+      print('   ✅ OTP verified successfully');
       
       // If OTP is verified, proceed with login
+      print('   🔐 Signing in...');
       final credential = await provider.authService.signInWithEmailAndPassword(
         email: event.email,
         password: event.password,
       );
+      print('   ✅ Login successful');
       
       emit(state.copyWithoutError(
         isLoading: false,
         user: credential.user,
       ));
     } catch (error) {
+      print('   ❌ Error in VerifyOTPAndLoginEvent: $error');
+      print('   ❌ Error type: ${error.runtimeType}');
       emit(state.copy(error: error, isLoading: false));
     }
   }

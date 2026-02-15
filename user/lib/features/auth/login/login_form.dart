@@ -82,14 +82,14 @@ class _LoginFormState extends State<LoginForm> {
             // Calculate available height for form
             final availableHeight = constraints.maxHeight;
             
-            // Responsive values
+            // Responsive values - increased sizes to fill space
             final horizontalPadding = isSmallScreen ? 24.0 : 28.0;
-            final verticalPadding = isSmallScreen ? 12.0 : 16.0;
-            final titleFontSize = isSmallScreen ? 22.0 : 24.0;
-            final labelFontSize = isSmallScreen ? 14.0 : 15.0;
-            final inputFontSize = isSmallScreen ? 16.0 : 17.0;
-            final fieldHeight = isSmallScreen ? 56.0 : 60.0;
-            final buttonHeight = isSmallScreen ? 48.0 : 50.0;
+            final verticalPadding = isSmallScreen ? 16.0 : 20.0;
+            final titleFontSize = isSmallScreen ? 26.0 : 28.0;
+            final labelFontSize = isSmallScreen ? 16.0 : 17.0;
+            final inputFontSize = isSmallScreen ? 18.0 : 19.0;
+            final fieldHeight = isSmallScreen ? 64.0 : 68.0;
+            final buttonHeight = isSmallScreen ? 56.0 : 60.0;
             
             // Dynamic spacing based on available height
             final baseSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 12.0 : 16.0);
@@ -149,7 +149,7 @@ class _LoginFormState extends State<LoginForm> {
                                         errorMessage,
                                         style: TextStyle(
                                           color: Colors.red.shade700,
-                                          fontSize: isSmallScreen ? 12.0 : 14.0,
+                                          fontSize: isSmallScreen ? 14.0 : 16.0,
                                           fontWeight: FontWeight.w500,
                                         ),
                                         maxLines: 2,
@@ -207,8 +207,8 @@ class _LoginFormState extends State<LoginForm> {
                           ),
                         ),
                         contentPadding: EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: isSmallScreen ? 16.0 : 18.0,
+                          horizontal: 20,
+                          vertical: isSmallScreen ? 20.0 : 22.0,
                         ),
                       ),
                     ),
@@ -254,8 +254,8 @@ class _LoginFormState extends State<LoginForm> {
                           fontSize: inputFontSize,
                         ),
                         contentPadding: EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: isSmallScreen ? 16.0 : 18.0,
+                          horizontal: 20,
+                          vertical: isSmallScreen ? 20.0 : 22.0,
                         ),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -294,7 +294,7 @@ class _LoginFormState extends State<LoginForm> {
                         'Forgot password?',
                         style: TextStyle(
                           color: const Color(0xFF3B82F6),
-                          fontSize: isSmallScreen ? 12.0 : 14.0,
+                          fontSize: isSmallScreen ? 14.0 : 16.0,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -373,7 +373,7 @@ class _LoginFormState extends State<LoginForm> {
                           'Or, Sign In With',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: isSmallScreen ? 12.0 : 14.0,
+                            fontSize: isSmallScreen ? 14.0 : 16.0,
                           ),
                         ),
                       ),
@@ -467,7 +467,7 @@ class _LoginFormState extends State<LoginForm> {
                           'Don\'t have an account? ',
                           style: TextStyle(
                             color: Colors.grey[600],
-                            fontSize: isSmallScreen ? 12.0 : 14.0,
+                            fontSize: isSmallScreen ? 14.0 : 16.0,
                           ),
                         ),
                         TextButton(
@@ -491,7 +491,7 @@ class _LoginFormState extends State<LoginForm> {
                             'Sign up',
                             style: TextStyle(
                               color: const Color(0xFF3B82F6),
-                              fontSize: isSmallScreen ? 12.0 : 14.0,
+                              fontSize: isSmallScreen ? 14.0 : 16.0,
                               fontWeight: FontWeight.w500,
                             ),
                           ),

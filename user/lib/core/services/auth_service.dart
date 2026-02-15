@@ -23,6 +23,18 @@ class AuthService {
     );
     return _googleSignIn!;
   }
+  
+  // Store the Google account from getGoogleUserEmail() to reuse in signUpWithGoogle()
+  // Use static to persist across AuthService instances
+  static GoogleSignInAccount? _cachedGoogleAccount;
+  
+  // Getter for cached account
+  GoogleSignInAccount? get cachedGoogleAccount => _cachedGoogleAccount;
+  
+  // Setter for cached account
+  void setCachedGoogleAccount(GoogleSignInAccount? account) {
+    _cachedGoogleAccount = account;
+  }
 
   // Get the Web OAuth Client ID from Firebase options
   // This is needed for Android/iOS Google Sign-In
@@ -417,6 +429,11 @@ class AuthService {
         throw Exception('Google Sign-Up was cancelled.');
       }
       
+      // Store the Google account for later use in signUpWithGoogle()
+      // Use static setter to persist across instances
+      setCachedGoogleAccount(googleUser);
+      print('✅ Google account cached: ${googleUser.email}');
+      
       // Return email and display name without authenticating
       return {
         'email': googleUser.email,
@@ -442,53 +459,76 @@ class AuthService {
     try {
       GoogleSignInAccount? googleUser;
       
-      // Check if user is already signed in (from getGoogleUserEmail call)
-      googleUser = await googleSignIn.signInSilently();
+      print('🔐 signUpWithGoogle: Looking for cached Google account...');
       
-      // If not signed in silently, try regular sign in
+      // First, try to use the cached Google account from getGoogleUserEmail()
+      // Use static getter to access cached account across instances
+      final cachedAccount = cachedGoogleAccount;
+      if (cachedAccount != null) {
+        print('   ✅ Using cached Google account: ${cachedAccount.email}');
+        googleUser = cachedAccount;
+      }
+      
+      // If no cached account, try to get the current user
       if (googleUser == null) {
-        // For web, skip signInSilently to avoid FedCM errors and warnings
-        // signInSilently always fails for first-time users and creates noise
-        // Go straight to signIn() which shows the popup
-        if (kIsWeb) {
-          try {
-            googleUser = await googleSignIn.signIn();
-          } catch (signInError) {
-          // Handle popup_closed error as cancellation
-          final errorStr = signInError.toString().toLowerCase();
-          if (errorStr.contains('popup_closed') || 
-              errorStr.contains('popup closed') ||
-              errorStr.contains('cancelled')) {
-            throw Exception('Google Sign-Up was cancelled.');
-          }
-          // Handle CORS/COOP errors
-          if (errorStr.contains('cross-origin') ||
-              errorStr.contains('crossorigin') ||
-              errorStr.contains('opener-policy') ||
-              errorStr.contains('coop')) {
-            throw Exception(
-              'Google Sign-Up failed due to browser security settings. '
-              'Please check your browser settings or try a different browser.'
-            );
-          }
-          // Handle other FedCM/unknown errors
-          if (errorStr.contains('unknown_reason') ||
-              errorStr.contains('networkerror') ||
-              errorStr.contains('not signed in')) {
-            throw Exception('Google Sign-Up failed. Please try again.');
-          }
-          rethrow;
-          }
-        } else {
-          // For mobile platforms, use regular signIn
-          googleUser = await googleSignIn.signIn();
+        googleUser = googleSignIn.currentUser;
+        if (googleUser != null) {
+          print('   ✅ Found current user: ${googleUser.email}');
         }
+      }
+      
+      // If still null, try signInSilently (works better on mobile)
+      if (googleUser == null) {
+        try {
+          googleUser = await googleSignIn.signInSilently();
+          if (googleUser != null) {
+            print('   ✅ Retrieved via signInSilently: ${googleUser.email}');
+            // Cache it for future use (static)
+            setCachedGoogleAccount(googleUser);
+          }
+        } catch (e) {
+          // signInSilently may fail, that's okay - we'll try other methods
+          print('   ⚠️ signInSilently failed (expected on web): $e');
+        }
+      }
+      
+      // If still null, check if we're on web and try to get it without popup
+      if (googleUser == null && kIsWeb) {
+        // On web, try to check if there's a cached session
+        // Wait a bit for the session to be established
+        await Future.delayed(const Duration(milliseconds: 200));
+        googleUser = googleSignIn.currentUser;
+        if (googleUser != null) {
+          print('   ✅ Found current user after delay: ${googleUser.email}');
+          setCachedGoogleAccount(googleUser);
+        }
+      }
+      
+      // If still null, only then show the popup (shouldn't happen if getGoogleUserEmail worked)
+      if (googleUser == null) {
+        print('   ❌ ERROR: No existing Google sign-in found!');
+        print('   ❌ Cached account: ${cachedGoogleAccount?.email ?? "null"}');
+        print('   ❌ Current user: ${googleSignIn.currentUser?.email ?? "null"}');
+        print('   ❌ This should not happen if getGoogleUserEmail() was called first');
+        print('   ❌ Throwing error instead of showing popup to prevent unexpected behavior');
+        
+        // Instead of showing popup, throw an error
+        // This prevents the unexpected popup and gives a clear error message
+        throw Exception(
+          'Google sign-in session expired. Please try signing up with Google again from the beginning.'
+        );
       }
       
       // VALIDATION STEP 1: Check if googleUser is valid
       if (googleUser == null) {
+        // Clear cached account if sign-in failed
+        setCachedGoogleAccount(null);
         throw Exception('Google Sign-Up was cancelled.');
       }
+      
+      // Update cached account if we got a new one (static)
+      setCachedGoogleAccount(googleUser);
+      print('   ✅ Using Google account: ${googleUser.email}');
       
       // Obtain the auth details from the request
       // CRITICAL: The People API 403 error happens AFTER token retrieval
@@ -496,10 +536,14 @@ class AuthService {
       // We need to get the tokens even if People API fails
       GoogleSignInAuthentication? googleAuth;
       
+      print('   🔑 Getting authentication tokens from Google account...');
+      print('   ⚠️ Note: This should NOT trigger a popup if account is already signed in');
       try {
         // Try to get authentication - this may throw due to People API 403
         // but the tokens should still be available in the response
+        // This should NOT trigger a popup if the account is already signed in
         googleAuth = await googleUser.authentication;
+        print('   ✅ Authentication tokens retrieved successfully');
       } catch (e) {
         
         final errorStr = e.toString().toLowerCase();
@@ -731,6 +775,7 @@ class AuthService {
     try {
       await _auth.signOut();
       await googleSignIn.signOut(); // Also sign out from Google
+      setCachedGoogleAccount(null); // Clear cached Google account (static)
     } catch (e) {
       throw Exception('Sign out failed: $e');
     }
@@ -971,39 +1016,113 @@ class AuthService {
   // Verify OTP
   Future<void> verifyOTP({required String email, required String otpCode}) async {
     try {
-      final otpDoc = await _firestore.collection('otp_verifications').doc(email.trim()).get();
+      // Normalize email (trim and lowercase for consistency)
+      final normalizedEmail = email.trim().toLowerCase();
+      final normalizedOtp = otpCode.trim();
+      
+      // Validate OTP format
+      if (normalizedOtp.isEmpty) {
+        throw Exception('OTP code cannot be empty.');
+      }
+      
+      if (!RegExp(r'^\d+$').hasMatch(normalizedOtp)) {
+        throw Exception('OTP code must contain only digits.');
+      }
+      
+      if (normalizedOtp.length < 4 || normalizedOtp.length > 8) {
+        throw Exception('OTP code must be between 4 and 8 digits.');
+      }
+      
+      // Debug logging
+      print('🔍 OTP Verification Debug:');
+      print('   Email (normalized): $normalizedEmail');
+      print('   OTP Code (normalized): $normalizedOtp');
+      print('   OTP Length: ${normalizedOtp.length}');
+      
+      // Get OTP document from Firestore
+      final otpDoc = await _firestore.collection('otp_verifications').doc(normalizedEmail).get();
       
       if (!otpDoc.exists) {
+        print('   ❌ OTP document not found for email: $normalizedEmail');
         throw Exception('OTP not found. Please request a new OTP code.');
       }
 
       final otpData = otpDoc.data()!;
-      final storedOTP = otpData['otp'] as String;
-      final expiresAt = DateTime.parse(otpData['expiresAt'] as String);
+      final storedOTP = (otpData['otp'] as String?)?.trim() ?? '';
+      final storedEmail = (otpData['email'] as String?)?.trim().toLowerCase() ?? '';
+      final expiresAtStr = otpData['expiresAt'] as String?;
       final isVerified = otpData['verified'] as bool? ?? false;
+
+      // Debug logging
+      print('   📦 Stored OTP: $storedOTP');
+      print('   📦 Stored Email: $storedEmail');
+      print('   📦 Stored OTP Length: ${storedOTP.length}');
+      print('   📦 Is Verified: $isVerified');
+      print('   📦 Expires At: $expiresAtStr');
 
       // Check if OTP is already verified
       if (isVerified) {
+        print('   ❌ OTP has already been used');
         throw Exception('This OTP has already been used.');
       }
 
       // Check if OTP is expired
-      if (DateTime.now().isAfter(expiresAt)) {
+      if (expiresAtStr == null) {
+        print('   ❌ ExpiresAt is null');
+        throw Exception('OTP expiration date is missing. Please request a new code.');
+      }
+      
+      final expiresAt = DateTime.parse(expiresAtStr);
+      final now = DateTime.now();
+      final isExpired = now.isAfter(expiresAt);
+      
+      print('   ⏰ Current Time: ${now.toIso8601String()}');
+      print('   ⏰ Expires At: ${expiresAt.toIso8601String()}');
+      print('   ⏰ Is Expired: $isExpired');
+      print('   ⏰ Time Remaining: ${expiresAt.difference(now).inSeconds} seconds');
+      
+      if (isExpired) {
+        print('   ❌ OTP has expired');
         throw Exception('OTP has expired. Please request a new code.');
       }
 
-      // Verify OTP code
-      if (storedOTP != otpCode.trim()) {
-        throw Exception('Invalid OTP code. Please try again.');
+      // Verify OTP code (compare as strings)
+      final otpMatch = storedOTP == normalizedOtp;
+      print('   🔐 OTP Comparison:');
+      print('      Stored: "$storedOTP" (length: ${storedOTP.length})');
+      print('      Entered: "$normalizedOtp" (length: ${normalizedOtp.length})');
+      print('      Match: $otpMatch');
+      
+      if (!otpMatch) {
+        // Additional debug: check character by character
+        if (storedOTP.length != normalizedOtp.length) {
+          print('   ❌ Length mismatch: stored=${storedOTP.length}, entered=${normalizedOtp.length}');
+          throw Exception('Invalid OTP code. Length mismatch. Please check and try again.');
+        }
+        
+        // Check each character
+        for (int i = 0; i < storedOTP.length; i++) {
+          if (storedOTP[i] != normalizedOtp[i]) {
+            print('   ❌ Character mismatch at position $i: stored="${storedOTP[i]}" (${storedOTP.codeUnitAt(i)}), entered="${normalizedOtp[i]}" (${normalizedOtp.codeUnitAt(i)})');
+            break;
+          }
+        }
+        
+        throw Exception('Invalid OTP code. Please check the code and try again.');
       }
+
+      print('   ✅ OTP verification successful!');
 
       // Mark OTP as verified
       await otpDoc.reference.update({
         'verified': true,
         'verifiedAt': FieldValue.serverTimestamp(),
       });
+      
+      print('   ✅ OTP marked as verified in Firestore');
     } catch (e) {
-      if (e.toString().contains('OTP')) {
+      print('   ❌ OTP Verification Error: $e');
+      if (e.toString().contains('OTP') || e.toString().contains('expired') || e.toString().contains('not found')) {
         rethrow;
       }
       throw Exception('Failed to verify OTP: $e');
