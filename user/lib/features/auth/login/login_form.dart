@@ -5,6 +5,7 @@ import '../auth_bloc/auth_bloc_bloc.dart';
 import '../auth_bloc/auth_bloc_event.dart';
 import '../auth_bloc/auth_bloc_state.dart';
 import '../../near_me/Screen/nearme_screen.dart';
+import '../forgot_password/forgot_password_screen.dart';
 
 class LoginForm extends StatefulWidget {
   final TextEditingController emailController;
@@ -266,7 +267,11 @@ class _LoginFormState extends State<LoginForm> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () {
-                        // Handle forgot password
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const ForgotPasswordScreen(),
+                          ),
+                        );
                       },
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.symmetric(

@@ -20,6 +20,8 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     on<SendEmailVerificationEvent>(_onSendEmailVerificationEvent);
     on<CheckEmailVerificationEvent>(_onCheckEmailVerificationEvent);
     on<VerifyOTPAndGoogleSignUpEvent>(_onVerifyOTPAndGoogleSignUpEvent);
+    on<SendPasswordResetEmailEvent>(_onSendPasswordResetEmailEvent);
+    on<ResetPasswordEvent>(_onResetPasswordEvent);
   }
 
   final AuthBlocProvider provider;
@@ -207,11 +209,18 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     SendOTPEvent event,
     Emitter<AuthBlocState> emit,
   ) async {
+    print('📧 AuthBloc: SendOTPEvent received');
+    print('   Email: ${event.email}');
+    
     emit(state.copyWithoutError(isLoading: true));
     try {
+      print('   📤 Sending OTP to ${event.email}...');
       await provider.authService.sendOTP(email: event.email);
+      print('   ✅ OTP sent successfully');
       emit(state.copyWithoutError(isLoading: false));
     } catch (error) {
+      print('   ❌ Failed to send OTP: $error');
+      print('   ❌ Error type: ${error.runtimeType}');
       emit(state.copy(error: error, isLoading: false));
     }
   }
@@ -320,6 +329,35 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
         isLoading: false,
         user: user,
       ));
+    } catch (error) {
+      emit(state.copy(error: error, isLoading: false));
+    }
+  }
+
+  Future<void> _onSendPasswordResetEmailEvent(
+    SendPasswordResetEmailEvent event,
+    Emitter<AuthBlocState> emit,
+  ) async {
+    emit(state.copyWithoutError(isLoading: true));
+    try {
+      await provider.authService.sendPasswordResetEmail(event.email);
+      emit(state.copyWithoutError(isLoading: false));
+    } catch (error) {
+      emit(state.copy(error: error, isLoading: false));
+    }
+  }
+
+  Future<void> _onResetPasswordEvent(
+    ResetPasswordEvent event,
+    Emitter<AuthBlocState> emit,
+  ) async {
+    emit(state.copyWithoutError(isLoading: true));
+    try {
+      await provider.authService.resetPassword(
+        email: event.email,
+        newPassword: event.newPassword,
+      );
+      emit(state.copyWithoutError(isLoading: false));
     } catch (error) {
       emit(state.copy(error: error, isLoading: false));
     }

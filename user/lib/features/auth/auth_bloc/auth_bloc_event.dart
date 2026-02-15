@@ -132,3 +132,27 @@ class VerifyOTPAndGoogleSignUpEvent extends AuthBlocEvent {
   @override
   String toString() => 'VerifyOTPAndGoogleSignUpEvent';
 }
+
+/// Send password reset email
+class SendPasswordResetEmailEvent extends AuthBlocEvent {
+  final String email;
+
+  SendPasswordResetEmailEvent({required this.email});
+
+  @override
+  String toString() => 'SendPasswordResetEmailEvent';
+}
+
+/// Reset password after OTP verification
+class ResetPasswordEvent extends AuthBlocEvent {
+  final String email;
+  final String newPassword;
+
+  ResetPasswordEvent({
+    required this.email,
+    required this.newPassword,
+  });
+
+  @override
+  String toString() => 'ResetPasswordEvent';
+}

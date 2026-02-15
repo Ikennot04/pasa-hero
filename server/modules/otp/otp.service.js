@@ -224,4 +224,96 @@ export const OtpService = {
       }
     }
   },
+
+  // RESET PASSWORD ===================================================================
+  async resetPassword(email, newPassword) {
+    // Validate input
+    if (!email || !newPassword) {
+      throw new Error('Email and new password are required');
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      throw new Error('Email address cannot be empty');
+    }
+
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      throw new Error(`Invalid email format: ${email}`);
+    }
+
+    // Validate password length (Firebase requires at least 6 characters)
+    const trimmedPassword = String(newPassword).trim();
+    if (!trimmedPassword) {
+      throw new Error('Password cannot be empty');
+    }
+
+    if (trimmedPassword.length < 6) {
+      throw new Error('Password must be at least 6 characters long');
+    }
+
+    // Check if Firebase Admin is configured
+    const admin = (await import('../../config/firebase.config.js')).default;
+    if (!admin.apps.length) {
+      throw new Error('Firebase Admin SDK not configured. Cannot reset password.');
+    }
+
+    // Verify that OTP was verified (check Firestore)
+    const db = admin.firestore();
+    const otpDoc = await db.collection('otp_verifications').doc(trimmedEmail).get();
+    
+    if (!otpDoc.exists) {
+      throw new Error('OTP verification not found. Please complete OTP verification first.');
+    }
+
+    const otpData = otpDoc.data();
+    const isVerified = otpData?.verified === true;
+    
+    if (!isVerified) {
+      throw new Error('OTP has not been verified. Please verify the OTP code first.');
+    }
+
+    // Check if OTP verification is recent (within last 10 minutes)
+    const verifiedAt = otpData?.verifiedAt;
+    if (verifiedAt) {
+      const verifiedTime = verifiedAt.toDate ? verifiedAt.toDate() : new Date(verifiedAt);
+      const now = new Date();
+      const timeDiff = (now - verifiedTime) / 1000 / 60; // minutes
+      
+      if (timeDiff > 10) {
+        throw new Error('OTP verification has expired. Please request a new OTP.');
+      }
+    }
+
+    // Get user by email using Firebase Admin SDK
+    let userRecord;
+    try {
+      userRecord = await admin.auth().getUserByEmail(trimmedEmail);
+    } catch (error) {
+      if (error.code === 'auth/user-not-found') {
+        throw new Error('User account not found. Please check your email address.');
+      }
+      throw new Error(`Failed to find user: ${error.message}`);
+    }
+
+    // Update user password using Firebase Admin SDK
+    try {
+      await admin.auth().updateUser(userRecord.uid, {
+        password: trimmedPassword,
+      });
+      
+      console.log(`✅ Password reset successful for ${trimmedEmail}`);
+      
+      // Optionally, delete the OTP verification document after successful password reset
+      // to prevent reuse
+      await otpDoc.ref.delete();
+      
+      return { 
+        message: 'Password reset successfully',
+        email: trimmedEmail,
+      };
+    } catch (error) {
+      console.error(`❌ Failed to reset password for ${trimmedEmail}:`, error);
+      throw new Error(`Failed to reset password: ${error.message}`);
+    }
+  },
 };

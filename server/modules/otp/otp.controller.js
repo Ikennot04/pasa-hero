@@ -268,3 +268,131 @@ export const testEmailConfig = async (req, res) => {
     });
   }
 };
+
+// Reset password after OTP verification
+export const resetPassword = async (req, res) => {
+  try {
+    // Validate request body
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid request body',
+        message: 'Request body must be a valid JSON object'
+      });
+    }
+
+    const { email, newPassword } = req.body;
+    
+    // Validate input presence
+    if (!email || !newPassword) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Email and new password are required',
+        received: {
+          email: !!email,
+          newPassword: !!newPassword
+        }
+      });
+    }
+
+    // Log request (without sensitive data)
+    console.log(`🔐 Password reset request received`);
+    console.log(`   Email: ${email.substring(0, 3)}***${email.substring(email.indexOf('@'))}`);
+
+    const result = await OtpService.resetPassword(email, newPassword);
+    
+    res.json({ 
+      success: true, 
+      message: result.message,
+      email: result.email
+    });
+  } catch (error) {
+    console.error('❌ Error resetting password:', error);
+    
+    // Handle specific error types
+    if (error.message.includes('Email and new password are required') ||
+        error.message.includes('Email address cannot be empty') ||
+        error.message.includes('Password cannot be empty')) {
+      return res.status(400).json({ 
+        success: false,
+        error: error.message 
+      });
+    }
+
+    if (error.message.includes('Invalid email format')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format',
+        message: error.message
+      });
+    }
+
+    if (error.message.includes('Password must be at least 6 characters')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password too short',
+        message: error.message
+      });
+    }
+
+    if (error.message.includes('OTP verification not found') ||
+        error.message.includes('OTP has not been verified')) {
+      return res.status(400).json({
+        success: false,
+        error: 'OTP verification required',
+        message: error.message,
+        troubleshooting: [
+          'Please complete OTP verification before resetting password',
+          'Make sure you entered the correct OTP code',
+          'Request a new OTP if the current one has expired'
+        ]
+      });
+    }
+
+    if (error.message.includes('OTP verification has expired')) {
+      return res.status(400).json({
+        success: false,
+        error: 'OTP verification expired',
+        message: error.message,
+        troubleshooting: [
+          'OTP verification is only valid for 10 minutes',
+          'Please request a new OTP and verify again'
+        ]
+      });
+    }
+
+    if (error.message.includes('User account not found')) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        message: error.message
+      });
+    }
+
+    if (error.message.includes('Firebase Admin SDK not configured')) {
+      return res.status(503).json({
+        success: false,
+        error: 'Server configuration error',
+        message: error.message,
+        troubleshooting: [
+          'Firebase Admin SDK is not properly configured on the server',
+          'To fix:',
+          '1. Go to Firebase Console: https://console.firebase.google.com/',
+          '2. Select your project: pasaherodb',
+          '3. Click ⚙️ → Project Settings → Service accounts tab',
+          '4. Click "Generate new private key"',
+          '5. Save the JSON file as "serviceAccountKey.json" in the server directory',
+          '6. Restart the server',
+          'Alternatively, set FIREBASE_SERVICE_ACCOUNT environment variable with the JSON content'
+        ]
+      });
+    }
+
+    // Generic error
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to reset password', 
+      message: error.message
+    });
+  }
+};
