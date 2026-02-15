@@ -5,7 +5,6 @@ import '../auth_bloc/auth_bloc_bloc.dart';
 import '../auth_bloc/auth_bloc_event.dart';
 import '../auth_bloc/auth_bloc_state.dart';
 import '../../near_me/Screen/nearme_screen.dart';
-import '../otp/otp_screen.dart';
 
 class LoginForm extends StatefulWidget {
   final TextEditingController emailController;
@@ -34,35 +33,18 @@ class _LoginFormState extends State<LoginForm> {
   Widget build(BuildContext context) {
     return BlocListener<AuthBlocBloc, AuthBlocState>(
       listener: (context, state) {
-        // Navigate to OTP screen when OTP is sent (login event completes without error and not authenticated)
-        if (!state.isLoading && !state.isAuthenticated && state.error == null) {
-          // Check if we just sent OTP (login was triggered)
-          final email = widget.emailController.text.trim();
-          final password = widget.passwordController.text;
-          if (email.isNotEmpty && password.isNotEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => OTPScreen(
-                    email: email,
-                    password: password,
-                    isRegistration: false,
-                  ),
-                ),
-              );
-            });
-          }
-        }
-        if (state.isAuthenticated && state.user != null) {
-          // Navigate to near me screen on successful login
+        // Navigate to near me screen on successful login (no OTP required)
+        if (state.isAuthenticated && state.user != null && !state.isLoading) {
           // Use a post-frame callback to ensure navigation happens after build
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(
-                builder: (context) => const NearMeScreen(),
-              ),
-              (route) => false, // Remove all previous routes
-            );
+            if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (context) => const NearMeScreen(),
+                ),
+                (route) => false, // Remove all previous routes
+              );
+            }
           });
         }
         // Clear validation error when auth state changes

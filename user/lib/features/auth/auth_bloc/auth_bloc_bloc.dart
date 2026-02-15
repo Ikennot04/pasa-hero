@@ -42,29 +42,16 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
   ) async {
     emit(state.copyWithoutError(isLoading: true));
     try {
-      // First verify user exists in database
-      final userExists = await provider.authService.userExists(event.email);
-      if (!userExists) {
-        throw Exception('No account found for that email.');
-      }
+      // Direct login without OTP verification
+      final credential = await provider.authService.signInWithEmailAndPassword(
+        email: event.email,
+        password: event.password,
+      );
       
-      // Verify credentials by attempting sign in (but sign out immediately)
-      try {
-        await provider.authService.signInWithEmailAndPassword(
-          email: event.email,
-          password: event.password,
-        );
-        // Sign out immediately - we'll sign in after OTP verification
-        await provider.authService.signOut();
-      } catch (e) {
-        // If sign in fails, wrong password
-        rethrow;
-      }
-      
-      // Send OTP if credentials are valid
-      await provider.authService.sendOTP(email: event.email);
-      emit(state.copyWithoutError(isLoading: false));
-      // Note: Login will be completed in VerifyOTPAndLoginEvent
+      emit(state.copyWithoutError(
+        isLoading: false,
+        user: credential.user,
+      ));
     } catch (error) {
       emit(state.copy(error: error, isLoading: false));
     }
