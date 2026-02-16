@@ -38,9 +38,14 @@ export const UserService = {
 
     const checkEmail = await User.findOne({ email: data.email });
     if (checkEmail) {
-      const error = new Error("Email already exists");
-      error.statusCode = 400;
-      throw error;
+      if (img_path) {
+        fs.unlink(img_path, (err) => {
+          if (err) throw err;
+          console.log("user img delete");
+        });
+      }
+
+      throw new Error("Email already exists");
     }
 
     // Hash and Salt Password
