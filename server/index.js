@@ -10,6 +10,7 @@ import userFirebaseRoutes from "./modules/user_firebase/user_firebase.route.js";
 import terminalRoutes from "./modules/terminal/terminal.route.js";
 import routeRoutes from "./modules/route/route.route.js";
 import busRoutes from "./modules/bus/bus.route.js";
+import driverRoutes from "./modules/driver/driver.route.js";
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/terminals", terminalRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/buses", busRoutes);
+app.use("/api/drivers", driverRoutes);
 
 // 404 handler
 app.use((req, res) => {
