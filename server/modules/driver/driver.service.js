@@ -8,6 +8,16 @@ export const DriverService = {
     const drivers = await Driver.find();
     return drivers;
   },
+  // GET DRIVER BY ID ===================================================================
+  async getDriverById(id) {
+    const driver = await Driver.findById(id);
+    if (!driver) {
+      const error = new Error("Driver not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    return driver;
+  },
   // CREATE DRIVER ===================================================================
   async createDriver(driverData, driverImg) {
     let img_path;

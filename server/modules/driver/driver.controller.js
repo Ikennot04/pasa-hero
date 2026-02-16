@@ -9,6 +9,17 @@ export const getAllDrivers = async (req, res) => {
   }
 };
 
+export const getDriverById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const driver = await DriverService.getDriverById(id);
+    res.status(200).json({ success: true, data: driver });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 export const createDriver = async (req, res) => {
   try {
     const driverData = JSON.parse(req?.body?.data);
