@@ -1,7 +1,18 @@
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/otp_verification_service.dart';
+import '../../../core/services/change_password_service.dart';
+import '../../../core/services/email_verification_service.dart';
 
 class AuthBlocProvider {
   final AuthService authService;
+  final OTPVerificationService otpVerificationService;
+  final ChangePasswordService changePasswordService;
+  final EmailVerificationService emailVerificationService;
 
-  AuthBlocProvider({required this.authService});
+  AuthBlocProvider({
+    required this.authService,
+    required this.otpVerificationService,
+    required this.changePasswordService,
+    required this.emailVerificationService,
+  });
 }

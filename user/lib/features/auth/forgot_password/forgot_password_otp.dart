@@ -5,6 +5,9 @@ import '../auth_bloc/auth_bloc_bloc.dart';
 import '../auth_bloc/auth_bloc_provider.dart';
 import '../auth_bloc/auth_bloc_event.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/otp_verification_service.dart';
+import '../../../core/services/change_password_service.dart';
+import '../../../core/services/email_verification_service.dart';
 import '../../../core/themes/validation_theme.dart';
 import 'forgot_password_reset.dart';
 
@@ -170,11 +173,11 @@ class _ForgotPasswordOTPScreenState extends State<ForgotPasswordOTPScreen> {
     });
 
     try {
-      // Get auth service
-      final authService = AuthService();
+      // Get OTP verification service
+      final otpService = OTPVerificationService();
       
       // Verify OTP
-      await authService.verifyOTP(
+      await otpService.verifyOTP(
         email: widget.email,
         otpCode: otpCode,
       );
@@ -233,6 +236,9 @@ class _ForgotPasswordOTPScreenState extends State<ForgotPasswordOTPScreen> {
       _authBloc = AuthBlocBloc(
         provider: AuthBlocProvider(
           authService: AuthService(),
+          otpVerificationService: OTPVerificationService(),
+          changePasswordService: ChangePasswordService(),
+          emailVerificationService: EmailVerificationService(),
         ),
       );
     }

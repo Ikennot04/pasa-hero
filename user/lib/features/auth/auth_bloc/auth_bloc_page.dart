@@ -4,6 +4,9 @@ import 'auth_bloc_event.dart';
 import 'auth_bloc_screen.dart';
 import 'auth_bloc_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/otp_verification_service.dart';
+import '../../../core/services/change_password_service.dart';
+import '../../../core/services/email_verification_service.dart';
 
 class AuthBlocPage extends StatefulWidget {
   const AuthBlocPage({
@@ -25,6 +28,9 @@ class _AuthBlocPageState extends State<AuthBlocPage> {
     _bloc ??= widget.bloc ?? AuthBlocBloc(
       provider: AuthBlocProvider(
         authService: AuthService(),
+        otpVerificationService: OTPVerificationService(),
+        changePasswordService: ChangePasswordService(),
+        emailVerificationService: EmailVerificationService(),
       ),
     );
     return _bloc!;
