@@ -1,5 +1,14 @@
 import { DriverService } from "./driver.service.js";
 
+export const getAllDrivers = async (req, res) => {
+  try {
+    const drivers = await DriverService.getAllDrivers();
+    res.status(200).json({ success: true, data: drivers });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 export const createDriver = async (req, res) => {
   try {
     const driverData = JSON.parse(req?.body?.data);

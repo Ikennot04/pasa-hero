@@ -3,6 +3,11 @@ import fs from "fs";
 import Driver from "./driver.model.js";
 
 export const DriverService = {
+  // GET ALL DRIVERS ===================================================================
+  async getAllDrivers() {
+    const drivers = await Driver.find();
+    return drivers;
+  },
   // CREATE DRIVER ===================================================================
   async createDriver(driverData, driverImg) {
     let img_path;
