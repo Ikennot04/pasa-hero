@@ -11,13 +11,52 @@ import terminalRoutes from "./modules/terminal/terminal.route.js";
 import routeRoutes from "./modules/route/route.route.js";
 import busRoutes from "./modules/bus/bus.route.js";
 import driverRoutes from "./modules/driver/driver.route.js";
+import otpRoutes from "./modules/otp/otp.route.js";
 
 const app = express();
 
 // Middleware
+// CORS configuration - allow all localhost ports for development
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [
+  'http://localhost:3000', 
+  'http://localhost:5173',
+  'http://localhost:8080',
+  'http://localhost:5000',
+  'http://localhost:51140', // Flutter web default port
+  /^http:\/\/localhost:\d+$/, // Allow any localhost port
+  'https://pasahero-db.firebaseapp.com',
+  'https://pasahero-db.web.app',
+];
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin matches any allowed origin
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return origin === allowed;
+      } else if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      // In development, allow all localhost origins
+      if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 dotenv.config();
 app.use(express.json());
@@ -35,9 +74,22 @@ app.get('/health', (req, res) => {
 
 // MongoDB Connection
 const _dbURI = process.env.MONGO_DB_URI;
-mongoose.connect(_dbURI).then(() => {
-  console.log("Connected to Mongo DB");
-});
+if (!_dbURI) {
+  console.warn('⚠️  MONGO_DB_URI is not set in .env file');
+  console.warn('   MongoDB connection will not be established');
+  console.warn('   Some features may not work without MongoDB');
+  console.warn('   To fix: Add MONGO_DB_URI=your_mongodb_connection_string to server/.env file');
+} else {
+  mongoose.connect(_dbURI)
+    .then(() => {
+      console.log("✅ Connected to Mongo DB");
+    })
+    .catch((error) => {
+      console.error('❌ MongoDB connection failed:', error.message);
+      console.error('   Please check your MONGO_DB_URI in .env file');
+      console.error('   Server will continue running, but database features will not work');
+    });
+}
 
 // Image static folder
 app.use("/images", express.static("images"));
@@ -49,6 +101,7 @@ app.use("/api/terminals", terminalRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/buses", busRoutes);
 app.use("/api/drivers", driverRoutes);
+app.use("/api/otp", otpRoutes);
 
 // 404 handler
 app.use((req, res) => {

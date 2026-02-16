@@ -41,10 +41,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final logoHeight = isSmallScreen ? screenWidth * 0.68 : (isMediumScreen ? 400.0 : 480.0);
     
     // Responsive header height
-    final headerHeight = isSmallScreen ? screenHeight * 0.35 : screenHeight * 0.4;
+    final headerHeight = isSmallScreen ? screenHeight * 0.25 : screenHeight * 0.3;
     
-    // Responsive form start position
-    final formTop = isSmallScreen ? screenHeight * 0.28 : screenHeight * 0.32;
+    // Responsive form start position - positioned lower to cover background
+    final formTop = isSmallScreen ? screenHeight * 0.20 : screenHeight * 0.25;
     
     // Responsive border radius
     final borderRadius = isSmallScreen ? 30.0 : 50.0;
