@@ -3,12 +3,12 @@ import Bus from "./bus.model.js";
 export const BusService = {
   // GET ALL BUSES ===================================================================
   async getAllBuses() {
-    const buses = await Bus.find({ is_deleted: false });
+    const buses = await Bus.find();
     return buses;
   },
   // GET BUS BY ID ===================================================================
   async getBusById(id) {
-    const bus = await Bus.findOne({ _id: id, is_deleted: false });
+    const bus = await Bus.findOne({ _id: id, });
     if (!bus) {
       const error = new Error("Bus not found.");
       error.statusCode = 404;
@@ -19,12 +19,18 @@ export const BusService = {
   // CREATE BUS ===================================================================
   async createBus(busData) {
     const existing = await Bus.findOne({
-      is_deleted: false,
       $or: [
         { bus_number: busData.bus_number },
         { plate_number: busData.plate_number },
       ],
     });
+
+    if(existing && existing?.is_deleted) {
+      const error = new Error("This bus is deleted.");
+      error.statusCode = 404;
+      throw error;
+    }
+
     if (existing) {
       const error = new Error(
         existing.plate_number === busData.plate_number
