@@ -1,133 +1,140 @@
 import 'package:flutter/material.dart';
-import '../../map/map.dart';
+import '../../../core/themes/validation_theme.dart';
 
 class TerminalScreen extends StatelessWidget {
   final String terminalName;
+  final String terminalLocation;
   
   const TerminalScreen({
     super.key,
-    this.terminalName = 'Tamiya Terminal',
+    this.terminalName = 'Pacific Terminal',
+    this.terminalLocation = 'Pacific Mall, Mandaue City',
   });
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    
     return Scaffold(
       body: Container(
-        color: const Color(0xFFEDF3F8),
-        child: Column(
-          children: [
-            // Custom header with back button and title
-            Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E3A8A),
-              ),
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                        ),
+        width: double.infinity,
+        height: double.infinity,
+        decoration: ValidationTheme.gradientDecoration,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Custom header with back button and title
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: screenWidth * 0.05,
+                  vertical: 16,
+                ),
+                child: Stack(
+                  children: [
+                    // Back button
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
                         onPressed: () => Navigator.of(context).pop(),
-                      ),
-                      Expanded(
-                        child: Text(
-                          terminalName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
+                        icon: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: ValidationTheme.backgroundWhite,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
-                          textAlign: TextAlign.center,
+                          child: const Icon(
+                            Icons.arrow_back,
+                            color: ValidationTheme.textPrimary,
+                            size: 20,
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 48), // Balance the back button
-                    ],
-                  ),
+                    ),
+                    // Title and location
+                    Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            terminalName,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: Color.fromARGB(255, 235, 231, 231),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            terminalLocation,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.normal,
+                              color: Color.fromARGB(255, 231, 233, 236),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
 
-            // Scrollable content
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
+              // Scrollable content
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Map Section
+                    // Terminal Image Section
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: Container(
-                        height: 300,
+                        height: 200,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE5E7EB),
+                          color: ValidationTheme.borderLight,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Stack(
-                          children: [
-                            const MapWidget(),
-                            // Red pin marker overlay (simplified representation)
-                            Positioned(
-                              bottom: 20,
-                              left: 0,
-                              right: 0,
-                              child: Center(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(8),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.1),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.location_on,
-                                        color: Color(0xFFC54742),
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      const Text(
-                                        'View Terminal Location',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: Color(0xFF1F2937),
-                                        ),
-                                      ),
-                                    ],
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.asset(
+                            'assets/images/terminal_placeholder.png',
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: ValidationTheme.borderLight,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.image,
+                                    size: 64,
+                                    color: ValidationTheme.textSecondary,
                                   ),
                                 ),
-                              ),
-                            ),
-                          ],
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),
 
-                    // Active Buses at Terminal Section
+                    // Active Buses Section
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: Text(
-                        'Active Buses at Terminal',
+                        'Active Buses',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F2937),
+                          color: ValidationTheme.textPrimary,
                         ),
                       ),
                     ),
@@ -137,75 +144,28 @@ class TerminalScreen extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Column(
                         children: [
-                          _buildBusItem(
-                            busTag: 'M1-04A',
-                            busName: 'Bus M1-04A',
-                            status: '4/5',
-                            tagColor: const Color(0xFFFBB432),
-                            statusColor: const Color(0xFF9CA3AF),
+                          _buildBusRouteItem(
+                            routeNumber: '01K',
+                            routeDescription: 'Pacific Mall → Colon Market',
+                            availability: '5/5',
                           ),
                           const SizedBox(height: 8),
-                          _buildBusItem(
-                            busTag: '21B',
-                            busName: 'Bus 21B',
-                            status: '4/5',
-                            tagColor: const Color(0xFF508867),
-                            statusColor: const Color(0xFF9CA3AF),
+                          _buildBusRouteItem(
+                            routeNumber: '13B',
+                            routeDescription: 'Pacific Mall → SM Cebu',
+                            availability: '5/5',
                           ),
                           const SizedBox(height: 8),
-                          _buildBusItem(
-                            busTag: '13C',
-                            busName: 'Bus 13C',
-                            status: 'In-route',
-                            tagColor: const Color(0xFFC54742),
-                            statusColor: const Color(0xFF10B981),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Recent Arrivals & Departures Section
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Text(
-                        'Recent Arrivals & Departures',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F2937),
-                        ),
-                      ),
-                    ),
-
-                    // Recent Bus Items
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        children: [
-                          _buildBusItem(
-                            busTag: 'M1-04A',
-                            busName: 'Bus M1-04A',
-                            status: '2 min ago',
-                            tagColor: const Color(0xFFFBB432),
-                            statusColor: const Color(0xFF3B82F6),
+                          _buildBusRouteItem(
+                            routeNumber: '01F',
+                            routeDescription: 'Pacific Mall → Plaza Indenpendencia',
+                            availability: '5/5',
                           ),
                           const SizedBox(height: 8),
-                          _buildBusItem(
-                            busTag: '21B',
-                            busName: 'Bus 21B',
-                            status: '2 min ago',
-                            tagColor: const Color(0xFF508867),
-                            statusColor: const Color(0xFF3B82F6),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildBusItem(
-                            busTag: '13C',
-                            busName: 'Bus 13C',
-                            status: '2 min ago',
-                            tagColor: const Color(0xFFC54742),
-                            statusColor: const Color(0xFF3B82F6),
+                          _buildBusRouteItem(
+                            routeNumber: '46E',
+                            routeDescription: 'Pacific Mall → Tamiya Terminal',
+                            availability: '5/5',
                           ),
                         ],
                       ),
@@ -214,26 +174,24 @@ class TerminalScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                   ],
                 ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBusItem({
-    required String busTag,
-    required String busName,
-    required String status,
-    required Color tagColor,
-    required Color statusColor,
+  Widget _buildBusRouteItem({
+    required String routeNumber,
+    required String routeDescription,
+    required String availability,
   }) {
     return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ValidationTheme.backgroundWhite,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -245,60 +203,53 @@ class TerminalScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // TAG
-          SizedBox(
-            width: 64,
-            height: 28,
-            child: Container(
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: tagColor,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                busTag,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: tagColor == const Color(0xFFFBB432)
-                      ? Colors.black
-                      : Colors.white,
-                ),
-              ),
-            ),
+          // Bus Icon
+          const Icon(
+            Icons.directions_bus,
+            color: ValidationTheme.textPrimary,
+            size: 24,
           ),
-
           const SizedBox(width: 12),
-
-          // NAME
+          
+          // Route Info
           Expanded(
-            child: Text(
-              busName,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF1F2937),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'BUS: $routeNumber',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: ValidationTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  routeDescription,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.normal,
+                    color: ValidationTheme.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ),
-
-          // STATUS
-          SizedBox(
-            width: 84,
-            height: 28,
-            child: Container(
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                status,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: statusColor,
-                ),
+          
+          // Availability Badge (Oval)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: ValidationTheme.primaryBlue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              availability,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: ValidationTheme.primaryBlue,
               ),
             ),
           ),
