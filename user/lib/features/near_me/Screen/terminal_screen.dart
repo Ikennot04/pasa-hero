@@ -204,10 +204,17 @@ class TerminalScreen extends StatelessWidget {
       child: Row(
         children: [
           // Bus Icon
-          const Icon(
-            Icons.directions_bus,
-            color: ValidationTheme.textPrimary,
-            size: 24,
+          Image.asset(
+            'assets/images/logo/Bus.png',
+            width: 24,
+            height: 24,
+            errorBuilder: (context, error, stackTrace) {
+              return const Icon(
+                Icons.directions_bus,
+                color: ValidationTheme.textPrimary,
+                size: 24,
+              );
+            },
           ),
           const SizedBox(width: 12),
           
