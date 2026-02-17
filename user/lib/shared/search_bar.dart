@@ -20,11 +20,7 @@ class AppSearchBar extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFE5E5E5),
-          width: 1,
-        ),
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -43,18 +39,25 @@ class AppSearchBar extends StatelessWidget {
             color: Color(0xFF9CA3AF),
             fontSize: 14,
           ),
-          prefixIcon: const Icon(
-            Icons.search,
-            color: Color(0xFF9CA3AF),
-            size: 20,
+          prefixIcon: const Padding(
+            padding: EdgeInsets.only(left: 16, right: 10),
+            child: Icon(
+              Icons.search,
+              color: Color(0xFF9CA3AF),
+              size: 20,
+            ),
+          ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 40,
+            minHeight: 40,
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(28),
             borderSide: BorderSide.none,
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
-            vertical: 12,
+            vertical: 16,
           ),
         ),
       ),

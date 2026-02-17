@@ -75,7 +75,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
       
       print('   ✅ Email is not registered, sending OTP...');
       // Send OTP only if email is not already registered
-      await provider.authService.sendOTP(email: event.email);
+      await provider.otpVerificationService.sendOTP(email: event.email);
       print('   ✅ OTP sent successfully');
       emit(state.copyWithoutError(isLoading: false));
       // Note: Registration will be completed in VerifyOTPAndRegisterEvent
@@ -128,7 +128,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
       
       // Send OTP to the email only if not already registered
       try {
-        await provider.authService.sendOTP(email: email);
+        await provider.otpVerificationService.sendOTP(email: email);
       } catch (otpError) {
         _pendingGoogleEmail = null;
         _pendingGoogleDisplayName = null;
@@ -158,7 +158,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     try {
       // First verify OTP
       print('   🔍 Verifying OTP...');
-      await provider.authService.verifyOTP(
+      await provider.otpVerificationService.verifyOTP(
         email: event.email,
         otpCode: event.otpCode,
       );
@@ -215,7 +215,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     emit(state.copyWithoutError(isLoading: true));
     try {
       print('   📤 Sending OTP to ${event.email}...');
-      await provider.authService.sendOTP(email: event.email);
+      await provider.otpVerificationService.sendOTP(email: event.email);
       print('   ✅ OTP sent successfully');
       emit(state.copyWithoutError(isLoading: false));
     } catch (error) {
@@ -238,7 +238,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     try {
       // First verify OTP
       print('   🔍 Verifying OTP...');
-      await provider.authService.verifyOTP(
+      await provider.otpVerificationService.verifyOTP(
         email: event.email,
         otpCode: event.otpCode,
       );
@@ -278,7 +278,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     try {
       // First verify OTP
       print('   🔍 Verifying OTP...');
-      await provider.authService.verifyOTP(
+      await provider.otpVerificationService.verifyOTP(
         email: event.email,
         otpCode: event.otpCode,
       );
@@ -309,7 +309,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
   ) async {
     emit(state.copyWithoutError(isLoading: true));
     try {
-      await provider.authService.sendEmailVerification();
+      await provider.emailVerificationService.sendEmailVerification();
       emit(state.copyWithoutError(isLoading: false));
     } catch (error) {
       emit(state.copy(error: error, isLoading: false));
@@ -323,7 +323,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     emit(state.copyWithoutError(isLoading: true));
     try {
       // Reload user to get latest verification status
-      await provider.authService.reloadUser();
+      await provider.emailVerificationService.reloadUser();
       final user = provider.authService.currentUser;
       emit(state.copyWithoutError(
         isLoading: false,
@@ -340,7 +340,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
   ) async {
     emit(state.copyWithoutError(isLoading: true));
     try {
-      await provider.authService.sendPasswordResetEmail(event.email);
+      await provider.changePasswordService.sendPasswordResetEmail(event.email);
       emit(state.copyWithoutError(isLoading: false));
     } catch (error) {
       emit(state.copy(error: error, isLoading: false));
@@ -353,7 +353,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
   ) async {
     emit(state.copyWithoutError(isLoading: true));
     try {
-      await provider.authService.resetPassword(
+      await provider.changePasswordService.resetPassword(
         email: event.email,
         newPassword: event.newPassword,
       );

@@ -6,6 +6,9 @@ import '../auth_bloc/auth_bloc_provider.dart';
 import '../auth_bloc/auth_bloc_event.dart';
 import '../auth_bloc/auth_bloc_state.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/otp_verification_service.dart';
+import '../../../core/services/change_password_service.dart';
+import '../../../core/services/email_verification_service.dart';
 import '../../../core/themes/validation_theme.dart';
 import '../../near_me/Screen/nearme_screen.dart';
 import 'otp_success_screen.dart';
@@ -258,6 +261,9 @@ class _OTPScreenState extends State<OTPScreen> {
       authBloc = AuthBlocBloc(
         provider: AuthBlocProvider(
           authService: AuthService(),
+          otpVerificationService: OTPVerificationService(),
+          changePasswordService: ChangePasswordService(),
+          emailVerificationService: EmailVerificationService(),
         ),
       );
       print('⚠️ OTP Screen: Created NEW bloc instance: ${authBloc.hashCode}');

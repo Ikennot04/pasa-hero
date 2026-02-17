@@ -5,6 +5,9 @@ import '../../auth/auth_bloc/auth_bloc_provider.dart';
 import '../../auth/auth_bloc/auth_bloc_event.dart';
 import '../../auth/auth_bloc/auth_bloc_state.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/otp_verification_service.dart';
+import '../../../core/services/change_password_service.dart';
+import '../../../core/services/email_verification_service.dart';
 import '../../../splashscreen/splash_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -17,6 +20,9 @@ class ProfileScreen extends StatelessWidget {
       create: (context) => AuthBlocBloc(
         provider: AuthBlocProvider(
           authService: AuthService(),
+          otpVerificationService: OTPVerificationService(),
+          changePasswordService: ChangePasswordService(),
+          emailVerificationService: EmailVerificationService(),
         ),
       )..add(CheckAuthStateEvent()), // Check current auth state
       child: BlocConsumer<AuthBlocBloc, AuthBlocState>(

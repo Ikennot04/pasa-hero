@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import '../../map/map.dart';
 
 class TerminalScreen extends StatelessWidget {
-  const TerminalScreen({super.key});
+  final String terminalName;
+  
+  const TerminalScreen({
+    super.key,
+    this.terminalName = 'Tamiya Terminal',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -29,10 +34,10 @@ class TerminalScreen extends StatelessWidget {
                         ),
                         onPressed: () => Navigator.of(context).pop(),
                       ),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Tamiya Terminal',
-                          style: TextStyle(
+                          terminalName,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 20,
                             fontWeight: FontWeight.w600,

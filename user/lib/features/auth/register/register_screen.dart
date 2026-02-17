@@ -4,6 +4,9 @@ import 'register_form.dart';
 import '../auth_bloc/auth_bloc_bloc.dart';
 import '../auth_bloc/auth_bloc_provider.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/otp_verification_service.dart';
+import '../../../core/services/change_password_service.dart';
+import '../../../core/services/email_verification_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -53,6 +56,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       create: (context) => AuthBlocBloc(
         provider: AuthBlocProvider(
           authService: AuthService(),
+          otpVerificationService: OTPVerificationService(),
+          changePasswordService: ChangePasswordService(),
+          emailVerificationService: EmailVerificationService(),
         ),
       ),
       child: Scaffold(
