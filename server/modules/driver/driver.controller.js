@@ -32,3 +32,17 @@ export const createDriver = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const updateDriverById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = JSON.parse(req?.body?.data);
+    const driverImg = req.file?.filename;
+
+    const driver = await DriverService.updateDriverById(id, updateData, driverImg);
+    res.status(200).json({ success: true, data: driver });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
