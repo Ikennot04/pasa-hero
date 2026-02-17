@@ -5,6 +5,7 @@ import {
   getDriverById,
   createDriver,
   updateDriverById,
+  softDeleteDriver,
 } from "./driver.controller.js";
 
 const router = express.Router();
@@ -13,5 +14,6 @@ router.get("/", getAllDrivers);
 router.get("/:id", getDriverById);
 router.post("/", upload.single("image"), createDriver);
 router.patch("/:id", upload.single("image"), updateDriverById);
+router.delete("/:id", softDeleteDriver);
 
 export default router;

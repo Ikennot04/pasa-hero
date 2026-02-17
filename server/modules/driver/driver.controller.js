@@ -46,3 +46,14 @@ export const updateDriverById = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const softDeleteDriver = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const driver = await DriverService.softDeleteDriver(id);
+    res.status(200).json({ success: true, data: driver });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};

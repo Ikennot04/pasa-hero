@@ -5,12 +5,12 @@ import Driver from "./driver.model.js";
 export const DriverService = {
   // GET ALL DRIVERS ===================================================================
   async getAllDrivers() {
-    const drivers = await Driver.find();
+    const drivers = await Driver.find({ is_deleted: false });
     return drivers;
   },
   // GET DRIVER BY ID ===================================================================
   async getDriverById(id) {
-    const driver = await Driver.findById(id);
+    const driver = await Driver.findOne({ _id: id, is_deleted: false });
     if (!driver) {
       const error = new Error("Driver not found.");
       error.statusCode = 404;
@@ -28,6 +28,7 @@ export const DriverService = {
     // Validations
     const existing = await Driver.findOne({
       license_number: driverData.license_number,
+      is_deleted: false,
     });
     if (existing) {
       if (img_path) {
@@ -60,6 +61,7 @@ export const DriverService = {
     const existing = await Driver.findOne({
       _id: { $ne: id },
       license_number: updateData.license_number,
+      is_deleted: false,
     });
     if (existing) {
       if (img_path) {
@@ -90,5 +92,18 @@ export const DriverService = {
       { new: true, runValidators: true },
     );
     return updated;
+  },
+  // SOFT DELETE DRIVER ===================================================================
+  async softDeleteDriver(id) {
+    const driver = await Driver.findOne({ _id: id, is_deleted: false });
+    if (!driver) {
+      const error = new Error("Driver not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    driver.is_deleted = true;
+    driver.deleted_at = new Date();
+    await driver.save();
+    return driver;
   },
 };
