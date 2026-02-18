@@ -9,6 +9,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/otp_verification_service.dart';
 import '../../../core/services/change_password_service.dart';
 import '../../../core/services/email_verification_service.dart';
+import '../../../core/services/change_email_service.dart';
 import '../../../core/themes/validation_theme.dart';
 import '../../near_me/Screen/nearme_screen.dart';
 import 'otp_success_screen.dart';
@@ -264,6 +265,7 @@ class _OTPScreenState extends State<OTPScreen> {
           otpVerificationService: OTPVerificationService(),
           changePasswordService: ChangePasswordService(),
           emailVerificationService: EmailVerificationService(),
+          changeEmailService: ChangeEmailService(),
         ),
       );
       print('⚠️ OTP Screen: Created NEW bloc instance: ${authBloc.hashCode}');
