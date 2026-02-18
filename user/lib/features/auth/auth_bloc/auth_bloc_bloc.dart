@@ -22,6 +22,10 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     on<VerifyOTPAndGoogleSignUpEvent>(_onVerifyOTPAndGoogleSignUpEvent);
     on<SendPasswordResetEmailEvent>(_onSendPasswordResetEmailEvent);
     on<ResetPasswordEvent>(_onResetPasswordEvent);
+    on<ReauthenticateUserEvent>(_onReauthenticateUserEvent);
+    on<SendOTPToNewEmailEvent>(_onSendOTPToNewEmailEvent);
+    on<VerifyOTPForNewEmailEvent>(_onVerifyOTPForNewEmailEvent);
+    on<UpdateEmailEvent>(_onUpdateEmailEvent);
   }
 
   final AuthBlocProvider provider;
@@ -358,6 +362,69 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
         newPassword: event.newPassword,
       );
       emit(state.copyWithoutError(isLoading: false));
+    } catch (error) {
+      emit(state.copy(error: error, isLoading: false));
+    }
+  }
+
+  Future<void> _onReauthenticateUserEvent(
+    ReauthenticateUserEvent event,
+    Emitter<AuthBlocState> emit,
+  ) async {
+    emit(state.copyWithoutError(isLoading: true));
+    try {
+      await provider.changeEmailService.reauthenticateUser(event.password);
+      emit(state.copyWithoutError(isLoading: false));
+    } catch (error) {
+      emit(state.copy(error: error, isLoading: false));
+    }
+  }
+
+  Future<void> _onSendOTPToNewEmailEvent(
+    SendOTPToNewEmailEvent event,
+    Emitter<AuthBlocState> emit,
+  ) async {
+    emit(state.copyWithoutError(isLoading: true));
+    try {
+      await provider.changeEmailService.sendOTPToNewEmail(event.newEmail);
+      emit(state.copyWithoutError(isLoading: false));
+    } catch (error) {
+      emit(state.copy(error: error, isLoading: false));
+    }
+  }
+
+  Future<void> _onVerifyOTPForNewEmailEvent(
+    VerifyOTPForNewEmailEvent event,
+    Emitter<AuthBlocState> emit,
+  ) async {
+    emit(state.copyWithoutError(isLoading: true));
+    try {
+      await provider.changeEmailService.verifyOTPForNewEmail(
+        newEmail: event.newEmail,
+        otpCode: event.otpCode,
+      );
+      emit(state.copyWithoutError(isLoading: false));
+    } catch (error) {
+      emit(state.copy(error: error, isLoading: false));
+    }
+  }
+
+  Future<void> _onUpdateEmailEvent(
+    UpdateEmailEvent event,
+    Emitter<AuthBlocState> emit,
+  ) async {
+    emit(state.copyWithoutError(isLoading: true));
+    try {
+      await provider.changeEmailService.updateEmail(newEmail: event.newEmail);
+      // Reload user to get updated email
+      final user = provider.authService.currentUser;
+      if (user != null) {
+        await user.reload();
+      }
+      emit(state.copyWithoutError(
+        isLoading: false,
+        user: provider.authService.currentUser,
+      ));
     } catch (error) {
       emit(state.copy(error: error, isLoading: false));
     }
