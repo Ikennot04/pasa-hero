@@ -215,6 +215,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
           }
           
           // Navigate to success screen after email update completes
+          // Even if user is null (token expired), the email was successfully updated
           if (!state.isLoading && state.error == null && _otpVerified && !_hasNavigated) {
             _hasNavigated = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
