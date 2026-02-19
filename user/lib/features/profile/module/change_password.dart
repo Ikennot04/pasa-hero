@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import '../../auth/forgot_password/forgot_password_screen.dart';
+import '../screen/change_password/current_password.dart';
 
 class ChangePasswordModule {
   static void navigateToChangePassword(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => const ForgotPasswordScreen(),
+        builder: (context) => const CurrentPasswordScreen(),
       ),
     );
   }

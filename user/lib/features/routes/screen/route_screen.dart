@@ -112,47 +112,21 @@ class RouteScreen extends StatelessWidget {
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
+                        
                         RouteCard(
                           routeId: 'Route 01K',
                           estimatedTime: 'Estimated: 20 min',
-                          routeDescription: 'Tamiya to Plaza Independencia',
-                          status: 'Free-flow',
+                          routeDescription: 'Parkmall to Colon Market',
+                          status: 'Heavy traffic',
+                          showFollowButton: true,
                           activeBuses: 3,
                         ),
+                       
                         RouteCard(
                           routeId: 'Route 01K',
                           estimatedTime: 'Estimated: 20 min',
                           routeDescription: 'Parkmall to Colon Market',
                           status: 'Light traffic',
-                          activeBuses: 3,
-                        ),
-                        RouteCard(
-                          routeId: 'Route 01K',
-                          estimatedTime: 'Estimated: 20 min',
-                          routeDescription: 'Parkmall to Colon Market',
-                          status: 'Heavy traffic',
-                          activeBuses: 3,
-                        ),
-                        RouteCard(
-                          routeId: 'Route 01K',
-                          estimatedTime: 'Estimated: 20 min',
-                          routeDescription: 'Parkmall to Colon Market',
-                          showFollowButton: true,
-                          activeBuses: 3,
-                        ),
-                        RouteCard(
-                          routeId: 'Route 01K',
-                          estimatedTime: 'Estimated: 20 min',
-                          routeDescription: 'Parkmall to Colon Market',
-                          showFollowButton: true,
-                          isFollowing: true,
-                          activeBuses: 3,
-                        ),
-                        RouteCard(
-                          routeId: 'Route 01K',
-                          estimatedTime: 'Estimated: 20 min',
-                          routeDescription: 'Parkmall to Colon Market',
-                          status: 'Heavy traffic',
                           showFollowButton: true,
                           activeBuses: 3,
                         ),
@@ -161,6 +135,7 @@ class RouteScreen extends StatelessWidget {
                           estimatedTime: 'Estimated: 20 min',
                           routeDescription: 'Parkmall to Colon Market',
                           status: 'Free-flow',
+                          showFollowButton: true,
                           activeBuses: 2,
                         ),
                         const SizedBox(height: 16),

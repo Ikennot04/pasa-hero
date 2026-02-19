@@ -26,6 +26,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     on<SendOTPToNewEmailEvent>(_onSendOTPToNewEmailEvent);
     on<VerifyOTPForNewEmailEvent>(_onVerifyOTPForNewEmailEvent);
     on<UpdateEmailEvent>(_onUpdateEmailEvent);
+    on<ChangePasswordEvent>(_onChangePasswordEvent);
   }
 
   final AuthBlocProvider provider;
@@ -416,15 +417,47 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     emit(state.copyWithoutError(isLoading: true));
     try {
       await provider.changeEmailService.updateEmail(newEmail: event.newEmail);
-      // Reload user to get updated email
+      
+      // Try to reload user, but handle token expiration gracefully
       final user = provider.authService.currentUser;
       if (user != null) {
-        await user.reload();
+        try {
+          await user.reload();
+        } catch (reloadError) {
+          // If reload fails due to token expiration, that's okay
+          // The email was successfully updated on the server
+          final errorStr = reloadError.toString().toLowerCase();
+          if (errorStr.contains('token-expired') || 
+              errorStr.contains('credential') ||
+              errorStr.contains('invalid')) {
+            print('⚠️ User token expired after email change. User will need to sign in again.');
+            // Don't throw - email update was successful
+          } else {
+            // For other errors, log but don't fail
+            print('⚠️ Failed to reload user after email change: $reloadError');
+          }
+        }
       }
+      
+      // Get the current user (may be null if token expired)
+      final currentUser = provider.authService.currentUser;
       emit(state.copyWithoutError(
         isLoading: false,
-        user: provider.authService.currentUser,
+        user: currentUser,
       ));
+    } catch (error) {
+      emit(state.copy(error: error, isLoading: false));
+    }
+  }
+
+  Future<void> _onChangePasswordEvent(
+    ChangePasswordEvent event,
+    Emitter<AuthBlocState> emit,
+  ) async {
+    emit(state.copyWithoutError(isLoading: true));
+    try {
+      await provider.changePasswordService.changePassword(event.newPassword);
+      emit(state.copyWithoutError(isLoading: false));
     } catch (error) {
       emit(state.copy(error: error, isLoading: false));
     }

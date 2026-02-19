@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/themes/validation_theme.dart';
 import '../screen/route_details_screen.dart';
+import 'follow_button.dart';
 
 class RouteCard extends StatelessWidget {
   final String routeId;
@@ -125,41 +126,16 @@ class RouteCard extends StatelessWidget {
                   ),
                 ),
               if (showFollowButton && status == null)
-                TextButton(
+                FollowButton(
                   onPressed: () {},
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  ),
-                  child: Text(
-                    'Follow',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: ValidationTheme.primaryBlue,
-                    ),
-                  ),
+                  isFollowing: isFollowing,
                 ),
               if (showFollowButton && status != null)
                 Container(
                   margin: const EdgeInsets.only(left: 8),
-                  child: ElevatedButton(
+                  child: FollowButton(
                     onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: ValidationTheme.primaryBlue,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Follow',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: ValidationTheme.textLight,
-                      ),
-                    ),
+                    isFollowing: isFollowing,
                   ),
                 ),
             ],

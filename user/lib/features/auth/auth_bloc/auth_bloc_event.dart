@@ -200,3 +200,13 @@ class UpdateEmailEvent extends AuthBlocEvent {
   @override
   String toString() => 'UpdateEmailEvent';
 }
+
+/// Change password for logged-in user (after re-authentication)
+class ChangePasswordEvent extends AuthBlocEvent {
+  final String newPassword;
+
+  ChangePasswordEvent({required this.newPassword});
+
+  @override
+  String toString() => 'ChangePasswordEvent';
+}

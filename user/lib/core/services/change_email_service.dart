@@ -340,8 +340,11 @@ class ChangeEmailService {
             // Don't throw - email update succeeded in Firebase Auth
           }
           
-          // Reload user to get updated email
-          await user.reload();
+          // Note: We don't reload the user here because changing email via Admin SDK
+          // may invalidate the current session token. The user will need to sign in again
+          // or the app will handle the token refresh automatically.
+          // The email has been successfully updated on the server.
+          print('✅ Email updated successfully. User may need to sign in again.');
           return;
         } else {
           throw Exception(responseData['error'] ?? 'Email update failed');
