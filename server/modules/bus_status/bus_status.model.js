@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const busStatusSchema = new mongoose.Schema(
   {
-    bus_id: { type: String, ref: "Bus", required: true },
+    bus_id: { type: String, ref: "Bus", required: true, unique: true },
     occupancy_count: { type: Number, default: 0 },
     occupancy_status: { 
       type: String, 

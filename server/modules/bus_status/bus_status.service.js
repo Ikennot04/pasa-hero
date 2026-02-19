@@ -15,6 +15,20 @@ export const BusStatusService = {
     return status;
   },
 
+  // GET BUS STATUS BY ID =================================================================
+  async getBusStatusById(id) {
+    const status = await BusStatus.findOne({
+      _id: id,
+      is_deleted: false,
+    });
+    if (!status) {
+      const error = new Error("Bus status not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    return status;
+  },
+
   // UPDATE BUS STATUS BY ID =============================================================
   async updateBusStatusById(id, updateData) {
     const status = await BusStatus.findOne({
