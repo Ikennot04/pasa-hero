@@ -8,7 +8,7 @@ const figtree = Figtree({
 });
 
 export const metadata: Metadata = {
-  title: "Admin Login | Pasahero",
+  title: "Admin | Pasahero",
 };
 
 export default function RootLayout({
