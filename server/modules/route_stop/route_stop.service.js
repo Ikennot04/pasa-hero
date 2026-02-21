@@ -13,4 +13,11 @@ export const RouteStopService = {
     const routeStop = await RouteStop.create(routeStopData);
     return routeStop;
   },
+
+  async getRouteStopsByRouteId(routeId) {
+    const routeStops = await RouteStop.find({ route_id: routeId }).sort({
+      stop_order: 1,
+    });
+    return routeStops;
+  },
 };

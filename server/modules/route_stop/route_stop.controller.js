@@ -1,5 +1,16 @@
 import { RouteStopService } from "./route_stop.service.js";
 
+export const getRouteStopsByRouteId = async (req, res) => {
+  try {
+    const { routeId } = req.params;
+    const routeStops = await RouteStopService.getRouteStopsByRouteId(routeId);
+    res.status(200).json({ success: true, data: routeStops });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 export const createRouteStop = async (req, res) => {
   try {
     const routeStopData = req.body;
