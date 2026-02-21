@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
+    "chart.js": "^4.5.1",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
