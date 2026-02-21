@@ -11,6 +11,17 @@ export const RouteStopService = {
       throw error;
     }
 
+    const duplicateRouteStop = await RouteStop.findOne({
+      route_id: routeStopData.route_id,
+      stop_name: routeStopData.stop_name,
+      route_order: routeStopData.route_order,
+    });
+    if (duplicateRouteStop) {
+      const error = new Error("This route stop already exists.");
+      error.statusCode = 409;
+      throw error;
+    }
+
     const routeStop = await RouteStop.create(routeStopData);
     return routeStop;
   },
@@ -46,5 +57,17 @@ export const RouteStopService = {
       runValidators: true,
     });
     return updated;
+  },
+
+  // DELETE ROUTE STOP BY ID ===================================================================
+  async deleteRouteStopById(id) {
+    const routeStop = await RouteStop.findById(id);
+    if (!routeStop) {
+      const error = new Error("Route stop not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    await RouteStop.findByIdAndDelete(id);
+    return routeStop;
   },
 };
