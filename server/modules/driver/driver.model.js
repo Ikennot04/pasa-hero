@@ -8,6 +8,8 @@ const driverSchema = new mongoose.Schema(
     contact_number: { type: String },
     profile_image: { type: String, default: "default.png" },
     status: { type: String, default: "active", enum: ["active", "inactive"] },
+    is_deleted: { type: Boolean, default: false },
+    deleted_at: { type: Date, default: null },
   },
   { timestamps: true },
 );
