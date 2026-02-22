@@ -7,6 +7,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/otp_verification_service.dart';
 import '../../../core/services/change_password_service.dart';
 import '../../../core/services/email_verification_service.dart';
+import '../../../core/services/change_email_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -55,6 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
           otpVerificationService: OTPVerificationService(),
           changePasswordService: ChangePasswordService(),
           emailVerificationService: EmailVerificationService(),
+          changeEmailService: ChangeEmailService(),
         ),
       ),
       child: Scaffold(

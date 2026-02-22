@@ -1,44 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../auth_bloc/auth_bloc_bloc.dart';
-import '../auth_bloc/auth_bloc_provider.dart';
-import '../auth_bloc/auth_bloc_event.dart';
-import '../auth_bloc/auth_bloc_state.dart';
-import '../../../core/services/auth_service.dart';
-import '../../../core/services/otp_verification_service.dart';
-import '../../../core/services/change_password_service.dart';
-import '../../../core/services/email_verification_service.dart';
-import '../../../core/services/change_email_service.dart';
-import '../../../core/themes/validation_theme.dart';
-import '../../near_me/Screen/nearme_screen.dart';
-import 'otp_success_screen.dart';
+import '../../../auth/auth_bloc/auth_bloc_bloc.dart';
+import '../../../auth/auth_bloc/auth_bloc_provider.dart';
+import '../../../auth/auth_bloc/auth_bloc_event.dart';
+import '../../../auth/auth_bloc/auth_bloc_state.dart';
+import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/otp_verification_service.dart';
+import '../../../../core/services/change_password_service.dart';
+import '../../../../core/services/email_verification_service.dart';
+import '../../../../core/services/change_email_service.dart';
+import '../../../../core/themes/validation_theme.dart';
+import 'email_success.dart';
 
-class OTPScreen extends StatefulWidget {
-  final String email;
-  final String? password;
-  final String? firstName;
-  final String? lastName;
-  final bool isRegistration;
-  final bool isGoogleSignUp;
-  final String? googleDisplayName;
+class EmailVerificationScreen extends StatefulWidget {
+  final String newEmail;
 
-  const OTPScreen({
+  const EmailVerificationScreen({
     super.key,
-    required this.email,
-    this.password,
-    this.firstName,
-    this.lastName,
-    required this.isRegistration,
-    this.isGoogleSignUp = false,
-    this.googleDisplayName,
+    required this.newEmail,
   });
 
   @override
-  State<OTPScreen> createState() => _OTPScreenState();
+  State<EmailVerificationScreen> createState() => _EmailVerificationScreenState();
 }
 
-class _OTPScreenState extends State<OTPScreen> {
+class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   final List<TextEditingController> _otpControllers = List.generate(
     6,
     (index) => TextEditingController(),
@@ -51,8 +38,8 @@ class _OTPScreenState extends State<OTPScreen> {
   String? _errorMessage;
   int _resendTimer = 60;
   bool _canResend = false;
-  AuthBlocBloc? _authBloc; // Store bloc reference
-  bool _hasNavigated = false; // Flag to prevent multiple navigations
+  bool _hasNavigated = false;
+  bool _otpVerified = false;
 
   @override
   void initState() {
@@ -111,18 +98,13 @@ class _OTPScreenState extends State<OTPScreen> {
   }
 
   String _getOTPCode() {
-    final code = _otpControllers.map((controller) => controller.text.trim()).join();
-    print('📝 OTP Input Debug:');
-    print('   Individual fields: ${_otpControllers.map((c) => '"${c.text}"').toList()}');
-    print('   Combined code: "$code"');
-    print('   Code length: ${code.length}');
-    return code;
+    return _otpControllers.map((controller) => controller.text.trim()).join();
   }
 
-  Future<void> _verifyOTP() async {
+  Future<void> _verifyOTP(BuildContext blocContext) async {
     final otpCode = _getOTPCode();
     
-    // Validate OTP format before sending
+    // Validate OTP format
     if (otpCode.isEmpty) {
       setState(() {
         _errorMessage = 'Please enter the OTP code';
@@ -139,16 +121,10 @@ class _OTPScreenState extends State<OTPScreen> {
     
     if (otpCode.length != 6) {
       setState(() {
-        _errorMessage = 'Please enter the complete 6-digit code (entered: ${otpCode.length} digits)';
+        _errorMessage = 'Please enter the complete 6-digit code';
       });
       return;
     }
-
-    print('🔐 Starting OTP Verification:');
-    print('   Email: ${widget.email}');
-    print('   OTP Code: $otpCode');
-    print('   Is Registration: ${widget.isRegistration}');
-    print('   Is Google Sign Up: ${widget.isGoogleSignUp}');
 
     setState(() {
       _isLoading = true;
@@ -156,55 +132,22 @@ class _OTPScreenState extends State<OTPScreen> {
     });
 
     try {
-      // Use stored bloc reference or try to get from context
-      AuthBlocBloc authBloc;
-      if (_authBloc != null) {
-        authBloc = _authBloc!;
-      } else {
-        try {
-          authBloc = BlocProvider.of<AuthBlocBloc>(context, listen: false);
-        } catch (e) {
-          throw Exception('AuthBlocBloc is not available. Please restart the app.');
-        }
-      }
+      final authBloc = BlocProvider.of<AuthBlocBloc>(blocContext, listen: false);
       
-      if (widget.isGoogleSignUp) {
-        // For Google sign-up: verify OTP then complete Google sign-up
-        print('   📤 Dispatching VerifyOTPAndGoogleSignUpEvent');
-        authBloc.add(VerifyOTPAndGoogleSignUpEvent(
-          email: widget.email,
-          displayName: widget.googleDisplayName ?? '',
-          otpCode: otpCode,
-        ));
-      } else if (widget.isRegistration) {
-        // For registration: verify OTP then create account
-        print('   📤 Dispatching VerifyOTPAndRegisterEvent');
-        authBloc.add(VerifyOTPAndRegisterEvent(
-          email: widget.email,
-          password: widget.password!,
-          firstName: widget.firstName!,
-          lastName: widget.lastName!,
-          otpCode: otpCode,
-        ));
-      } else {
-        // For login: verify OTP then login
-        print('   📤 Dispatching VerifyOTPAndLoginEvent');
-        authBloc.add(VerifyOTPAndLoginEvent(
-          email: widget.email,
-          password: widget.password!,
-          otpCode: otpCode,
-        ));
-      }
+      // First verify OTP
+      authBloc.add(VerifyOTPForNewEmailEvent(
+        newEmail: widget.newEmail,
+        otpCode: otpCode,
+      ));
     } catch (e) {
-      print('   ❌ Error dispatching OTP verification event: $e');
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Failed to verify OTP. Please try again. Error: ${e.toString()}';
+        _errorMessage = 'Failed to verify OTP. Please try again.';
       });
     }
   }
 
-  Future<void> _resendOTP() async {
+  Future<void> _resendOTP(BuildContext blocContext) async {
     if (!_canResend) return;
 
     setState(() {
@@ -213,24 +156,13 @@ class _OTPScreenState extends State<OTPScreen> {
     });
 
     try {
-      // Use stored bloc reference or try to get from context
-      AuthBlocBloc authBloc;
-      if (_authBloc != null) {
-        authBloc = _authBloc!;
-      } else {
-        try {
-          authBloc = BlocProvider.of<AuthBlocBloc>(context, listen: false);
-        } catch (e) {
-          throw Exception('AuthBlocBloc is not available. Please restart the app.');
-        }
-      }
-      
-      authBloc.add(SendOTPEvent(email: widget.email));
+      final authBloc = BlocProvider.of<AuthBlocBloc>(blocContext, listen: false);
+      authBloc.add(SendOTPToNewEmailEvent(newEmail: widget.newEmail));
       _startResendTimer();
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(blocContext).showSnackBar(
         const SnackBar(
           content: Text('OTP code has been resent to your email'),
           backgroundColor: Colors.green,
@@ -249,17 +181,8 @@ class _OTPScreenState extends State<OTPScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
 
-    // Get the bloc from context (should be provided by parent via BlocProvider.value)
-    // This ensures we use the SAME bloc instance that dispatched the event
-    AuthBlocBloc authBloc;
-    try {
-      authBloc = BlocProvider.of<AuthBlocBloc>(context, listen: false);
-      print('🔗 OTP Screen: Found bloc in context: ${authBloc.hashCode}');
-    } catch (e) {
-      print('❌ OTP Screen: Bloc not found in context: $e');
-      print('❌ Creating new bloc (this should not happen if navigation is correct)');
-      // Fallback: create new bloc (shouldn't happen)
-      authBloc = AuthBlocBloc(
+    return BlocProvider(
+      create: (context) => AuthBlocBloc(
         provider: AuthBlocProvider(
           authService: AuthService(),
           otpVerificationService: OTPVerificationService(),
@@ -267,66 +190,42 @@ class _OTPScreenState extends State<OTPScreen> {
           emailVerificationService: EmailVerificationService(),
           changeEmailService: ChangeEmailService(),
         ),
-      );
-      print('⚠️ OTP Screen: Created NEW bloc instance: ${authBloc.hashCode}');
-      print('⚠️ WARNING: This may cause listener to not receive state updates!');
-    }
-    
-    // Store bloc reference for use in methods
-    _authBloc = authBloc;
-    print('🔗 OTP Screen: Using bloc instance: ${authBloc.hashCode}');
-    
-    return BlocConsumer<AuthBlocBloc, AuthBlocState>(
-      bloc: authBloc, // Explicitly set the bloc to ensure we're listening to the right one
-      listener: (context, state) {
-          // Debug logging for state changes
-          print('📊 OTP Screen: State changed (bloc: ${authBloc.hashCode})');
-          print('   isAuthenticated: ${state.isAuthenticated}');
-          print('   user: ${state.user?.email ?? "null"}');
-          print('   isLoading: ${state.isLoading}');
-          print('   error: ${state.error ?? "null"}');
-          print('   _hasNavigated: $_hasNavigated');
-          
-          // Check if user is authenticated and navigation hasn't happened yet
-          if (state.isAuthenticated && state.user != null && !state.isLoading && !_hasNavigated) {
-            print('✅ OTP Screen: User authenticated, navigating to success screen');
-            _hasNavigated = true; // Set flag to prevent multiple navigations
-            
-            // Navigate immediately to success screen, clearing the navigation stack
-            // This prevents AuthWrapper from interfering
-            Future.microtask(() {
-              if (mounted && _hasNavigated) {
-                print('   📱 Navigating to OTPSuccessScreen');
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(
-                    builder: (context) => OTPSuccessScreen(
-                      email: widget.email,
-                      onContinue: () {
-                        print('   📱 Continue button pressed, navigating to NearMeScreen');
-                        Navigator.of(context).pushAndRemoveUntil(
-                          MaterialPageRoute(
-                            builder: (context) => const NearMeScreen(),
-                          ),
-                          (route) => false,
-                        );
-                      },
-                    ),
-                  ),
-                  (route) => route.isFirst, // Keep only the first route (home)
-                );
-              } else {
-                print('   ⚠️ Navigation skipped: mounted=$mounted, _hasNavigated=$_hasNavigated');
-              }
-            });
-          } else if (state.isAuthenticated && state.user != null && !state.isLoading && _hasNavigated) {
-            print('   ⚠️ Already navigated, skipping navigation');
-          }
-          
+      ),
+      child: BlocConsumer<AuthBlocBloc, AuthBlocState>(
+        listener: (context, state) {
           if (state.error != null) {
-            print('❌ OTP Screen: Error received: ${state.error}');
             setState(() {
               _isLoading = false;
               _errorMessage = state.error.toString().replaceAll('Exception: ', '');
+            });
+            return;
+          }
+          
+          // If OTP verification succeeded (not loading, no error, and we haven't verified yet)
+          if (!state.isLoading && !_otpVerified && _isLoading) {
+            // OTP verification completed successfully
+            setState(() {
+              _otpVerified = true;
+              _isLoading = true; // Keep loading while updating email
+            });
+            // Now update email
+            final authBloc = BlocProvider.of<AuthBlocBloc>(context, listen: false);
+            authBloc.add(UpdateEmailEvent(newEmail: widget.newEmail));
+            return;
+          }
+          
+          // Navigate to success screen after email update completes
+          // Even if user is null (token expired), the email was successfully updated
+          if (!state.isLoading && state.error == null && _otpVerified && !_hasNavigated) {
+            _hasNavigated = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) => EmailSuccessScreen(newEmail: widget.newEmail),
+                  ),
+                );
+              }
             });
           }
         },
@@ -340,7 +239,7 @@ class _OTPScreenState extends State<OTPScreen> {
               child: SafeArea(
                 child: Column(
                   children: [
-                    // App Bar with back button and centered title
+                    // Header with back button and title
                     Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Row(
@@ -365,7 +264,7 @@ class _OTPScreenState extends State<OTPScreen> {
                           const Expanded(
                             child: Center(
                               child: Text(
-                                'Verification',
+                                'Change Email',
                                 style: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -374,44 +273,47 @@ class _OTPScreenState extends State<OTPScreen> {
                               ),
                             ),
                           ),
-                          // Spacer to balance the back button
-                          SizedBox(width: 48),
+                          const SizedBox(width: 48),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 40),
+                    
                     // Main content
                     Expanded(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            const SizedBox(height: 120),
+                            const SizedBox(height: 40),
+                            
                             // Email Verification heading
                             const Text(
                               'Email Verification',
                               style: TextStyle(
-                                fontSize: 20,
+                                fontSize: 24,
                                 fontWeight: FontWeight.bold,
                                 color: ValidationTheme.textDark,
                               ),
+                              textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 12),
+                            
                             // Subtitle
-                            Text(
+                            const Text(
                               'Enter OTP Code we sent to your email',
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 16,
                                 color: ValidationTheme.textSecondary,
                               ),
                             ),
                             const SizedBox(height: 8),
+                            
                             // Email address
                             Text(
-                              widget.email,
+                              widget.newEmail,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 fontSize: 16,
@@ -419,7 +321,8 @@ class _OTPScreenState extends State<OTPScreen> {
                                 color: ValidationTheme.textDark,
                               ),
                             ),
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 40),
+                            
                             // OTP Input Fields
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -474,7 +377,8 @@ class _OTPScreenState extends State<OTPScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 32),
+                            
                             // Error Message
                             if (_errorMessage != null)
                               Container(
@@ -500,12 +404,13 @@ class _OTPScreenState extends State<OTPScreen> {
                                   ],
                                 ),
                               ),
+                            
                             // Submit Button
                             SizedBox(
                               width: double.infinity,
                               height: 56,
                               child: ElevatedButton(
-                                onPressed: _isLoading ? null : _verifyOTP,
+                                onPressed: _isLoading ? null : () => _verifyOTP(context),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: ValidationTheme.primaryBlue,
                                   foregroundColor: ValidationTheme.textLight,
@@ -533,6 +438,7 @@ class _OTPScreenState extends State<OTPScreen> {
                               ),
                             ),
                             const SizedBox(height: 24),
+                            
                             // Resend OTP
                             Center(
                               child: Wrap(
@@ -545,7 +451,7 @@ class _OTPScreenState extends State<OTPScreen> {
                                     ),
                                   ),
                                   GestureDetector(
-                                    onTap: _canResend && !_isLoading ? _resendOTP : null,
+                                    onTap: _canResend && !_isLoading ? () => _resendOTP(context) : null,
                                     child: Text(
                                       _canResend ? 'Resend' : 'Resend in ${_resendTimer}s',
                                       style: TextStyle(
@@ -560,17 +466,18 @@ class _OTPScreenState extends State<OTPScreen> {
                                 ],
                               ),
                             ),
+                            const SizedBox(height: 40),
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 40),
                   ],
                 ),
               ),
             ),
           );
         },
+      ),
     );
   }
 }
