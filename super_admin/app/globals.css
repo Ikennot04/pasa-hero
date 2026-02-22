@@ -25,3 +25,9 @@ body {
   font-family: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
   font-size: 1.0625rem; /* ~17px, a little bigger than default 16px */
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
