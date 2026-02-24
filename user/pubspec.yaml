@@ -71,6 +71,8 @@ flutter:
     - assets/images/logo/Rectangle.png
     - assets/images/logo/SealCheck.png
     - assets/images/splashscreen/spalshscreen.png
+    - assets/images/logo/Bus.png
+    - assets/images/logo/buspic.png
     
 
   # An image asset can refer to one or more resolution-specific "variants", see

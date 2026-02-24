@@ -9,6 +9,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/otp_verification_service.dart';
 import '../../../core/services/change_password_service.dart';
 import '../../../core/services/email_verification_service.dart';
+import '../../../core/services/change_email_service.dart';
 import 'forgot_password_otp.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -65,6 +66,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           otpVerificationService: OTPVerificationService(),
           changePasswordService: ChangePasswordService(),
           emailVerificationService: EmailVerificationService(),
+          changeEmailService: ChangeEmailService(),
         ),
       );
     }

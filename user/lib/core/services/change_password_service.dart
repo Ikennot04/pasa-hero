@@ -141,6 +141,34 @@ class ChangePasswordService {
     }
   }
 
+  // Change password for logged-in user (requires re-authentication first)
+  Future<void> changePassword(String newPassword) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('No user is currently signed in.');
+      }
+
+      final trimmedPassword = newPassword.trim();
+
+      if (trimmedPassword.isEmpty) {
+        throw Exception('Password cannot be empty');
+      }
+
+      if (trimmedPassword.length < 6) {
+        throw Exception('Password must be at least 6 characters long');
+      }
+
+      // Update password using Firebase Auth
+      await user.updatePassword(trimmedPassword);
+      print('✅ Password changed successfully');
+    } on FirebaseAuthException catch (e) {
+      throw _handleAuthException(e);
+    } catch (e) {
+      throw Exception('Failed to change password: $e');
+    }
+  }
+
   // Handle Firebase Auth exceptions and return user-friendly messages
   Exception _handleAuthException(FirebaseAuthException e) {
     switch (e.code) {
@@ -160,6 +188,8 @@ class ChangePasswordService {
         return Exception('Too many requests. Please try again later.');
       case 'operation-not-allowed':
         return Exception('This operation is not allowed.');
+      case 'requires-recent-login':
+        return Exception('Please re-authenticate before changing your password.');
       default:
         return Exception('Authentication failed: ${e.message}');
     }
