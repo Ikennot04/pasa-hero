@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import compression from 'compression';
 import admin from './config/firebase.config.js';
 
 // Import routes
@@ -61,6 +62,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 dotenv.config();
+app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
