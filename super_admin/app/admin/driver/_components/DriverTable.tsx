@@ -8,7 +8,7 @@ function DriverStatusBadge({ status }: { status: string }) {
     inactive: "badge-ghost",
   };
   return (
-    <span className={`badge badge-sm ${map[status] ?? "badge-ghost"}`}>
+    <span className={`badge ${map[status] ?? "badge-ghost"}`}>
       {status}
     </span>
   );

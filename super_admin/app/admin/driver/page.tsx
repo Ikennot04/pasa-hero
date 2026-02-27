@@ -2,8 +2,15 @@
 
 import { useState, useMemo } from "react";
 import { DriverProps } from "./DriverProps";
+import {
+  AssignmentProps,
+  type AssignmentStatus,
+  type AssignmentResult,
+} from "./AssignmentProps";
 import DriverTable from "./_components/DriverTable";
+import AssignmentsTable from "./_components/AssignmentsTable";
 import AddDriverModal from "./_components/AddDriver";
+import AddAssignmentModal from "./_components/AddAssignment";
 
 // Static data for drivers (matches backend driver.model.js fields)
 const DRIVERS_STATIC: DriverProps[] = [
@@ -54,8 +61,106 @@ const DRIVERS_STATIC: DriverProps[] = [
   },
 ];
 
+// Static data for assignments (matches bus_assignment.model.js)
+const ASSIGNMENTS_STATIC: AssignmentProps[] = [
+  {
+    id: "a1",
+    bus_id: "b1",
+    driver_id: "1",
+    operator_user_id: "op1",
+    route_id: "r1",
+    driver_name: "Juan Dela Cruz",
+    bus_number: "BUS-101",
+    route_name: "EDSA – Monumento to PITX",
+    assignment_status: "active",
+    assignment_result: "pending",
+    arrival_status: "arrival_pending",
+    departure_status: "departed",
+    arrival_confirmed_at: null,
+    departure_confirmed_at: "2025-02-27T06:30:00",
+  },
+  {
+    id: "a2",
+    bus_id: "b2",
+    driver_id: "2",
+    operator_user_id: "op1",
+    route_id: "r2",
+    driver_name: "Maria Santos",
+    bus_number: "BUS-102",
+    route_name: "Commonwealth – Fairview to SM North",
+    assignment_status: "active",
+    assignment_result: "pending",
+    arrival_status: "arrived",
+    departure_status: "departure_pending",
+    arrival_confirmed_at: "2025-02-27T07:15:00",
+    departure_confirmed_at: null,
+  },
+  {
+    id: "a3",
+    bus_id: "b3",
+    driver_id: "3",
+    operator_user_id: "op1",
+    route_id: "r1",
+    driver_name: "Pedro Reyes",
+    bus_number: "BUS-103",
+    route_name: "EDSA – Monumento to PITX",
+    assignment_status: "active",
+    assignment_result: "completed",
+    arrival_status: "arrived",
+    departure_status: "departed",
+    arrival_confirmed_at: "2025-02-27T08:00:00",
+    departure_confirmed_at: "2025-02-27T08:45:00",
+  },
+  {
+    id: "a4",
+    bus_id: "b4",
+    driver_id: "4",
+    operator_user_id: "op1",
+    route_id: "r3",
+    driver_name: "Ana Garcia",
+    bus_number: "BUS-104",
+    route_name: "Quezon Ave – QC Circle to Quiapo",
+    assignment_status: "inactive",
+    assignment_result: "cancelled",
+    arrival_status: "arrival_pending",
+    departure_status: "departure_pending",
+    arrival_confirmed_at: null,
+    departure_confirmed_at: null,
+  },
+  {
+    id: "a5",
+    bus_id: "b5",
+    driver_id: "5",
+    operator_user_id: "op1",
+    route_id: "r2",
+    driver_name: "Roberto Mendoza",
+    bus_number: "BUS-105",
+    route_name: "Commonwealth – Fairview to SM North",
+    assignment_status: "active",
+    assignment_result: "pending",
+    arrival_status: "arrival_pending",
+    departure_status: "departure_pending",
+    arrival_confirmed_at: null,
+    departure_confirmed_at: null,
+  },
+];
+
+const ASSIGNMENT_STATUS_OPTIONS: AssignmentStatus[] = ["active", "inactive"];
+const ASSIGNMENT_RESULT_OPTIONS: AssignmentResult[] = [
+  "pending",
+  "completed",
+  "cancelled",
+];
+
 export default function Driver() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState<
+    AssignmentStatus | "all"
+  >("all");
+  const [assignmentResultFilter, setAssignmentResultFilter] = useState<
+    AssignmentResult | "all"
+  >("all");
 
   const filteredDrivers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -68,6 +173,28 @@ export default function Driver() {
         (d.contact_number && d.contact_number.toLowerCase().includes(q)),
     );
   }, [searchQuery]);
+
+  const filteredAssignments = useMemo(() => {
+    const q = assignmentSearch.trim().toLowerCase();
+    return ASSIGNMENTS_STATIC.filter((a) => {
+      const matchSearch =
+        !q ||
+        a.driver_name.toLowerCase().includes(q) ||
+        a.bus_number.toLowerCase().includes(q) ||
+        a.route_name.toLowerCase().includes(q);
+      const matchStatus =
+        assignmentStatusFilter === "all" ||
+        a.assignment_status === assignmentStatusFilter;
+      const matchResult =
+        assignmentResultFilter === "all" ||
+        a.assignment_result === assignmentResultFilter;
+      return matchSearch && matchStatus && matchResult;
+    });
+  }, [
+    assignmentSearch,
+    assignmentStatusFilter,
+    assignmentResultFilter,
+  ]);
 
   return (
     <div className="space-y-4 pt-6">
@@ -94,6 +221,61 @@ export default function Driver() {
       </div>
       <DriverTable drivers={filteredDrivers} />
       <div className="text-xl font-bold mt-10">Assignment Management Table</div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-end gap-4 pb-2">
+        <div className="form-control w-64">
+          <input
+            type="text"
+            placeholder="Search driver, bus, route..."
+            className="input input-bordered w-full"
+            value={assignmentSearch}
+            onChange={(e) => setAssignmentSearch(e.target.value)}
+          />
+        </div>
+        <div className="form-control w-40">
+          <select
+            className="select select-bordered w-full"
+            value={assignmentStatusFilter}
+            onChange={(e) =>
+              setAssignmentStatusFilter(
+                e.target.value as AssignmentStatus | "all",
+              )
+            }
+          >
+            <option value="all">Status</option>
+            {ASSIGNMENT_STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-control w-40">
+          <select
+            className="select select-bordered w-full"
+            value={assignmentResultFilter}
+            onChange={(e) =>
+              setAssignmentResultFilter(
+                e.target.value as AssignmentResult | "all",
+              )
+            }
+          >
+            <option value="all">Result</option>
+            {ASSIGNMENT_RESULT_OPTIONS.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+        </div>
+        <span className="text-sm text-base-content/70">
+          Showing {filteredAssignments.length} of {ASSIGNMENTS_STATIC.length}{" "}
+          assignments
+        </span>
+        </div>
+        <AddAssignmentModal drivers={DRIVERS_STATIC} />
+      </div>
+      <AssignmentsTable assignments={filteredAssignments} />
     </div>
   );
 }
