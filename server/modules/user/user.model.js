@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { getRoleId } from "../../utils/roleMapper.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -14,6 +15,12 @@ const userSchema = new mongoose.Schema(
       default: "user",
       required: true,
     },
+    roleid: {
+      type: Number,
+      enum: [1, 2, 3, 4], // 1: user, 2: operator, 3: terminal admin, 4: super admin
+      default: 1,
+      required: true,
+    },
     status: {
       type: String,
       default: "active",
@@ -22,5 +29,13 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+// Pre-save hook to automatically set roleid based on role if not provided
+userSchema.pre('save', function(next) {
+  if (this.isModified('role') || !this.roleid) {
+    this.roleid = getRoleId(this.role);
+  }
+  next();
+});
 
 export default mongoose.model("User", userSchema);
