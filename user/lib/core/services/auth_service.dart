@@ -91,6 +91,8 @@ class AuthService {
           'firstName': firstName,
           'lastName': lastName,
           'email': email.trim(),
+          'role': 'user',
+          'roleid': 1,
           'createdAt': FieldValue.serverTimestamp(),
         });
         
@@ -591,6 +593,8 @@ class AuthService {
                   'firstName': firstName.isNotEmpty ? firstName : 'User',
                   'lastName': lastName.isNotEmpty ? lastName : '',
                   'email': userCredential.user!.email ?? '',
+                  'role': 'user',
+                  'roleid': 1,
                   'createdAt': FieldValue.serverTimestamp(),
                   'signUpMethod': 'google',
                 };
@@ -668,6 +672,8 @@ class AuthService {
           'firstName': firstName.isNotEmpty ? firstName : 'User',
           'lastName': lastName.isNotEmpty ? lastName : '',
           'email': userCredential.user!.email ?? '',
+          'role': 'user',
+          'roleid': 1,
           'createdAt': FieldValue.serverTimestamp(),
           'signUpMethod': 'google',
           };
