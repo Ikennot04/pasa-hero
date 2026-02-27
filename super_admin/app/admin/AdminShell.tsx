@@ -37,11 +37,6 @@ const routes = [
     label: "Notifications",
   },
   {
-    path: "/admin/analytics",
-    icon: <FaChartBar className="size-6" />,
-    label: "Analytics & Reports",
-  },
-  {
     path: "/admin/setting",
     icon: <FaGear className="size-6" />,
     label: "Settings",
