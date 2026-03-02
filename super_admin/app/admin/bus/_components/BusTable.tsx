@@ -12,7 +12,7 @@ function BusStatusBadge({ status }: { status: string }) {
     "out of service": "badge-error",
   };
   return (
-    <span className={`badge badge-sm ${map[status] ?? "badge-ghost"}`}>
+    <span className={`badge ${map[status] ?? "badge-ghost"}`}>
       {status}
     </span>
   );
@@ -26,7 +26,7 @@ function OccupancyBadge({ status }: { status: string }) {
     full: "badge-error",
   };
   return (
-    <span className={`badge badge-sm ${map[status] ?? "badge-ghost"}`}>
+    <span className={`badge ${map[status] ?? "badge-ghost"}`}>
       {status}
     </span>
   );
@@ -51,12 +51,12 @@ function AssignmentBadge({
   return (
     <span className="flex flex-wrap gap-1">
       <span
-        className={`badge badge-sm ${statusClass[assignmentStatus] ?? "badge-ghost"}`}
+        className={`badge ${statusClass[assignmentStatus] ?? "badge-ghost"}`}
       >
         {assignmentStatus}
       </span>
       <span
-        className={`badge badge-sm ${resultClass[assignmentResult] ?? "badge-ghost"}`}
+        className={`badge ${resultClass[assignmentResult] ?? "badge-ghost"}`}
       >
         {assignmentResult}
       </span>
@@ -70,7 +70,7 @@ export default function BusTable({ buses }: { buses: BusProps[] }) {
 
   return (
     <div className="overflow-x-auto rounded-box border border-base-content/5 bg-base-100">
-      <table className="table">
+      <table className="table text-base">
         <thead>
           <tr>
             <th className="w-10">#</th>
@@ -88,7 +88,7 @@ export default function BusTable({ buses }: { buses: BusProps[] }) {
         </thead>
         <tbody>
           {buses.map((bus, i) => (
-            <tr key={bus.id}>
+            <tr key={bus.id} >
               <th>{i + 1}</th>
               <td className="font-medium">{bus.bus_number}</td>
               <td>{bus.plate_number}</td>
@@ -117,10 +117,10 @@ export default function BusTable({ buses }: { buses: BusProps[] }) {
                 />
               </td>
               <td className="flex gap-2">
-                <button className="btn btn-sm" onClick={() => router.push(`/admin/bus/${bus.id}`)}>View</button>
+                <button className="btn" onClick={() => router.push(`/admin/bus/${bus.id}`)}>View</button>
                 <button
                   type="button"
-                  className="btn btn-sm"
+                  className="btn"
                   onClick={() => setEditingBus(bus)}
                 >
                   Edit
