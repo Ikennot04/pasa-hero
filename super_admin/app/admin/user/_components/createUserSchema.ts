@@ -15,3 +15,12 @@ export const createUserSchema = yup.object({
 });
 
 export type CreateUserFormData = yup.InferType<typeof createUserSchema>;
+
+export const editUserSchema = yup.object({
+  f_name: yup.string().required("First name is required").trim(),
+  l_name: yup.string().required("Last name is required").trim(),
+  email: yup.string().required("Email is required").email("Invalid email"),
+  role: yup.string().required("Role is required").trim(),
+});
+
+export type EditUserFormData = yup.InferType<typeof editUserSchema>;
