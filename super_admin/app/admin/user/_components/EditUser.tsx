@@ -20,7 +20,7 @@ const defaultValues: EditUserFormData = {
   role: "",
 };
 
-export default function EditUser({ user, modalId = EDIT_USER_MODAL_ID }: EditUserProps) {
+export default function EditUserModal({ user, modalId = EDIT_USER_MODAL_ID }: EditUserProps) {
   const {
     register,
     handleSubmit,

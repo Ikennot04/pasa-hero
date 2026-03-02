@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import EditUser, { EDIT_USER_MODAL_ID } from "./EditUser";
+import EditUserModal, { EDIT_USER_MODAL_ID } from "./EditUser";
+import ConfirmSuspend, { CONFIRM_SUSPEND_MODAL_ID } from "./ConfirmSuspend";
 
 export type UserRow = {
   id: number;
@@ -18,10 +19,20 @@ type UserTableProps = {
 
 export default function UserTable({ users }: UserTableProps) {
   const [userToEdit, setUserToEdit] = useState<UserRow | null>(null);
+  const [userToSuspend, setUserToSuspend] = useState<UserRow | null>(null);
 
   const openEditModal = (user: UserRow) => {
     setUserToEdit(user);
-    (document.getElementById(EDIT_USER_MODAL_ID) as HTMLDialogElement)?.showModal();
+    (
+      document.getElementById(EDIT_USER_MODAL_ID) as HTMLDialogElement
+    )?.showModal();
+  };
+
+  const openSuspendModal = (user: UserRow) => {
+    setUserToSuspend(user);
+    (
+      document.getElementById(CONFIRM_SUSPEND_MODAL_ID) as HTMLDialogElement
+    )?.showModal();
   };
 
   return (
@@ -56,16 +67,21 @@ export default function UserTable({ users }: UserTableProps) {
                   >
                     Edit
                   </button>
-                <button type="button" className="btn">
-                  Suspend
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-    <EditUser user={userToEdit} />
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => openSuspendModal(user)}
+                  >
+                    Suspend
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <EditUserModal user={userToEdit} />
+      <ConfirmSuspend user={userToSuspend} />
     </>
   );
 }
