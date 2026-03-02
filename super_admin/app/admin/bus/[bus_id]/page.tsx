@@ -10,6 +10,7 @@ import {
   FaUser,
   FaRoute,
 } from "react-icons/fa6";
+import DeleteBusButton from "../_components/DeleteBusButton";
 
 function BusStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -128,6 +129,7 @@ export default async function BusInformationPage({
           <div className="flex items-center gap-2">
             <BusStatusBadge status={bus.bus_status} />
             <OccupancyBadge status={bus.occupancy_status} />
+            <DeleteBusButton busId={bus.id} busNumber={bus.bus_number} />
           </div>
         </div>
       </div>
