@@ -10,7 +10,7 @@ import {
   FaUser,
   FaRoute,
 } from "react-icons/fa6";
-import DeleteBusButton from "../_components/DeleteBusButton";
+import DeleteBusButton from "../_components/DeleteBus";
 
 function BusStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {

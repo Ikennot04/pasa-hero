@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusProps, type AssignmentStatus, type AssignmentResult } from "../BusProps";
+import EditBusModal from "./EditBus";
 
 function BusStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -64,6 +66,8 @@ function AssignmentBadge({
 
 export default function BusTable({ buses }: { buses: BusProps[] }) {
   const router = useRouter();
+  const [editingBus, setEditingBus] = useState<BusProps | null>(null);
+
   return (
     <div className="overflow-x-auto rounded-box border border-base-content/5 bg-base-100">
       <table className="table">
@@ -114,12 +118,22 @@ export default function BusTable({ buses }: { buses: BusProps[] }) {
               </td>
               <td className="flex gap-2">
                 <button className="btn btn-sm" onClick={() => router.push(`/admin/bus/${bus.id}`)}>View</button>
-                <button className="btn btn-sm">Edit</button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setEditingBus(bus)}
+                >
+                  Edit
+                </button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <EditBusModal
+        bus={editingBus}
+        onCloseModal={() => setEditingBus(null)}
+      />
     </div>
   );
 }
