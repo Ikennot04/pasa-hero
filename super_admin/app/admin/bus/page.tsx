@@ -3,7 +3,8 @@
 import { useState, useMemo } from "react";
 
 // PROPS
-import { BusProps, type AssignmentStatus, type AssignmentResult } from "./BusProps";
+import { type AssignmentStatus, type AssignmentResult } from "./BusProps";
+import { BUSES_STATIC } from "./busStaticData";
 
 // COMPONENTS
 import BusTable from "./_components/BusTable";
@@ -13,82 +14,6 @@ import AddBusModal from "./_components/AddBus";
 const BUS_STATUS_OPTIONS = ["active", "maintenance", "out of service"] as const;
 const ASSIGNMENT_STATUS_OPTIONS: AssignmentStatus[] = ["active", "inactive"];
 const ASSIGNMENT_RESULT_OPTIONS: AssignmentResult[] = ["pending", "completed", "cancelled"];
-
-// Static data: buses with current status and assignment (matches backend models)
-const BUSES_STATIC: BusProps[] = [
-  {
-    id: "1",
-    bus_number: "01-AB",
-    plate_number: "ABC 1234",
-    capacity: 45,
-    bus_status: "active",
-    // current status (live)
-    occupancy_count: 32,
-    occupancy_status: "few seats",
-    // assignment
-    driver_name: "Juan Dela Cruz",
-    route_name: "Manila – Quezon City",
-    route_code: "MNL-QC-01",
-    assignment_status: "active",
-    assignment_result: "pending",
-  },
-  {
-    id: "2",
-    bus_number: "12C",
-    plate_number: "XYZ 5678",
-    capacity: 50,
-    bus_status: "active",
-    occupancy_count: 50,
-    occupancy_status: "full",
-    driver_name: "Maria Santos",
-    route_name: "Pasig – Makati",
-    route_code: "PSG-MKT-02",
-    assignment_status: "active",
-    assignment_result: "completed",
-  },
-  {
-    id: "3",
-    bus_number: "13B",
-    plate_number: "DEF 9012",
-    capacity: 40,
-    bus_status: "maintenance",
-    occupancy_count: 0,
-    occupancy_status: "empty",
-    driver_name: "—",
-    route_name: "—",
-    route_code: "—",
-    assignment_status: "inactive",
-    assignment_result: "pending",
-  },
-  {
-    id: "4",
-    bus_number: "O1L",
-    plate_number: "GHI 3456",
-    capacity: 45,
-    bus_status: "active",
-    occupancy_count: 8,
-    occupancy_status: "empty",
-    driver_name: "Pedro Reyes",
-    route_name: "Caloocan – Manila",
-    route_code: "CLK-MNL-03",
-    assignment_status: "active",
-    assignment_result: "pending",
-  },
-  {
-    id: "5",
-    bus_number: "O1K",
-    plate_number: "JKL 7890",
-    capacity: 50,
-    bus_status: "out of service",
-    occupancy_count: 0,
-    occupancy_status: "empty",
-    driver_name: "—",
-    route_name: "—",
-    route_code: "—",
-    assignment_status: "inactive",
-    assignment_result: "cancelled",
-  },
-];
 
 export default function Bus() {
   const [searchQuery, setSearchQuery] = useState("");

@@ -119,7 +119,7 @@ export default function EditUserModal({ user, modalId = EDIT_USER_MODAL_ID }: Ed
             >
               Cancel
             </button>
-            <button type="submit" className="btn bg-[#008DF7] text-white">
+            <button type="submit" className="btn bg-[#008DF7] hover:bg-[#008DF7]/80 text-white">
             <MdOutlineSave className="w-5 h-5" />
               Save
             </button>
