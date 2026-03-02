@@ -6,6 +6,9 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import type { UserRow } from "./UserTable";
 import { editUserSchema, type EditUserFormData } from "./createUserSchema";
 
+// ICONS
+import { MdOutlineSave } from "react-icons/md";
+
 export const EDIT_USER_MODAL_ID = "edit-user-modal";
 
 type EditUserProps = {
@@ -116,7 +119,8 @@ export default function EditUserModal({ user, modalId = EDIT_USER_MODAL_ID }: Ed
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
+            <button type="submit" className="btn bg-[#008DF7] text-white">
+            <MdOutlineSave className="w-5 h-5" />
               Save
             </button>
           </div>

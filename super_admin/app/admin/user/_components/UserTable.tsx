@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import EditUserModal, { EDIT_USER_MODAL_ID } from "./EditUser";
-import ConfirmSuspend, { CONFIRM_SUSPEND_MODAL_ID } from "./ConfirmSuspend";
+import ConfirmSuspendModal, {
+  CONFIRM_SUSPEND_MODAL_ID,
+} from "./ConfirmSuspend";
+
+// ICONS
+import { MdOutlineEdit, MdOutlinePersonOff } from "react-icons/md";
 
 export type UserRow = {
   id: number;
@@ -65,13 +70,15 @@ export default function UserTable({ users }: UserTableProps) {
                     className="btn"
                     onClick={() => openEditModal(user)}
                   >
+                    <MdOutlineEdit className="w-5 h-5" />
                     Edit
                   </button>
                   <button
                     type="button"
-                    className="btn"
+                    className="btn bg-[#D0393A] hover:bg-[#D0393A]/90 text-white"
                     onClick={() => openSuspendModal(user)}
                   >
+                    <MdOutlinePersonOff className="w-5 h-5" />
                     Suspend
                   </button>
                 </td>
@@ -81,7 +88,7 @@ export default function UserTable({ users }: UserTableProps) {
         </table>
       </div>
       <EditUserModal user={userToEdit} />
-      <ConfirmSuspend user={userToSuspend} />
+      <ConfirmSuspendModal user={userToSuspend} />
     </>
   );
 }

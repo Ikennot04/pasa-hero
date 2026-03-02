@@ -9,7 +9,7 @@ type ConfirmSuspendProps = {
   modalId?: string;
 };
 
-export default function ConfirmSuspend({ user, modalId = CONFIRM_SUSPEND_MODAL_ID }: ConfirmSuspendProps) {
+export default function ConfirmSuspendModal({ user, modalId = CONFIRM_SUSPEND_MODAL_ID }: ConfirmSuspendProps) {
   const closeModal = () => (document.getElementById(modalId) as HTMLDialogElement)?.close();
 
   return (
@@ -31,7 +31,7 @@ export default function ConfirmSuspend({ user, modalId = CONFIRM_SUSPEND_MODAL_I
           <button type="button" className="btn" onClick={closeModal}>
             Cancel
           </button>
-          <button type="button" className="btn border-2 border-[#A4161A]" onClick={closeModal}>
+          <button type="button" className="btn bg-[#D0393A] hover:bg-[#D0393A]/90 text-white" onClick={closeModal}>
             Suspend
           </button>
         </div>
