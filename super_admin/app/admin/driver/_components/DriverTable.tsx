@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { DriverProps } from "../DriverProps";
+import EditDriverModal from "./EditDriver";
+import { DriverDetailsModal } from "./DriverDetails";
 
 function DriverStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -15,6 +18,8 @@ function DriverStatusBadge({ status }: { status: string }) {
 }
 
 export default function DriverTable({ drivers }: { drivers: DriverProps[] }) {
+  const [editingDriver, setEditingDriver] = useState<DriverProps | null>(null);
+  const [viewingDriver, setViewingDriver] = useState<DriverProps | null>(null);
   return (
     <div className="overflow-x-auto rounded-box border border-base-content/5 bg-base-100 max-h-220">
       <table className="table">
@@ -41,13 +46,33 @@ export default function DriverTable({ drivers }: { drivers: DriverProps[] }) {
                 <DriverStatusBadge status={driver.status} />
               </td>
               <td className="flex gap-2">
-                <button className="btn btn-sm">View</button>
-                <button className="btn btn-sm">Edit</button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setViewingDriver(driver)}
+                >
+                  View
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setEditingDriver(driver)}
+                >
+                  Edit
+                </button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <EditDriverModal
+        driver={editingDriver}
+        onCloseModal={() => setEditingDriver(null)}
+      />
+      <DriverDetailsModal
+        driver={viewingDriver}
+        onCloseModal={() => setViewingDriver(null)}
+      />
     </div>
   );
 }

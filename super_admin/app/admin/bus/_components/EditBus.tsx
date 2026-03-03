@@ -144,7 +144,7 @@ export default function EditBusModal({ bus, modalId = EDIT_BUS_MODAL_ID, onClose
             </button>
             <button
               type="submit"
-              className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80"
+              className="btn bg-[#008DF7] hover:bg-[#008DF7]/80 text-white"
             >
               Save
             </button>

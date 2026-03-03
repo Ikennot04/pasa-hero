@@ -79,7 +79,7 @@ export default function AddDriverModal() {
 
   return (
     <>
-      <button type="button" className="btn" onClick={openModal}>
+      <button type="button" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" onClick={openModal}>
         Add driver
       </button>
       <dialog ref={dialogRef} className="modal" id="add_driver_modal">
@@ -166,7 +166,7 @@ export default function AddDriverModal() {
               <button type="button" className="btn" onClick={closeModal}>
                 Cancel
               </button>
-              <button type="submit" className="btn" disabled={isSubmitting}>
+              <button type="submit" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" disabled={isSubmitting}>
                 {isSubmitting ? "Adding…" : "Add driver"}
               </button>
             </div>
