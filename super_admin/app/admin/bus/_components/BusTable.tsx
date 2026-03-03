@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BusProps, type AssignmentStatus, type AssignmentResult } from "../BusProps";
 import EditBusModal from "./EditBus";
+import { MdOutlineEdit } from "react-icons/md";
+import { FaRegEye } from "react-icons/fa6";
 
 function BusStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -117,12 +119,15 @@ export default function BusTable({ buses }: { buses: BusProps[] }) {
                 />
               </td>
               <td className="flex gap-2">
-                <button className="btn" onClick={() => router.push(`/admin/bus/${bus.id}`)}>View</button>
+                <button className="btn" onClick={() => router.push(`/admin/bus/${bus.id}`)}>
+                <FaRegEye className="w-5 h-5" />
+                  View</button>
                 <button
                   type="button"
                   className="btn"
                   onClick={() => setEditingBus(bus)}
                 >
+                  <MdOutlineEdit className="w-5 h-5" />
                   Edit
                 </button>
               </td>
