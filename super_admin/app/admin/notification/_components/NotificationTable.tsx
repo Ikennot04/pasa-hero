@@ -120,14 +120,14 @@ export default function NotificationTable({
             </span>
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost"
               onClick={() => setSelectedIds(new Set())}
             >
               Clear selection
             </button>
             <button
               type="button"
-              className="btn btn-error btn-sm"
+              className="btn btn-error"
               onClick={() => setShowDeleteModal(true)}
             >
               Delete selected

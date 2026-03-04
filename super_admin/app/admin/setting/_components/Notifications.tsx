@@ -19,7 +19,7 @@ export default function Notifications() {
           <span className="text-sm font-medium">Enable notifications</span>
           <input
             type="checkbox"
-            className="toggle toggle-primary toggle-sm"
+            className="toggle checked:border-[#0062CA] checked:before:bg-[#0062CA]"
             checked={notificationsOn}
             onChange={(e) => setNotificationsOn(e.target.checked)}
           />
@@ -39,10 +39,12 @@ export default function Notifications() {
           </select>
         </div>
         <div className="flex items-center justify-between gap-4 py-2">
-          <span className="text-sm font-medium">Show system logs on notification page</span>
+          <span className="text-sm font-medium">
+            Show system logs on notification page
+          </span>
           <input
             type="checkbox"
-            className="toggle toggle-primary toggle-sm"
+            className="toggle checked:border-[#0062CA] checked:before:bg-[#0062CA]"
             checked={showSystemLogs}
             onChange={(e) => setShowSystemLogs(e.target.checked)}
           />

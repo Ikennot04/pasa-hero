@@ -4,12 +4,6 @@ import { useState } from "react";
 
 export default function DisplaySettings() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
-  const [saved, setSaved] = useState(false);
-  
-  function handleSave() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
 
   return (
     <section className="rounded-xl border border-base-content/10 bg-base-100 shadow-sm overflow-hidden">
