@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { DriverProps } from "../DriverProps";
-import EditDriverModal from "./EditDriver";
-import { DriverDetailsModal } from "./DriverDetails";
+import { DriverProps } from "./DriverProps";
+import EditDriverModal, { EDIT_DRIVER_MODAL_ID } from "./EditDriver";
+import { FaRegEye } from "react-icons/fa6";
+import { useRouter } from "next/navigation";
 
 function DriverStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -18,8 +18,7 @@ function DriverStatusBadge({ status }: { status: string }) {
 }
 
 export default function DriverTable({ drivers }: { drivers: DriverProps[] }) {
-  const [editingDriver, setEditingDriver] = useState<DriverProps | null>(null);
-  const [viewingDriver, setViewingDriver] = useState<DriverProps | null>(null);
+  const router = useRouter();
   return (
     <div className="overflow-x-auto rounded-box border border-base-content/5 bg-base-100 max-h-220">
       <table className="table">
@@ -48,31 +47,21 @@ export default function DriverTable({ drivers }: { drivers: DriverProps[] }) {
               <td className="flex gap-2">
                 <button
                   type="button"
-                  className="btn btn-sm"
-                  onClick={() => setViewingDriver(driver)}
+                  className="btn"
+                  onClick={() => router.push(`/admin/driver/${driver.id}`)}
                 >
+                  <FaRegEye className="w-5 h-5" />
                   View
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => setEditingDriver(driver)}
-                >
-                  Edit
-                </button>
+                <EditDriverModal
+                  driver={driver}
+                  modalId={`${EDIT_DRIVER_MODAL_ID}-${driver.id}`}
+                />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <EditDriverModal
-        driver={editingDriver}
-        onCloseModal={() => setEditingDriver(null)}
-      />
-      <DriverDetailsModal
-        driver={viewingDriver}
-        onCloseModal={() => setViewingDriver(null)}
-      />
     </div>
   );
 }

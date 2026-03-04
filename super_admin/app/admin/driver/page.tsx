@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { DriverProps } from "./DriverProps";
+import { DriverProps } from "./_components/drivers/DriverProps";
 import {
   AssignmentProps,
   type AssignmentStatus,
   type AssignmentResult,
-} from "./AssignmentProps";
-import DriverTable from "./_components/DriverTable";
-import AssignmentsTable from "./_components/AssignmentsTable";
-import AddDriverModal from "./_components/AddDriver";
-import AddAssignmentModal from "./_components/AddAssignment";
+} from "./_components/assignmens/AssignmentProps";
+import DriverTable from "./_components/drivers/DriverTable";
+import AssignmentsTable from "./_components/assignmens/AssignmentsTable";
+import AddDriverModal from "./_components/drivers/AddDriver";
+import AddAssignmentModal from "./_components/assignmens/AddAssignment";
 
 // Static data for drivers (matches backend driver.model.js fields)
 const DRIVERS_STATIC: DriverProps[] = [
@@ -275,7 +275,10 @@ export default function Driver() {
         </div>
         <AddAssignmentModal drivers={DRIVERS_STATIC} />
       </div>
-      <AssignmentsTable assignments={filteredAssignments} />
+      <AssignmentsTable
+        assignments={filteredAssignments}
+        drivers={DRIVERS_STATIC}
+      />
     </div>
   );
 }

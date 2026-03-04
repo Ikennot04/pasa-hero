@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import type { DriverProps } from "../DriverProps";
+import type { DriverProps } from "./DriverProps";
 import { editDriverSchema, type EditDriverFormData } from "./editDriverSchema";
+import { MdOutlineEdit } from "react-icons/md";
 
 export const EDIT_DRIVER_MODAL_ID = "edit-driver-modal";
 
 type EditDriverProps = {
-  driver: DriverProps | null;
+  driver: DriverProps;
   modalId?: string;
   onCloseModal?: () => void;
 };
@@ -27,6 +28,7 @@ export default function EditDriverModal({
   modalId = EDIT_DRIVER_MODAL_ID,
   onCloseModal,
 }: EditDriverProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const {
     register,
     handleSubmit,
@@ -38,21 +40,16 @@ export default function EditDriverModal({
   });
 
   useEffect(() => {
-    if (driver) {
-      reset({
-        f_name: driver.f_name,
-        l_name: driver.l_name,
-        license_number: driver.license_number,
-        contact_number: driver.contact_number ?? "",
-        status: driver.status,
-      });
-    } else {
-      reset(defaultValues);
-    }
+    reset({
+      f_name: driver.f_name,
+      l_name: driver.l_name,
+      license_number: driver.license_number,
+      contact_number: driver.contact_number ?? "",
+      status: driver.status,
+    });
   }, [driver, reset]);
 
   async function onSubmit(data: EditDriverFormData) {
-    if (!driver) return;
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
       const body: Record<string, unknown> = {
@@ -86,6 +83,7 @@ export default function EditDriverModal({
         }
       }
       (document.getElementById(modalId) as HTMLDialogElement)?.close();
+      setIsOpen(false);
       onCloseModal?.();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to update driver");
@@ -95,18 +93,30 @@ export default function EditDriverModal({
   useEffect(() => {
     const el = document.getElementById(modalId) as HTMLDialogElement | null;
     if (!el) return;
-    if (driver) {
+    if (isOpen) {
       el.showModal();
     } else {
       el.close();
     }
-    const onClose = () => onCloseModal?.();
+    const onClose = () => {
+      setIsOpen(false);
+      onCloseModal?.();
+    };
     el.addEventListener("close", onClose);
     return () => el.removeEventListener("close", onClose);
-  }, [driver, modalId, onCloseModal]);
+  }, [isOpen, modalId, onCloseModal]);
 
   return (
-    <dialog id={modalId} className="modal">
+    <>
+      <button
+        type="button"
+        className="btn"
+        onClick={() => setIsOpen(true)}
+      >
+        <MdOutlineEdit className="w-5 h-5" />
+        Edit
+      </button>
+      <dialog id={modalId} className="modal">
       <div className="modal-box flex flex-col max-h-[90vh] p-0">
         <h3 className="font-bold text-lg p-4 pb-0">Edit driver</h3>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
@@ -209,6 +219,7 @@ export default function EditDriverModal({
               className="btn btn-ghost"
               onClick={() => {
                 (document.getElementById(modalId) as HTMLDialogElement)?.close();
+                setIsOpen(false);
                 onCloseModal?.();
               }}
             >
@@ -228,5 +239,6 @@ export default function EditDriverModal({
         <button type="submit">close</button>
       </form>
     </dialog>
+    </>
   );
 }

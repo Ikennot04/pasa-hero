@@ -1,6 +1,10 @@
 "use client";
 
-import { AssignmentProps } from "../AssignmentProps";
+import Link from "next/link";
+import { AssignmentProps } from "./AssignmentProps";
+import type { DriverProps } from "../drivers/DriverProps";
+import EditAssignmentModal from "./EditAssignment";
+import { FaRegEye } from "react-icons/fa6";
 
 function StatusBadge({ status }: { status: string }) {
   const classMap: Record<string, string> = {
@@ -30,11 +34,17 @@ function formatDate(s: string | null) {
   });
 }
 
+type AssignmentsTableProps = {
+  assignments: AssignmentProps[];
+  drivers: DriverProps[];
+  onAssignmentUpdated?: () => void;
+};
+
 export default function AssignmentsTable({
   assignments,
-}: {
-  assignments: AssignmentProps[];
-}) {
+  drivers,
+  onAssignmentUpdated,
+}: AssignmentsTableProps) {
   return (
     <div className="overflow-x-auto rounded-box border border-base-content/5 bg-base-100">
       <table className="table">
@@ -88,12 +98,18 @@ export default function AssignmentsTable({
                   )}
                 </td>
                 <td className="flex gap-2 flex-wrap">
-                  <button type="button" className="btn btn-sm">
+                  <Link
+                    href={`/admin/driver/assignment/${a.id}`}
+                    className="btn"
+                  >
+                    <FaRegEye className="w-5 h-5" />
                     View
-                  </button>
-                  <button type="button" className="btn btn-sm">
-                    Edit
-                  </button>
+                  </Link>
+                  <EditAssignmentModal
+                    assignment={a}
+                    drivers={drivers}
+                    onUpdated={onAssignmentUpdated}
+                  />
                 </td>
               </tr>
             ))

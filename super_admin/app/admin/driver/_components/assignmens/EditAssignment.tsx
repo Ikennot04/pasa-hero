@@ -7,9 +7,10 @@ import {
   addAssignmentSchema,
   type AddAssignmentFormData,
 } from "./addAssignmentSchema";
-import type { DriverProps } from "../DriverProps";
+import type { AssignmentProps } from "./AssignmentProps";
+import type { DriverProps } from "../drivers/DriverProps";
+import { MdOutlineEdit } from "react-icons/md";
 
-// Options for dropdowns (match static data used in assignments)
 const BUS_OPTIONS = [
   { id: "b1", bus_number: "BUS-101" },
   { id: "b2", bus_number: "BUS-102" },
@@ -30,11 +31,17 @@ const OPERATOR_OPTIONS = [
   { id: "op3", name: "Miguel Santos" },
 ];
 
-type AddAssignmentModalProps = {
+type EditAssignmentModalProps = {
+  assignment: AssignmentProps;
   drivers: DriverProps[];
+  onUpdated?: () => void;
 };
 
-export default function AddAssignmentModal({ drivers }: AddAssignmentModalProps) {
+export default function EditAssignmentModal({
+  assignment,
+  drivers,
+  onUpdated,
+}: EditAssignmentModalProps) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -46,10 +53,10 @@ export default function AddAssignmentModal({ drivers }: AddAssignmentModalProps)
   } = useForm<AddAssignmentFormData>({
     resolver: yupResolver(addAssignmentSchema),
     defaultValues: {
-      driver_id: "",
-      bus_id: "",
-      route_id: "",
-      operator_user_id: "",
+      driver_id: assignment.driver_id,
+      bus_id: assignment.bus_id,
+      route_id: assignment.route_id,
+      operator_user_id: assignment.operator_user_id,
     },
   });
 
@@ -58,34 +65,41 @@ export default function AddAssignmentModal({ drivers }: AddAssignmentModalProps)
     if (!dialog) return;
     if (open) {
       dialog.showModal();
+      reset({
+        driver_id: assignment.driver_id,
+        bus_id: assignment.bus_id,
+        route_id: assignment.route_id,
+        operator_user_id: assignment.operator_user_id,
+      });
     } else {
       dialog.close();
     }
     const onClose = () => setOpen(false);
     dialog.addEventListener("close", onClose);
     return () => dialog.removeEventListener("close", onClose);
-  }, [open]);
+  }, [
+    open,
+    assignment.id,
+    assignment.driver_id,
+    assignment.bus_id,
+    assignment.route_id,
+    assignment.operator_user_id,
+    reset,
+  ]);
 
   function openModal() {
     setOpen(true);
-    reset({
-      driver_id: "",
-      bus_id: "",
-      route_id: "",
-      operator_user_id: "",
-    });
   }
 
   function closeModal() {
     setOpen(false);
-    reset();
   }
 
   async function onSubmit(data: AddAssignmentFormData) {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/bus-assignments`, {
-        method: "POST",
+      const res = await fetch(`${baseUrl}/bus-assignments/${assignment.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bus_id: data.bus_id,
@@ -96,24 +110,36 @@ export default function AddAssignmentModal({ drivers }: AddAssignmentModalProps)
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to add assignment");
+        throw new Error(err?.message || "Failed to update assignment");
       }
       closeModal();
+      onUpdated?.();
     } catch (err) {
-      alert(
-        err instanceof Error ? err.message : "Failed to add assignment",
-      );
+      alert(err instanceof Error ? err.message : "Failed to update assignment");
     }
   }
 
   return (
     <>
-      <button type="button" className="btn" onClick={openModal}>
-        Add new assignment
+      <button
+        type="button"
+        className="btn"
+        onClick={openModal}
+        aria-label="Edit assignment"
+      >
+        <MdOutlineEdit className="w-5 h-5" />
+        Edit
       </button>
-      <dialog ref={dialogRef} className="modal" id="add_assignment_modal">
+      <dialog
+        ref={dialogRef}
+        className="modal"
+        id={`edit_assignment_modal_${assignment.id}`}
+      >
         <div className="modal-box">
-          <h3 className="font-bold text-lg">Add new assignment</h3>
+          <h3 className="font-bold text-lg">Edit assignment</h3>
+          <p className="text-sm text-base-content/60 mt-1">
+            Assignment ID: {assignment.id}
+          </p>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
             <div className="form-control">
               <label className="label">
@@ -203,8 +229,12 @@ export default function AddAssignmentModal({ drivers }: AddAssignmentModalProps)
               <button type="button" className="btn" onClick={closeModal}>
                 Cancel
               </button>
-              <button type="submit" className="btn" disabled={isSubmitting}>
-                {isSubmitting ? "Adding…" : "Add assignment"}
+              <button
+                type="submit"
+                className="btn bg-[#008DF7] hover:bg-[#008DF7]/80 text-white"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Saving…" : "Save changes"}
               </button>
             </div>
           </form>
