@@ -26,3 +26,12 @@ export const addRouteSchema = yup.object({
 });
 
 export type AddRouteFormData = yup.InferType<typeof addRouteSchema>;
+
+export const editRouteSchema = addRouteSchema.shape({
+  status: yup
+    .string()
+    .oneOf(["active", "inactive", "suspended"], "Invalid status")
+    .required("Status is required"),
+});
+
+export type EditRouteFormData = yup.InferType<typeof editRouteSchema>;

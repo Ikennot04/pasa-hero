@@ -1,6 +1,8 @@
 "use client";
 
+import { FaRegEye } from "react-icons/fa6";
 import { RouteProps } from "../RouteProps";
+import EditRoute from "./EditRoute";
 
 function RouteStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -48,12 +50,11 @@ export default function RouteTable({ routes }: { routes: RouteProps[] }) {
                 <RouteStatusBadge status={route.status} />
               </td>
               <td className="flex gap-2">
-                <button type="button" className="btn btn-sm">
+                <button type="button" className="btn">
+                <FaRegEye className="w-5 h-5" />
                   View
                 </button>
-                <button type="button" className="btn btn-sm">
-                  Edit
-                </button>
+                <EditRoute route={route} modalId={`edit-route-modal-${route.id}`} />
               </td>
             </tr>
           ))}
