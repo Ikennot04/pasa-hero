@@ -73,7 +73,7 @@ export default function Users() {
     <div className="space-y-4 pt-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-end gap-4">
-          <div className="form-control border w-64">
+          <div className="form-control w-64">
             <input
               type="text"
               placeholder="Name or email..."

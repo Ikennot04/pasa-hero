@@ -1,6 +1,13 @@
 "use client";
 
-import { BusProps, type AssignmentStatus, type AssignmentResult } from "../BusProps";
+import { useRouter } from "next/navigation";
+import {
+  BusProps,
+  type AssignmentStatus,
+  type AssignmentResult,
+} from "../BusProps";
+import EditBusModal from "./EditBus";
+import { FaRegEye } from "react-icons/fa6";
 
 function BusStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -9,9 +16,7 @@ function BusStatusBadge({ status }: { status: string }) {
     "out of service": "badge-error",
   };
   return (
-    <span className={`badge badge-sm ${map[status] ?? "badge-ghost"}`}>
-      {status}
-    </span>
+    <span className={`badge ${map[status] ?? "badge-ghost"}`}>{status}</span>
   );
 }
 
@@ -23,9 +28,7 @@ function OccupancyBadge({ status }: { status: string }) {
     full: "badge-error",
   };
   return (
-    <span className={`badge badge-sm ${map[status] ?? "badge-ghost"}`}>
-      {status}
-    </span>
+    <span className={`badge ${map[status] ?? "badge-ghost"}`}>{status}</span>
   );
 }
 
@@ -48,12 +51,12 @@ function AssignmentBadge({
   return (
     <span className="flex flex-wrap gap-1">
       <span
-        className={`badge badge-sm ${statusClass[assignmentStatus] ?? "badge-ghost"}`}
+        className={`badge ${statusClass[assignmentStatus] ?? "badge-ghost"}`}
       >
         {assignmentStatus}
       </span>
       <span
-        className={`badge badge-sm ${resultClass[assignmentResult] ?? "badge-ghost"}`}
+        className={`badge ${resultClass[assignmentResult] ?? "badge-ghost"}`}
       >
         {assignmentResult}
       </span>
@@ -62,9 +65,11 @@ function AssignmentBadge({
 }
 
 export default function BusTable({ buses }: { buses: BusProps[] }) {
+  const router = useRouter();
+
   return (
     <div className="overflow-x-auto rounded-box border border-base-content/5 bg-base-100">
-      <table className="table">
+      <table className="table text-base">
         <thead>
           <tr>
             <th className="w-10">#</th>
@@ -111,8 +116,14 @@ export default function BusTable({ buses }: { buses: BusProps[] }) {
                 />
               </td>
               <td className="flex gap-2">
-                <button className="btn btn-sm">View</button>
-                <button className="btn btn-sm">Edit</button>
+                <button
+                  className="btn"
+                  onClick={() => router.push(`/admin/bus/${bus.id}`)}
+                >
+                  <FaRegEye className="w-5 h-5" />
+                  View
+                </button>
+                <EditBusModal bus={bus} />
               </td>
             </tr>
           ))}

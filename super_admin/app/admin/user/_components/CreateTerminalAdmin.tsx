@@ -1,10 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { createUserSchema, type CreateUserFormData } from "./createUserSchema";
+
+
+// ICONS
+import { FaUserPlus } from "react-icons/fa6";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 export default function CreateTerminalAdmin() {
   const [open, setOpen] = useState(false);
@@ -68,14 +72,15 @@ export default function CreateTerminalAdmin() {
     <>
       <button
         type="button"
-        className="btn"
+        className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80"
         onClick={openModal}
       >
+        <FaUserPlus className="w-5 h-5" />
         Create terminal admin
       </button>
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box">
-          <h3 className="font-bold text-lg">Create terminal admin</h3>
+          <h3 className="font-bold text-lg text-[#0062CA]">Create terminal admin</h3>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="form-control">
@@ -152,7 +157,7 @@ export default function CreateTerminalAdmin() {
               <button type="button" className="btn btn-ghost" onClick={closeModal}>
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+              <button type="submit" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" disabled={isSubmitting}>
                 {isSubmitting ? "Creating…" : "Create"}
               </button>
             </div>
