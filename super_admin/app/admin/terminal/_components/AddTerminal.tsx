@@ -73,7 +73,7 @@ export default function AddTerminalModal() {
 
   return (
     <>
-      <button type="button" className="btn" onClick={openModal}>
+      <button type="button" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" onClick={openModal}>
         Add terminal
       </button>
       <dialog ref={dialogRef} className="modal">
@@ -134,7 +134,7 @@ export default function AddTerminalModal() {
               <button type="button" className="btn" onClick={closeModal}>
                 Cancel
               </button>
-              <button type="submit" className="btn" disabled={isSubmitting}>
+              <button type="submit" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" disabled={isSubmitting}>
                 {isSubmitting ? "Adding…" : "Add terminal"}
               </button>
             </div>

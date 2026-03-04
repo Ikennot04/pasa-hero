@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { TerminalProps } from "../TerminalProps";
 import EditTerminal from "./EditTerminal";
+import { FaRegEye } from "react-icons/fa6";
 
 function TerminalStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -40,9 +42,13 @@ export default function TerminalTable({ terminals }: { terminals: TerminalProps[
                 <TerminalStatusBadge status={terminal.status} />
               </td>
               <td className="flex gap-2">
-                <button type="button" className="btn">
+                <Link
+                  href={`/admin/terminal/${terminal.id}`}
+                  className="btn"
+                >
+                  <FaRegEye className="w-5 h-5" />
                   View
-                </button>
+                </Link>
                 <EditTerminal terminal={terminal} />
               </td>
             </tr>

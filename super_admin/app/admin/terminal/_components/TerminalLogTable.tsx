@@ -24,7 +24,7 @@ function EventTypeBadge({ eventType }: { eventType: string }) {
     auto_detected: "badge-ghost",
   };
   return (
-    <span className={`badge badge-sm ${map[eventType] ?? "badge-ghost"}`}>
+    <span className={`badge ${map[eventType] ?? "badge-ghost"}`}>
       {eventType.replace(/_/g, " ")}
     </span>
   );
