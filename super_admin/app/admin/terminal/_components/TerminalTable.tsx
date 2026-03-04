@@ -1,6 +1,7 @@
 "use client";
 
 import { TerminalProps } from "../TerminalProps";
+import EditTerminal from "./EditTerminal";
 
 function TerminalStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -39,12 +40,10 @@ export default function TerminalTable({ terminals }: { terminals: TerminalProps[
                 <TerminalStatusBadge status={terminal.status} />
               </td>
               <td className="flex gap-2">
-                <button type="button" className="btn btn-sm">
+                <button type="button" className="btn">
                   View
                 </button>
-                <button type="button" className="btn btn-sm">
-                  Edit
-                </button>
+                <EditTerminal terminal={terminal} />
               </td>
             </tr>
           ))}
