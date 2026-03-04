@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FaRegEye } from "react-icons/fa6";
 import { RouteProps } from "../RouteProps";
 import EditRoute from "./EditRoute";
@@ -50,10 +51,13 @@ export default function RouteTable({ routes }: { routes: RouteProps[] }) {
                 <RouteStatusBadge status={route.status} />
               </td>
               <td className="flex gap-2">
-                <button type="button" className="btn">
-                <FaRegEye className="w-5 h-5" />
+                <Link
+                  href={`/admin/route/${route.id}`}
+                  className="btn"
+                >
+                  <FaRegEye className="w-5 h-5" />
                   View
-                </button>
+                </Link>
                 <EditRoute route={route} modalId={`edit-route-modal-${route.id}`} />
               </td>
             </tr>
