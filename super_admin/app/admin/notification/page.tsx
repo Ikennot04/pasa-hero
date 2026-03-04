@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   NotificationProps,
   type NotificationType,
@@ -145,6 +145,8 @@ const SYSTEM_LOGS_STATIC: SystemLogProps[] = [
 ];
 
 export default function Notification() {
+  const [notifications, setNotifications] =
+    useState<NotificationProps[]>(NOTIFICATIONS_STATIC);
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<NotificationType | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<
@@ -156,6 +158,10 @@ export default function Notification() {
   const [logSearchQuery, setLogSearchQuery] = useState("");
   const [logActionFilter, setLogActionFilter] = useState<string>("all");
 
+  const onBulkDelete = useCallback((ids: string[]) => {
+    setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
+  }, []);
+
   const actionTypes = useMemo(() => {
     const set = new Set(SYSTEM_LOGS_STATIC.map((l) => l.action));
     return Array.from(set).sort();
@@ -163,7 +169,7 @@ export default function Notification() {
 
   const filteredNotifications = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return NOTIFICATIONS_STATIC.filter((n) => {
+    return notifications.filter((n) => {
       const matchSearch =
         !q ||
         n.title.toLowerCase().includes(q) ||
@@ -178,7 +184,7 @@ export default function Notification() {
       const matchScope = scopeFilter === "all" || n.scope === scopeFilter;
       return matchSearch && matchType && matchPriority && matchScope;
     });
-  }, [searchQuery, typeFilter, priorityFilter, scopeFilter]);
+  }, [notifications, searchQuery, typeFilter, priorityFilter, scopeFilter]);
 
   const filteredLogs = useMemo(() => {
     const q = logSearchQuery.trim().toLowerCase();
@@ -258,13 +264,16 @@ export default function Notification() {
             </select>
           </div>
           <span className="text-sm text-base-content/70">
-            Showing {filteredNotifications.length} of{" "}
-            {NOTIFICATIONS_STATIC.length} notifications
+            Showing {filteredNotifications.length} of {notifications.length}{" "}
+            notifications
           </span>
         </div>
         <AddNotificationModal />
       </div>
-      <NotificationTable notifications={filteredNotifications} />
+      <NotificationTable
+        notifications={filteredNotifications}
+        onBulkDelete={onBulkDelete}
+      />
 
       <div className="text-xl font-bold mt-10">System Logs</div>
       <p className="text-sm text-base-content/70">
