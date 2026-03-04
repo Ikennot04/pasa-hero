@@ -3,13 +3,14 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
+import { MdOutlineEdit } from "react-icons/md";
 import type { BusProps } from "../BusProps";
 import { editBusSchema, type EditBusFormData } from "./editBusSchema";
 
 export const EDIT_BUS_MODAL_ID = "edit-bus-modal";
 
 type EditBusProps = {
-  bus: BusProps | null;
+  bus: BusProps;
   modalId?: string;
   onCloseModal?: () => void;
 };
@@ -20,7 +21,8 @@ const defaultValues: EditBusFormData = {
   maximum_capacity: 0,
 };
 
-export default function EditBusModal({ bus, modalId = EDIT_BUS_MODAL_ID, onCloseModal }: EditBusProps) {
+export default function EditBusModal({ bus, modalId, onCloseModal }: EditBusProps) {
+  const id = modalId ?? `${EDIT_BUS_MODAL_ID}-${bus.id}`;
   const {
     register,
     handleSubmit,
@@ -60,28 +62,36 @@ export default function EditBusModal({ bus, modalId = EDIT_BUS_MODAL_ID, onClose
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.message ?? "Failed to update bus");
       }
-      (document.getElementById(modalId) as HTMLDialogElement)?.close();
+      (document.getElementById(id) as HTMLDialogElement)?.close();
       onCloseModal?.();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to update bus");
     }
   }
 
+  function openModal() {
+    (document.getElementById(id) as HTMLDialogElement)?.showModal();
+  }
+
   useEffect(() => {
-    const el = document.getElementById(modalId) as HTMLDialogElement | null;
+    const el = document.getElementById(id) as HTMLDialogElement | null;
     if (!el) return;
-    if (bus) {
-      el.showModal();
-    } else {
-      el.close();
-    }
     const onClose = () => onCloseModal?.();
     el.addEventListener("close", onClose);
     return () => el.removeEventListener("close", onClose);
-  }, [bus, modalId, onCloseModal]);
+  }, [id, onCloseModal]);
 
   return (
-    <dialog id={modalId} className="modal">
+    <>
+      <button
+        type="button"
+        className="btn"
+        onClick={openModal}
+      >
+        <MdOutlineEdit className="w-5 h-5" />
+        Edit
+      </button>
+      <dialog id={id} className="modal">
       <div className="modal-box flex flex-col max-h-[90vh] p-0">
         <h3 className="font-bold text-lg p-4 pb-0">Edit bus</h3>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
@@ -136,7 +146,7 @@ export default function EditBusModal({ bus, modalId = EDIT_BUS_MODAL_ID, onClose
               type="button"
               className="btn btn-ghost"
               onClick={() => {
-                (document.getElementById(modalId) as HTMLDialogElement)?.close();
+                (document.getElementById(id) as HTMLDialogElement)?.close();
                 onCloseModal?.();
               }}
             >
@@ -155,5 +165,6 @@ export default function EditBusModal({ bus, modalId = EDIT_BUS_MODAL_ID, onClose
         <button type="submit">close</button>
       </form>
     </dialog>
+    </>
   );
 }

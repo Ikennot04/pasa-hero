@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BusProps, type AssignmentStatus, type AssignmentResult } from "../BusProps";
+import {
+  BusProps,
+  type AssignmentStatus,
+  type AssignmentResult,
+} from "../BusProps";
 import EditBusModal from "./EditBus";
-import { MdOutlineEdit } from "react-icons/md";
 import { FaRegEye } from "react-icons/fa6";
 
 function BusStatusBadge({ status }: { status: string }) {
@@ -14,9 +16,7 @@ function BusStatusBadge({ status }: { status: string }) {
     "out of service": "badge-error",
   };
   return (
-    <span className={`badge ${map[status] ?? "badge-ghost"}`}>
-      {status}
-    </span>
+    <span className={`badge ${map[status] ?? "badge-ghost"}`}>{status}</span>
   );
 }
 
@@ -28,9 +28,7 @@ function OccupancyBadge({ status }: { status: string }) {
     full: "badge-error",
   };
   return (
-    <span className={`badge ${map[status] ?? "badge-ghost"}`}>
-      {status}
-    </span>
+    <span className={`badge ${map[status] ?? "badge-ghost"}`}>{status}</span>
   );
 }
 
@@ -68,7 +66,6 @@ function AssignmentBadge({
 
 export default function BusTable({ buses }: { buses: BusProps[] }) {
   const router = useRouter();
-  const [editingBus, setEditingBus] = useState<BusProps | null>(null);
 
   return (
     <div className="overflow-x-auto rounded-box border border-base-content/5 bg-base-100">
@@ -90,7 +87,7 @@ export default function BusTable({ buses }: { buses: BusProps[] }) {
         </thead>
         <tbody>
           {buses.map((bus, i) => (
-            <tr key={bus.id} >
+            <tr key={bus.id}>
               <th>{i + 1}</th>
               <td className="font-medium">{bus.bus_number}</td>
               <td>{bus.plate_number}</td>
@@ -119,26 +116,19 @@ export default function BusTable({ buses }: { buses: BusProps[] }) {
                 />
               </td>
               <td className="flex gap-2">
-                <button className="btn" onClick={() => router.push(`/admin/bus/${bus.id}`)}>
-                <FaRegEye className="w-5 h-5" />
-                  View</button>
                 <button
-                  type="button"
                   className="btn"
-                  onClick={() => setEditingBus(bus)}
+                  onClick={() => router.push(`/admin/bus/${bus.id}`)}
                 >
-                  <MdOutlineEdit className="w-5 h-5" />
-                  Edit
+                  <FaRegEye className="w-5 h-5" />
+                  View
                 </button>
+                <EditBusModal bus={bus} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <EditBusModal
-        bus={editingBus}
-        onCloseModal={() => setEditingBus(null)}
-      />
     </div>
   );
 }
