@@ -114,23 +114,23 @@ export default function NotificationTable({
     <>
       <div className="space-y-2">
         {canBulkDelete && (
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center justify-end gap-3 flex-wrap">
             <span className="text-sm text-base-content/70">
               {selectedCount} selected
             </span>
             <button
               type="button"
-              className="btn btn-error"
-              onClick={() => setShowDeleteModal(true)}
-            >
-              Delete selected
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
+              className="btn btn-ghost btn-sm"
               onClick={() => setSelectedIds(new Set())}
             >
               Clear selection
+            </button>
+            <button
+              type="button"
+              className="btn btn-error btn-sm"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              Delete selected
             </button>
           </div>
         )}
@@ -138,17 +138,6 @@ export default function NotificationTable({
           <table className="table">
             <thead>
               <tr>
-                <th className="w-10">
-                  {onBulkDelete && (
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-sm"
-                      checked={allSelected}
-                      onChange={toggleAll}
-                      aria-label="Select all"
-                    />
-                  )}
-                </th>
                 <th className="w-10">#</th>
                 <th>Title</th>
                 <th>Message</th>
@@ -157,22 +146,22 @@ export default function NotificationTable({
                 <th>Scope</th>
                 <th>Target</th>
                 <th>Created</th>
+                {onBulkDelete && (
+                  <th className="w-10">
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      aria-label="Select all"
+                    />
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
               {notifications.map((n, i) => (
                 <tr key={n.id}>
-                  <td>
-                    {onBulkDelete && (
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm"
-                        checked={selectedIds.has(n.id)}
-                        onChange={() => toggleOne(n.id)}
-                        aria-label={`Select ${n.title}`}
-                      />
-                    )}
-                  </td>
                   <th>{i + 1}</th>
                   <td className="font-medium max-w-[180px] truncate" title={n.title}>
                     {n.title}
@@ -205,6 +194,17 @@ export default function NotificationTable({
                   <td className="text-sm text-base-content/70">
                     {formatDate(n.createdAt)}
                   </td>
+                  {onBulkDelete && (
+                    <td className="text-right">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={selectedIds.has(n.id)}
+                        onChange={() => toggleOne(n.id)}
+                        aria-label={`Select ${n.title}`}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

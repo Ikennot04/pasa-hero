@@ -158,14 +158,20 @@ export default function Notification() {
   const [logSearchQuery, setLogSearchQuery] = useState("");
   const [logActionFilter, setLogActionFilter] = useState<string>("all");
 
+  const [logs, setLogs] = useState<SystemLogProps[]>(SYSTEM_LOGS_STATIC);
+
   const onBulkDelete = useCallback((ids: string[]) => {
     setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
   }, []);
 
-  const actionTypes = useMemo(() => {
-    const set = new Set(SYSTEM_LOGS_STATIC.map((l) => l.action));
-    return Array.from(set).sort();
+  const onBulkDeleteLogs = useCallback((ids: string[]) => {
+    setLogs((prev) => prev.filter((l) => !ids.includes(l.id)));
   }, []);
+
+  const actionTypes = useMemo(() => {
+    const set = new Set(logs.map((l) => l.action));
+    return Array.from(set).sort();
+  }, [logs]);
 
   const filteredNotifications = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -188,7 +194,7 @@ export default function Notification() {
 
   const filteredLogs = useMemo(() => {
     const q = logSearchQuery.trim().toLowerCase();
-    return SYSTEM_LOGS_STATIC.filter((log) => {
+    return logs.filter((log) => {
       const matchSearch =
         !q ||
         log.action.toLowerCase().includes(q) ||
@@ -199,7 +205,7 @@ export default function Notification() {
         logActionFilter === "all" || log.action === logActionFilter;
       return matchSearch && matchAction;
     });
-  }, [logSearchQuery, logActionFilter]);
+  }, [logs, logSearchQuery, logActionFilter]);
 
   return (
     <div className="space-y-4 pt-6">
@@ -305,11 +311,11 @@ export default function Notification() {
             </select>
           </div>
           <span className="text-sm text-base-content/70">
-            Showing {filteredLogs.length} of {SYSTEM_LOGS_STATIC.length} logs
+            Showing {filteredLogs.length} of {logs.length} logs
           </span>
         </div>
       </div>
-      <SystemLogTable logs={filteredLogs} />
+      <SystemLogTable logs={filteredLogs} onBulkDelete={onBulkDeleteLogs} />
     </div>
   );
 }
