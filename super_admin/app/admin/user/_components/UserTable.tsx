@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import EditUserModal, { EDIT_USER_MODAL_ID } from "./EditUser";
+import EditUserModal from "./EditUser";
 import ConfirmSuspendModal, {
   CONFIRM_SUSPEND_MODAL_ID,
 } from "./ConfirmSuspend";
 
 // ICONS
-import { MdOutlineEdit, MdOutlinePersonOff } from "react-icons/md";
+import { MdOutlinePersonOff } from "react-icons/md";
 
 export type UserRow = {
   id: number;
@@ -23,15 +23,7 @@ type UserTableProps = {
 };
 
 export default function UserTable({ users }: UserTableProps) {
-  const [userToEdit, setUserToEdit] = useState<UserRow | null>(null);
   const [userToSuspend, setUserToSuspend] = useState<UserRow | null>(null);
-
-  const openEditModal = (user: UserRow) => {
-    setUserToEdit(user);
-    (
-      document.getElementById(EDIT_USER_MODAL_ID) as HTMLDialogElement
-    )?.showModal();
-  };
 
   const openSuspendModal = (user: UserRow) => {
     setUserToSuspend(user);
@@ -65,14 +57,7 @@ export default function UserTable({ users }: UserTableProps) {
                 <td>{user.role}</td>
                 <td>{user.status}</td>
                 <td className="flex gap-2">
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => openEditModal(user)}
-                  >
-                    <MdOutlineEdit className="w-5 h-5" />
-                    Edit
-                  </button>
+                  <EditUserModal user={user} />
                   <button
                     type="button"
                     className="btn bg-[#D0393A] hover:bg-[#D0393A]/90 text-white"
@@ -87,7 +72,6 @@ export default function UserTable({ users }: UserTableProps) {
           </tbody>
         </table>
       </div>
-      <EditUserModal user={userToEdit} />
       <ConfirmSuspendModal user={userToSuspend} />
     </>
   );
