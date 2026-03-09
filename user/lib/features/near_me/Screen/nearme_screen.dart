@@ -28,23 +28,25 @@ class _NearMeContentState extends State<_NearMeContent> {
   bool _showFreeRideDetails = false;
   double _sheetExtent = 0.38;
   bool _showFreeRide = true;
-  bool _showStopsContent = false; // Controls visibility of stops list
+  bool _showStopsContent = true; // Show list on load (initial size 0.38); listener updates when user drags
+  static const double _minSheetExtent = 0.10; // 10% peek so user sees swipe hint
+
+  void _updateFromSheetExtent(double extent) {
+    setState(() {
+      _sheetExtent = extent;
+      _showFreeRide = extent > _minSheetExtent && extent < 0.70;
+      _showStopsContent = extent > 0.15;
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _sheetController = DraggableScrollableController();
-    _sheetController.addListener(() {
-      final extent = _sheetController.size;
-      
-      setState(() {
-        _sheetExtent = extent;
-        // Hide free ride banner when sheet is very small or hidden
-        _showFreeRide = extent > 0.10 && extent < 0.70;
-        // Show stops content when sheet is dragged above 40% (0.40)
-        // This gives user option to scroll up to see the list
-        _showStopsContent = extent > 0.40;
-      });
+    _sheetController.addListener(() => _updateFromSheetExtent(_sheetController.size));
+    // Sync state after first frame so list is visible on load (listener may not fire until user drags)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updateFromSheetExtent(_sheetController.size);
     });
   }
 
@@ -183,14 +185,14 @@ class _NearMeContentState extends State<_NearMeContent> {
             ),
 
 
-           // 🔹 Bottom draggable sheet - scrollable all the way down to 0 (hidden)
+           // 🔹 Bottom draggable sheet - min 10% so user always sees swipe hint
           DraggableScrollableSheet(
             controller: _sheetController,
             initialChildSize: 0.38,
-            minChildSize: 0.0, // Can scroll all the way down to completely hide
+            minChildSize: _minSheetExtent, // 10% peek with swipe icon
             maxChildSize: 0.85,
             snap: true, // Enable snapping to sizes
-            snapSizes: const [0.0, 0.38, 0.85], // Snap points: hidden, initial, max
+            snapSizes: const [_minSheetExtent, 0.38, 0.85], // Snap: peek, initial, max
             builder: (context, scrollController) {
               return Container(
                 decoration: const BoxDecoration(
@@ -210,19 +212,33 @@ class _NearMeContentState extends State<_NearMeContent> {
                   controller: scrollController, // Use sheet's scroll controller for entire content
                   physics: const ClampingScrollPhysics(), // Important for DraggableScrollableSheet
                   slivers: [
-                    // 🔹 Drag handle - visual indicator
+                    // 🔹 Drag handle + swipe hint icon (always visible so user knows they can swipe)
                     SliverToBoxAdapter(
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Center(
-                          child: Container(
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Always show arrow: up when minimized, down when card is up
+                              Icon(
+                                _sheetExtent <= _minSheetExtent + 0.02
+                                    ? Icons.keyboard_arrow_up_rounded
+                                    : Icons.keyboard_arrow_down_rounded,
+                                size: 28,
+                                color: Colors.grey.shade600,
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade300,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -248,14 +264,9 @@ class _NearMeContentState extends State<_NearMeContent> {
                         child: SizedBox(height: 12),
                       ),
 
-                    // 🔹 List - Scrollable list of terminals
-                    // Only render when sheet is visible enough
+                    // 🔹 List - Scrollable list of terminals (shown when sheet is up so user sees data on load)
                     if (_sheetExtent > 0.15 && _showStopsContent)
-                      _buildTerminalsList(scrollController)
-                    else if (_sheetExtent > 0.15)
-                      const SliverToBoxAdapter(
-                        child: SizedBox.shrink(),
-                      ),
+                      _buildTerminalsList(scrollController),
                   ],
                 ),
               );

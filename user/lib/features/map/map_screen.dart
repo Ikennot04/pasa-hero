@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../core/services/bus_stops_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/map/map_service.dart';
 
-/// Main map screen widget that displays Google Maps with user location.
-/// 
-/// Features:
-/// - Displays Google Map with traffic layer enabled
-/// - Shows user's current GPS location (blue dot)
-/// - Auto-centers map on user location when app starts
-/// - Shows loading indicator while fetching GPS
-/// - Handles permission denied cases with user-friendly UI
-/// - Includes "My Location" button to re-center on user location
+/// Main map screen: transportation-focused map with bus stops from Firestore.
+///
+/// - Custom map style hides POIs, transit icons, building/admin labels; keeps roads.
+/// - Markers from Firestore [bus_stops] (name, stop code, route).
+/// - User location remains visible (blue dot).
+/// - Optional custom bus stop icon from assets.
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
@@ -34,14 +33,19 @@ class _MapScreenState extends State<MapScreen> {
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
   
-  // Markers for the map
+  // Markers: user location + bus stops from Firestore
   Set<Marker> _markers = {};
-  
+  Set<Marker> _busStopMarkers = {};
+  String? _mapStyleJson;
+  BitmapDescriptor? _busStopIcon;
+
+  final BusStopsService _busStopsService = BusStopsService();
+
   // Guard to prevent concurrent location requests
   bool _isLocationRequestInProgress = false;
   
   // Performance optimization flags
-  static const bool _enableTrafficLayer = false; // Disabled for better performance on low-end devices
+  static const bool _enableTrafficLayer = true; // Show current traffic on roads
   static const bool _useInstantCameraUpdates = true; // Use moveCamera instead of animateCamera for better performance
   static const bool _preferLowAccuracy = true; // Use low accuracy for faster, battery-efficient location
   static const bool _useCachedPosition = true; // Use cached positions when available
@@ -54,7 +58,8 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialize location when screen loads
+    _loadMapStyle();
+    _initializeBusStopsAndIcon();
     _initializeLocation();
   }
 
@@ -422,15 +427,15 @@ class _MapScreenState extends State<MapScreen> {
   /// Called when the map is created and controller is available.
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
-    
+    // Apply transportation-focused style (hides POIs, transit, admin labels; keeps roads)
+    if (_mapStyleJson != null) {
+      controller.setMapStyle(_mapStyleJson);
+    }
     // Center map on user location if we already have the position
     if (_currentPosition != null) {
-      // Add marker asynchronously (non-blocking) - only if enabled
       if (_enableCustomMarker) {
         _addMarkerAsync(_currentPosition!);
       }
-      
-      // Just move camera to existing position (don't request location again!)
       Future.microtask(() async {
         if (_mapController != null && _currentPosition != null) {
           try {
@@ -452,40 +457,105 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  /// Adds marker asynchronously to avoid blocking location operations.
-  /// This is called after location is confirmed to prevent timeouts.
-  /// Uses the simplest marker possible to avoid any blocking operations.
+  Future<void> _loadMapStyle() async {
+    try {
+      final json = await rootBundle.loadString(
+        'assets/map_styles/transportation_map_style.json',
+      );
+      _mapStyleJson = json;
+      if (mounted) {
+        setState(() {});
+        if (_mapController != null) {
+          _mapController!.setMapStyle(_mapStyleJson);
+        }
+      }
+    } catch (e) {
+      print('⚠️ [MapScreen] Could not load map style: $e');
+    }
+  }
+
+  /// Load icon then bus stops so markers are created with a valid icon.
+  Future<void> _initializeBusStopsAndIcon() async {
+    await _loadBusStopIcon();
+    await _loadBusStopsAndCreateMarkers();
+  }
+
+  /// Load custom bus stop icon from asset; falls back to orange default marker.
+  Future<void> _loadBusStopIcon() async {
+    try {
+      final descriptor = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(size: Size(48, 48), devicePixelRatio: 2.0),
+        'assets/images/logo/Bus.png',
+      );
+      if (mounted) {
+        setState(() => _busStopIcon = descriptor);
+      }
+    } catch (e) {
+      print('⚠️ [MapScreen] Using default bus stop marker (asset failed): $e');
+      if (mounted) {
+        setState(() => _busStopIcon = BitmapDescriptor.defaultMarkerWithHue(
+          BitmapDescriptor.hueOrange,
+        ));
+      }
+    }
+  }
+
+  /// Rebuild _markers from user location + bus stop markers.
+  void _applyMarkers() {
+    final Set<Marker> next = Set<Marker>.from(_busStopMarkers);
+    if (_currentPosition != null) {
+      next.add(Marker(
+        markerId: const MarkerId('user_location'),
+        position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        infoWindow: const InfoWindow(title: 'Your Location', snippet: 'You are here'),
+        anchor: const Offset(0.5, 0.5),
+      ));
+    }
+    _markers = next;
+  }
+
+  /// Load bus stops from Firestore (or sample data) and create map markers.
+  Future<void> _loadBusStopsAndCreateMarkers() async {
+    try {
+      final stops = await _busStopsService.getBusStops();
+      final icon = _busStopIcon ?? BitmapDescriptor.defaultMarkerWithHue(
+        BitmapDescriptor.hueOrange,
+      );
+      final Set<Marker> markers = {};
+      for (final stop in stops) {
+        markers.add(Marker(
+          markerId: MarkerId('bus_stop_${stop.id}'),
+          position: stop.position,
+          icon: icon,
+          infoWindow: InfoWindow(
+            title: stop.name,
+            snippet: 'Stop ${stop.stopCode} · Route ${stop.route}',
+          ),
+        ));
+      }
+      if (mounted) {
+        setState(() {
+          _busStopMarkers = markers;
+          _applyMarkers();
+        });
+        print('📍 [MapScreen] Loaded ${markers.length} bus stop markers');
+      }
+    } catch (e) {
+      print('⚠️ [MapScreen] Error loading bus stops: $e');
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// Adds user location and merges with bus stop markers.
   void _addMarkerAsync(Position position) {
-    // Use a delay to ensure all location operations complete first
-    // This prevents marker creation from interfering with location fetching
     Future.delayed(const Duration(milliseconds: 300), () {
       if (!mounted || _mapController == null) return;
-      
-      try {
-        // Create a blue marker to show user location
-        // Using default blue marker - simple and fast
-        final marker = Marker(
-          markerId: const MarkerId('user_location'),
-          position: LatLng(position.latitude, position.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-          infoWindow: const InfoWindow(
-            title: 'Your Location',
-            snippet: 'You are here',
-          ),
-          anchor: const Offset(0.5, 0.5), // Center the marker on the location
-        );
-        
-        if (mounted) {
-          setState(() {
-            _markers = {marker};
-          });
-          print('📍 [MapScreen] User location marker added at (${position.latitude}, ${position.longitude})');
-        }
-      } catch (e) {
-        print('⚠️ [MapScreen] Error adding marker: $e');
-        // Don't throw - marker is optional, location is more important
-        // The built-in myLocationEnabled blue dot will still work
-      }
+      setState(() {
+        _currentPosition = position;
+        _applyMarkers();
+      });
+      print('📍 [MapScreen] User location marker added at (${position.latitude}, ${position.longitude})');
     });
   }
 
@@ -507,7 +577,7 @@ class _MapScreenState extends State<MapScreen> {
             myLocationEnabled: true, // Shows blue dot for user location
             myLocationButtonEnabled: false, // We'll use custom button
             markers: _enableCustomMarker ? _markers : {}, // Custom markers (disabled by default to prevent timeouts)
-            trafficEnabled: _enableTrafficLayer, // Disabled by default for better performance
+            trafficEnabled: _enableTrafficLayer,
             mapType: MapService.getDefaultMapType(),
             zoomControlsEnabled: false, // Hide default zoom controls
             compassEnabled: true, // Show compass
