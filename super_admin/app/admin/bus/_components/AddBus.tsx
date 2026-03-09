@@ -70,7 +70,7 @@ export default function AddBusModal() {
 
   return (
     <>
-      <button type="button" className="btn" onClick={openModal}>
+      <button type="button" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" onClick={openModal}>
         Add bus
       </button>
       <dialog ref={dialogRef} className="modal">
@@ -128,10 +128,10 @@ export default function AddBusModal() {
               )}
             </div>
             <div className="modal-action">
-              <button type="button" className="btn " onClick={closeModal}>
+              <button type="button" className="btn btn-ghost" onClick={closeModal}>
                 Cancel
               </button>
-              <button type="submit" className="btn" disabled={isSubmitting}>
+              <button type="submit" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" disabled={isSubmitting}>
                 {isSubmitting ? "Adding…" : "Add bus"}
               </button>
             </div>

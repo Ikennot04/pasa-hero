@@ -12,7 +12,6 @@ const terminalLogSchema = new mongoose.Schema(
         "arrival_confirmed",
         "departure_reported",
         "departure_confirmed",
-        "auto_detected",
       ],
     },
 
@@ -28,8 +27,6 @@ const terminalLogSchema = new mongoose.Schema(
 
     event_time: { type: Date, required: true },
     confirmation_time: { type: Date, default: null },
-
-    remarks: { type: String },
   },
   { timestamps: true },
 );
