@@ -61,54 +61,71 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       child: Scaffold(
         backgroundColor: const Color(0xFF1E3A8A),
+        resizeToAvoidBottomInset: true,
         body: SafeArea(
-        bottom: false,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return Stack(
-              children: [
-                // Header background - only covers top portion
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: headerHeight,
-                  child: Container(
-                    width: double.infinity,
-                    color: const Color(0xFF1E3A8A),
-                    child: Center(
-                      child: Image.asset(
-                        'assets/images/logo/logo1.png',
-                        width: logoWidth,
-                        height: logoHeight,
-                        fit: BoxFit.contain,
+          bottom: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final viewInsets = MediaQuery.of(context).viewInsets;
+              final keyboardHeight = viewInsets.bottom;
+              
+              // Adjust header and form position when keyboard appears
+              final headerShrinkFactor = keyboardHeight > 0 ? 0.6 : 1.0;
+              final adjustedHeaderHeight = headerHeight * headerShrinkFactor;
+              final adjustedFormTop = formTop * headerShrinkFactor;
+              
+              return Stack(
+                children: [
+                  // Header background - shrinks when keyboard appears
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: adjustedHeaderHeight,
+                    child: Container(
+                      width: double.infinity,
+                      color: const Color(0xFF1E3A8A),
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                          width: logoWidth * headerShrinkFactor,
+                          height: logoHeight * headerShrinkFactor,
+                          child: Image.asset(
+                            'assets/images/logo/logo1.png',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                // Login form - positioned lower, extends to bottom
-                Positioned(
-                  top: formTop,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(borderRadius),
-                      topRight: Radius.circular(borderRadius),
-                    ),
-                    child: LoginForm(
-                      emailController: _emailController,
-                      passwordController: _passwordController,
+                  // Login form - positioned to overlap header, moves up when keyboard appears
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOut,
+                    top: adjustedFormTop,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(borderRadius),
+                        topRight: Radius.circular(borderRadius),
+                      ),
+                      child: LoginForm(
+                        emailController: _emailController,
+                        passwordController: _passwordController,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
-      ),
       ),
     );
   }
