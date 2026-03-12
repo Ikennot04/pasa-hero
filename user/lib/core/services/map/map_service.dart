@@ -97,15 +97,11 @@ class MapService {
     return MapType.normal;
   }
 
-  /// Gets the default initial camera position (Manila, Philippines).
-  /// 
-  /// This is used as a fallback when GPS location is unavailable.
-  /// 
-  /// Returns a [CameraPosition] centered on Manila.
+  /// Gets the default initial camera position (Cebu, Philippines).
+  /// Used when GPS location is unavailable or when showing all Cebu bus stops.
   static CameraPosition getDefaultCameraPosition() {
-    // Manila, Philippines coordinates
     return const CameraPosition(
-      target: LatLng(14.5995, 120.9842),
+      target: LatLng(10.3157, 123.8854), // Cebu City center
       zoom: 12.0,
     );
   }
