@@ -76,6 +76,7 @@ flutter:
     - assets/images/splashscreen/spalshscreen.png
     - assets/images/logo/Bus.png
     - assets/images/logo/buspic.png
+    - assets/map_styles/transportation_map_style.json
     
 
   # An image asset can refer to one or more resolution-specific "variants", see
