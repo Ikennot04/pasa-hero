@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../../core/models/bus_stop.dart';
+import '../../../core/services/bus_stops_service.dart';
+import '../../../core/services/location_service.dart';
 import '../../../shared/bottom_navBar.dart';
 import '../../map/map.dart';
 import '../Module/free_ride.dart';
+import '../Module/from_to_form.dart';
 import '../Module/nearby_terminal.dart';
 
 class NearMeScreen extends StatelessWidget {
@@ -23,13 +29,32 @@ class _NearMeContent extends StatefulWidget {
 }
 
 class _NearMeContentState extends State<_NearMeContent> {
-  final TextEditingController _searchController = TextEditingController();
   late DraggableScrollableController _sheetController;
   bool _showFreeRideDetails = false;
   double _sheetExtent = 0.38;
   bool _showFreeRide = true;
-  bool _showStopsContent = true; // Show list on load (initial size 0.38); listener updates when user drags
-  static const double _minSheetExtent = 0.10; // 10% peek so user sees swipe hint
+  bool _showStopsContent = true;
+  static const double _minSheetExtent = 0.10;
+
+  Map<String, dynamic>? _selectedTo;
+  List<Map<String, dynamic>> _destinations = [];
+  LatLng? _closestStopLatLng;
+  Position? _userPosition;
+  LatLng? _routeOrigin;
+  LatLng? _routeDestination;
+  bool _destinationsLoading = true;
+
+  final LocationService _locationService = LocationService();
+  final BusStopsService _busStopsService = BusStopsService();
+
+  /// Fallback list when API hasn't loaded yet; includes lat/lng for route drawing.
+  static const List<Map<String, dynamic>> _terminalsFallback = [
+    {'terminalName': 'Pacific Terminal', 'location': 'Pacific Mall, Mandaue', 'lat': 10.3232, 'lng': 123.9456, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.6 Km', 'isHighlighted': true},
+    {'terminalName': 'Marpa', 'location': 'Maguikay, Mandaue City', 'lat': 10.3312, 'lng': 123.9388, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.6 Km', 'isHighlighted': false},
+    {'terminalName': 'Jmall', 'location': 'Jmall, Mandaue City', 'lat': 10.3289, 'lng': 123.9321, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.7 Km', 'isHighlighted': false},
+    {'terminalName': 'Ayala Terminal', 'location': 'Ayala Center, Cebu City', 'lat': 10.3192, 'lng': 123.9076, 'routes': ['02A', '04B', '12C'], 'distance': '1.2 Km', 'isHighlighted': false},
+    {'terminalName': 'SM Terminal', 'location': 'SM City, Cebu', 'lat': 10.3156, 'lng': 123.9182, 'routes': ['03D', '05E', '08F'], 'distance': '1.5 Km', 'isHighlighted': false},
+  ];
 
   void _updateFromSheetExtent(double extent) {
     setState(() {
@@ -42,62 +67,83 @@ class _NearMeContentState extends State<_NearMeContent> {
   @override
   void initState() {
     super.initState();
+    _destinations = List<Map<String, dynamic>>.from(_terminalsFallback);
     _sheetController = DraggableScrollableController();
     _sheetController.addListener(() => _updateFromSheetExtent(_sheetController.size));
-    // Sync state after first frame so list is visible on load (listener may not fire until user drags)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _updateFromSheetExtent(_sheetController.size);
+      _loadBusStopsAsDestinations();
+    });
+  }
+
+  /// Loads bus stops and sets them as destination options; also captures closest stop for route origin.
+  Future<void> _loadBusStopsAsDestinations() async {
+    try {
+      Position? position;
+      try {
+        final enabled = await _locationService.isLocationServiceEnabled();
+        final hasPermission = await _locationService.requestPermission();
+        if (enabled && hasPermission) {
+          position = await _locationService.getCurrentPosition(
+            preferLowAccuracy: true,
+            useCachedPosition: true,
+          ).timeout(const Duration(seconds: 8));
+        }
+      } catch (_) {}
+      if (position != null && mounted) {
+        _userPosition = position;
+        final result = await _busStopsService.getBusStopsWithClosestHighlighted(
+          position.latitude,
+          position.longitude,
+        );
+        if (!mounted) return;
+        _applyDestinationsFromStops(result.stops, result.closestStopId);
+        return;
+      }
+      final result = await _busStopsService.getBusStopsInCebu();
+      if (!mounted) return;
+      _applyDestinationsFromStops(result.stops, null);
+    } catch (e) {
+      if (mounted) setState(() => _destinationsLoading = false);
+    }
+  }
+
+  void _applyDestinationsFromStops(List<BusStop> stops, String? closestStopId) {
+    if (stops.isEmpty) return;
+    final list = stops.map((stop) {
+      final location = stop.route.isNotEmpty ? 'Route ${stop.route}' : stop.stopCode;
+      return <String, dynamic>{
+        'terminalName': stop.name,
+        'location': location,
+        'lat': stop.lat,
+        'lng': stop.lng,
+      };
+    }).toList();
+    LatLng? closestLatLng;
+    if (closestStopId != null) {
+      for (final s in stops) {
+        if (s.id == closestStopId) {
+          closestLatLng = s.position;
+          break;
+        }
+      }
+    }
+    setState(() {
+      _destinations = list;
+      _closestStopLatLng = closestLatLng;
+      _destinationsLoading = false;
     });
   }
 
   @override
   void dispose() {
     _sheetController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
-  /// Builds the scrollable list of terminals
+  /// Builds the scrollable list of terminals (uses fallback list with routes/distance for card display)
   Widget _buildTerminalsList(ScrollController scrollController) {
-    // Sample data - replace with actual data from your backend/state
-    final terminals = [
-      {
-        'terminalName': 'Pacific Terminal',
-        'location': 'Pacific Mall, Mandaue',
-        'routes': ['01K', '13B', '01F', '46E'],
-        'distance': '0.6 Km',
-        'isHighlighted': true,
-      },
-      {
-        'terminalName': 'Marpa',
-        'location': 'Maguikay, Mandaue City',
-        'routes': ['01K', '13B', '01F', '46E'],
-        'distance': '0.6 Km',
-        'isHighlighted': false,
-      },
-      {
-        'terminalName': 'Jmall',
-        'location': 'Jmall, Mandaue City',
-        'routes': ['01K', '13B', '01F', '46E'],
-        'distance': '0.7 Km',
-        'isHighlighted': false,
-      },
-      {
-        'terminalName': 'Ayala Terminal',
-        'location': 'Ayala Center, Cebu City',
-        'routes': ['02A', '04B', '12C'],
-        'distance': '1.2 Km',
-        'isHighlighted': false,
-      },
-      {
-        'terminalName': 'SM Terminal',
-        'location': 'SM City, Cebu',
-        'routes': ['03D', '05E', '08F'],
-        'distance': '1.5 Km',
-        'isHighlighted': false,
-      },
-    ];
-
+    final terminals = _terminalsFallback;
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
@@ -127,28 +173,49 @@ class _NearMeContentState extends State<_NearMeContent> {
     return Scaffold(
       body: Stack(
         children: [
-          // 🔹 Map background
-          const Positioned.fill(
-            child: MapWidget(),
+          // 🔹 Map background (route from closest bus stop to selected destination)
+          Positioned.fill(
+            child: MapWidget(
+              routeOrigin: _routeOrigin,
+              routeDestination: _routeDestination,
+            ),
           ),
 
-          // 🔹 Search bar (top floating pill)
-          // Positioned(
-          //   top: 0,
-          //   left: 0,
-          //   right: 0,
-          //   child: SafeArea(
-          //     bottom: false,
-          //     child: Padding(
-          //       padding: const EdgeInsets.fromLTRB(16, 32, 16, 8),
-          //       child: AppSearchBar(
-          //         controller: _searchController,
-          //         hintText: 'Where you going',
-          //         onChanged: (_) {},
-          //       ),
-          //     ),
-          //   ),
-          // ),
+          // 🔹 Destination form (bus stops as options)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: FromToForm(
+                  destinations: _destinations,
+                  selectedDestination: _selectedTo,
+                  isLoading: _destinationsLoading,
+                  onDestinationSelected: (t) {
+                    final lat = t['lat'];
+                    final lng = t['lng'];
+                    final hasCoords = lat != null && lng != null && lat is num && lng is num;
+                    setState(() {
+                      _selectedTo = t;
+                      if (hasCoords) {
+                        _routeDestination = LatLng(lat.toDouble(), lng.toDouble());
+                        _routeOrigin = _closestStopLatLng ??
+                            (_userPosition != null
+                                ? LatLng(_userPosition!.latitude, _userPosition!.longitude)
+                                : null);
+                      } else {
+                        _routeOrigin = null;
+                        _routeDestination = null;
+                      }
+                    });
+                  },
+                ),
+              ),
+            ),
+          ),
 
            // 🔹 Free Ride banner (floating above bottom sheet, follows sheet movement with fade animation)
           // Only show when sheet is visible (not at 0)

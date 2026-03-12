@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../core/models/bus_stop.dart';
 import '../../core/services/bus_stops_service.dart';
+import '../../core/services/directions_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/map/map_service.dart';
 
@@ -11,9 +13,19 @@ import '../../core/services/map/map_service.dart';
 /// - Custom map style hides POIs, transit icons, building/admin labels; keeps roads.
 /// - Markers from Firestore [bus_stops] (name, stop code, route).
 /// - User location remains visible (blue dot).
-/// - Optional custom bus stop icon from assets.
+/// - When [routeOrigin] and [routeDestination] are set, draws driving route polyline.
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({
+    super.key,
+    this.routeOrigin,
+    this.routeDestination,
+  });
+
+  /// Start of the route (e.g. closest bus stop to user). When set with [routeDestination], route is drawn.
+  final LatLng? routeOrigin;
+
+  /// End of the route (e.g. selected destination bus stop).
+  final LatLng? routeDestination;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -33,13 +45,17 @@ class _MapScreenState extends State<MapScreen> {
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
   
-  // Markers: user location + bus stops from Firestore
   Set<Marker> _markers = {};
   Set<Marker> _busStopMarkers = {};
+  Set<Polyline> _routePolylines = {};
+  Set<Circle> _userLocationCircles = {};
   String? _mapStyleJson;
-  BitmapDescriptor? _busStopIcon;
+
+  /// Radius in meters for the faded blue "you are here" glow when away from a bus stop.
+  static const double _userLocationGlowRadiusMeters = 120.0;
 
   final BusStopsService _busStopsService = BusStopsService();
+  final DirectionsService _directionsService = DirectionsService();
 
   // Guard to prevent concurrent location requests
   bool _isLocationRequestInProgress = false;
@@ -59,8 +75,76 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _loadMapStyle();
-    _initializeBusStopsAndIcon();
+    // Show all Cebu bus stops (sample on first frame, then from Firestore)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _busStopMarkers.isEmpty) {
+        _applySampleBusStopMarkersCebu();
+      }
+      if (mounted && widget.routeOrigin != null && widget.routeDestination != null) {
+        _fetchAndDrawRoute(widget.routeOrigin!, widget.routeDestination!);
+      }
+    });
+    _loadAllCebuBusStops();
     _initializeLocation();
+  }
+
+  @override
+  void didUpdateWidget(covariant MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.routeOrigin != widget.routeOrigin ||
+        oldWidget.routeDestination != widget.routeDestination) {
+      if (widget.routeOrigin != null && widget.routeDestination != null) {
+        _fetchAndDrawRoute(widget.routeOrigin!, widget.routeDestination!);
+      } else {
+        setState(() => _routePolylines = {});
+      }
+    }
+  }
+
+  /// Fetches route from Directions API and draws polyline on the map.
+  Future<void> _fetchAndDrawRoute(LatLng origin, LatLng destination) async {
+    final points = await _directionsService.getRoutePolyline(origin, destination);
+    if (!mounted) return;
+    setState(() {
+      if (points.isEmpty) {
+        _routePolylines = {};
+        return;
+      }
+      _routePolylines = {
+        Polyline(
+          polylineId: const PolylineId('route_origin_to_destination'),
+          points: points,
+          color: Colors.blue,
+          width: 5,
+        ),
+      };
+    });
+    // Optionally fit camera to show the full route
+    if (_mapController != null && points.isNotEmpty) {
+      try {
+        final bounds = _boundsFromPoints(points);
+        await _mapController!.animateCamera(
+          CameraUpdate.newLatLngBounds(bounds, 80),
+        );
+      } catch (_) {}
+    }
+  }
+
+  LatLngBounds _boundsFromPoints(List<LatLng> points) {
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    return LatLngBounds(
+      southwest: LatLng(minLat, minLng),
+      northeast: LatLng(maxLat, maxLng),
+    );
   }
 
   @override
@@ -427,11 +511,13 @@ class _MapScreenState extends State<MapScreen> {
   /// Called when the map is created and controller is available.
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
-    // Apply transportation-focused style (hides POIs, transit, admin labels; keeps roads)
     if (_mapStyleJson != null) {
       controller.setMapStyle(_mapStyleJson);
     }
-    // Center map on user location if we already have the position
+    // Ensure markers (including bus stops) are applied when map is ready
+    if (_busStopMarkers.isNotEmpty || _currentPosition != null) {
+      setState(() => _applyMarkers());
+    }
     if (_currentPosition != null) {
       if (_enableCustomMarker) {
         _addMarkerAsync(_currentPosition!);
@@ -474,80 +560,142 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  /// Load icon then bus stops so markers are created with a valid icon.
-  Future<void> _initializeBusStopsAndIcon() async {
-    await _loadBusStopIcon();
-    await _loadBusStopsAndCreateMarkers();
-  }
+  static final BitmapDescriptor _defaultBusStopIcon =
+      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+  static final BitmapDescriptor _closestBusStopIcon =
+      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
 
-  /// Load custom bus stop icon from asset; falls back to orange default marker.
-  Future<void> _loadBusStopIcon() async {
-    try {
-      final descriptor = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(48, 48), devicePixelRatio: 2.0),
-        'assets/images/logo/Bus.png',
-      );
-      if (mounted) {
-        setState(() => _busStopIcon = descriptor);
-      }
-    } catch (e) {
-      print('⚠️ [MapScreen] Using default bus stop marker (asset failed): $e');
-      if (mounted) {
-        setState(() => _busStopIcon = BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueOrange,
-        ));
-      }
+  /// Fallback: create markers from sample Cebu bus stops.
+  void _applySampleBusStopMarkersCebu() {
+    const stops = [
+      {'id': 'CEB-001', 'name': 'Pacific Terminal', 'route': '01K', 'lat': 10.3232, 'lng': 123.9456},
+      {'id': 'CEB-002', 'name': 'Ayala Center Cebu', 'route': '02A', 'lat': 10.3192, 'lng': 123.9076},
+      {'id': 'CEB-003', 'name': 'SM City Cebu', 'route': '03D', 'lat': 10.3156, 'lng': 123.9182},
+      {'id': 'CEB-004', 'name': 'Jmall Mandaue', 'route': '01K', 'lat': 10.3289, 'lng': 123.9321},
+      {'id': 'CEB-005', 'name': 'Marpa Terminal', 'route': '13B', 'lat': 10.3312, 'lng': 123.9388},
+      {'id': 'CEB-006', 'name': 'Cebu South Bus Terminal', 'route': '04B', 'lat': 10.2986, 'lng': 123.8994},
+      {'id': 'CEB-007', 'name': 'Colon Street', 'route': '12C', 'lat': 10.2945, 'lng': 123.9012},
+      {'id': 'CEB-008', 'name': 'IT Park', 'route': '02A', 'lat': 10.3234, 'lng': 123.9089},
+      {'id': 'CEB-009', 'name': 'Park Mall', 'route': '01K', 'lat': 10.3345, 'lng': 123.9123},
+      {'id': 'CEB-010', 'name': 'Gaisano Capital', 'route': '13B', 'lat': 10.3178, 'lng': 123.8912},
+    ];
+    final Set<Marker> markers = {};
+    for (final s in stops) {
+      final id = s['id'] as String;
+      final name = s['name'] as String;
+      final route = s['route'] as String;
+      final lat = (s['lat'] as num).toDouble();
+      final lng = (s['lng'] as num).toDouble();
+      markers.add(Marker(
+        markerId: MarkerId('bus_stop_$id'),
+        position: LatLng(lat, lng),
+        icon: _defaultBusStopIcon,
+        infoWindow: InfoWindow(title: name, snippet: 'Stop $id · Route $route'),
+      ));
     }
+    setState(() {
+      _busStopMarkers = markers;
+      _applyMarkers();
+    });
+    print('📍 [MapScreen] Applied ${markers.length} Cebu bus stop markers');
   }
 
-  /// Rebuild _markers from user location + bus stop markers.
+  /// Rebuild _markers and _userLocationCircles from user location + bus stop markers.
   void _applyMarkers() {
     final Set<Marker> next = Set<Marker>.from(_busStopMarkers);
+    final Set<Circle> nextCircles = {};
     if (_currentPosition != null) {
+      final pos = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
       next.add(Marker(
         markerId: const MarkerId('user_location'),
-        position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+        position: pos,
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         infoWindow: const InfoWindow(title: 'Your Location', snippet: 'You are here'),
         anchor: const Offset(0.5, 0.5),
       ));
+      // Faded blue glow so user knows where they are when away from a bus stop
+      nextCircles.add(Circle(
+        circleId: const CircleId('user_location_glow'),
+        center: pos,
+        radius: _userLocationGlowRadiusMeters,
+        fillColor: Colors.blue.withOpacity(0.18),
+        strokeColor: Colors.blue.withOpacity(0.35),
+        strokeWidth: 2,
+      ));
     }
     _markers = next;
+    _userLocationCircles = nextCircles;
   }
 
-  /// Load bus stops from Firestore (or sample data) and create map markers.
-  Future<void> _loadBusStopsAndCreateMarkers() async {
+  /// Build bus stop markers; uses green icon for the stop with [closestStopId].
+  void _applyBusStopMarkers(List<BusStop> stops, {String? closestStopId}) {
+    final Set<Marker> markers = {};
+    for (final stop in stops) {
+      final isClosest = closestStopId != null && stop.id == closestStopId;
+      markers.add(Marker(
+        markerId: MarkerId('bus_stop_${stop.id}'),
+        position: stop.position,
+        icon: isClosest ? _closestBusStopIcon : _defaultBusStopIcon,
+        infoWindow: InfoWindow(
+          title: isClosest ? '${stop.name} (closest)' : stop.name,
+          snippet: stop.route.isEmpty ? stop.name : 'Stop ${stop.stopCode} · Route ${stop.route}',
+        ),
+      ));
+    }
+    setState(() {
+      _busStopMarkers = markers;
+      _applyMarkers();
+    });
+  }
+
+  /// Load all bus stops in Cebu (center). Used when user location is not yet available.
+  Future<void> _loadAllCebuBusStops() async {
     try {
-      final stops = await _busStopsService.getBusStops();
-      final icon = _busStopIcon ?? BitmapDescriptor.defaultMarkerWithHue(
-        BitmapDescriptor.hueOrange,
-      );
-      final Set<Marker> markers = {};
-      for (final stop in stops) {
-        markers.add(Marker(
-          markerId: MarkerId('bus_stop_${stop.id}'),
-          position: stop.position,
-          icon: icon,
-          infoWindow: InfoWindow(
-            title: stop.name,
-            snippet: 'Stop ${stop.stopCode} · Route ${stop.route}',
-          ),
-        ));
-      }
+      final result = await _busStopsService.getBusStopsInCebu();
       if (mounted) {
-        setState(() {
-          _busStopMarkers = markers;
-          _applyMarkers();
-        });
-        print('📍 [MapScreen] Loaded ${markers.length} bus stop markers');
+        _applyBusStopMarkers(result.stops, closestStopId: result.closestStopId);
+        print('📍 [MapScreen] Loaded ${result.stops.length} Cebu bus stops ${result.isRealData ? "(real)" : "(demo)"}');
+        if (!result.isRealData) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Showing demo bus stops. Enable "Places API" in Google Cloud Console to see real stops.',
+              ),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
       }
     } catch (e) {
-      print('⚠️ [MapScreen] Error loading bus stops: $e');
-      if (mounted) setState(() {});
+      print('⚠️ [MapScreen] Error loading Cebu bus stops: $e');
+      if (mounted) _applySampleBusStopMarkersCebu();
     }
   }
 
-  /// Adds user location and merges with bus stop markers.
+  /// Load bus stops using user location: closest (rankby=distance) + up to 60 in radius; highlight closest in green.
+  Future<void> _loadBusStopsNearUser(double userLat, double userLng) async {
+    try {
+      final result = await _busStopsService.getBusStopsWithClosestHighlighted(userLat, userLng);
+      if (mounted && result.stops.isNotEmpty) {
+        _applyBusStopMarkers(result.stops, closestStopId: result.closestStopId);
+        print('📍 [MapScreen] Loaded ${result.stops.length} stops; closest highlighted');
+        if (!result.isRealData) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Showing demo bus stops. Enable "Places API" to see real stops and closest to you.',
+              ),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('⚠️ [MapScreen] Error loading stops near user: $e');
+    }
+  }
+
+  /// Adds user location marker and reloads bus stops using user location (closest + city radius, highlight closest).
   void _addMarkerAsync(Position position) {
     Future.delayed(const Duration(milliseconds: 300), () {
       if (!mounted || _mapController == null) return;
@@ -555,7 +703,8 @@ class _MapScreenState extends State<MapScreen> {
         _currentPosition = position;
         _applyMarkers();
       });
-      print('📍 [MapScreen] User location marker added at (${position.latitude}, ${position.longitude})');
+      _loadBusStopsNearUser(position.latitude, position.longitude);
+      print('📍 [MapScreen] User at (${position.latitude}, ${position.longitude}); loading stops with closest highlighted');
     });
   }
 
@@ -569,22 +718,24 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Google Map (optimized for performance)
+          // Google Map with bus stop markers (key forces update when marker count changes)
           GoogleMap(
+            key: ValueKey('map_${_busStopMarkers.isNotEmpty}_${_routePolylines.length}'),
             initialCameraPosition:
                 _initialCameraPosition ?? MapService.getDefaultCameraPosition(),
             onMapCreated: _onMapCreated,
-            myLocationEnabled: true, // Shows blue dot for user location
-            myLocationButtonEnabled: false, // We'll use custom button
-            markers: _enableCustomMarker ? _markers : {}, // Custom markers (disabled by default to prevent timeouts)
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false,
+            markers: _markers,
+            circles: _userLocationCircles,
+            polylines: _routePolylines,
             trafficEnabled: _enableTrafficLayer,
             mapType: MapService.getDefaultMapType(),
-            zoomControlsEnabled: false, // Hide default zoom controls
-            compassEnabled: true, // Show compass
-            // Performance optimizations
-            liteModeEnabled: false, // Keep false for full functionality, but can enable for very low-end devices
-            buildingsEnabled: true, // Can disable for better performance if needed
-            indoorViewEnabled: false, // Disable indoor view for better performance
+            zoomControlsEnabled: false,
+            compassEnabled: true,
+            liteModeEnabled: false,
+            buildingsEnabled: true,
+            indoorViewEnabled: false,
           ),
 
           // Loading indicator overlay
