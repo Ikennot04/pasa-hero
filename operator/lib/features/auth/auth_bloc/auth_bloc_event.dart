@@ -26,7 +26,7 @@ class LoadAuthBlocEvent extends AuthBlocEvent {
   @override
   String toString() => 'LoadAuthBlocEvent';
 
-  LoadAuthBlocEvent(this.isError);
+  LoadAuthBlocEvent([bool? isError]) : isError = isError ?? false;
 
   @override
   Stream<AuthBlocState> applyAsync(

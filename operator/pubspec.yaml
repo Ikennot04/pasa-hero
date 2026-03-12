@@ -37,6 +37,15 @@ dependencies:
   flutter_bloc: ^8.1.6
   equatable: ^2.0.5
   meta: ^1.11.0
+  firebase_core: ^4.5.0
+  firebase_auth: ^6.2.0
+  cloud_firestore: ^6.1.3
+  http: ^1.2.0
+  google_maps_flutter: ^2.5.0
+  google_maps_flutter_android: ^2.19.0
+  google_maps_flutter_platform_interface: ^2.14.0
+  geolocator: ^10.1.0
+  permission_handler: ^11.0.1
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +73,7 @@ flutter:
   assets:
     - assets/images/pasahero_logo.png
     - assets/images/logo1.png
+    - assets/map_styles/traffic_only_style.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
