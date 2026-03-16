@@ -12,7 +12,7 @@ export const UserService = {
   async signupUser(data, userImage) {
     let img_path;
     if (userImage) {
-      img_path = path.join("images/users", userImage);
+      img_path = path.join("images/user", userImage);
     }
 
     // Validations
@@ -68,7 +68,7 @@ export const UserService = {
     return createUser;
   },
   // LOGIN USER ====================================================================
-  async loginUser(data) {
+  async signInUser(data) {
     // Validations
     const user = await User.findOne({ email: data.email });
     if (!user) {
@@ -82,7 +82,15 @@ export const UserService = {
       throw error;
     }
 
-    return user;
+    const token = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES || "7d" }
+    );
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    return { user: userObj, token };
   },
   // LOGOUT USER ====================================================================
   async logoutUser(id) {
@@ -113,7 +121,7 @@ export const UserService = {
   async createAdminUser(data, userImage) {
     let img_path;
     if (userImage) {
-      img_path = path.join("images/users", userImage);
+      img_path = path.join("images/user", userImage);
     }
 
     // Validations
@@ -187,9 +195,16 @@ export const UserService = {
     const user = await User.findById(id);
     let oldImage = user?.profile_image;
 
+    console.log(data?.profile_image);
+
     // If a new image is being set and it's different from the old one, remove the old image (unless it's default.png)
-    if (data?.profile_image && oldImage && data.profile_image !== oldImage && oldImage !== "default.png") {
-      const imgPath = `uploads/${oldImage}`;
+    if (
+      data?.profile_image &&
+      oldImage &&
+      data.profile_image !== oldImage &&
+      oldImage !== "default.png"
+    ) {
+      const imgPath = path.join("images", "user", oldImage);
       fs.unlink(imgPath, (err) => {
         if (err) {
           console.error(`Error deleting old user image: ${err}`);
@@ -211,8 +226,8 @@ export const UserService = {
         ...updateData,
         profile_image: data?.profile_image,
       },
-      { new: true }
+      { returnDocument: "after" },
     );
     return updatedUser;
-  }
+  },
 };
