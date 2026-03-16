@@ -12,12 +12,10 @@ export const signupUser = async (req, res) => {
   }
 };
 
-export const loginUser = async (req, res) => {
+export const signInUser = async (req, res) => {
   try {
-    const userData = req?.body;
-
-    const user = await UserService.loginUser(userData);
-    res.status(200).json({ success: true, data: user });
+    const { user, token } = await UserService.loginUser(req?.body);
+    res.status(200).json({ success: true, data: user, token });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -70,8 +68,9 @@ export const updateUser = async (req, res) => {
   try {
     const userId = req?.params?.id;
     const userData = JSON.parse(req?.body?.data);
+    const profile_image = req.file?.filename;
 
-    const user = await UserService.updateUser(userId, userData);
+    const user = await UserService.updateUser(userId, {...userData, profile_image});
     res.status(200).json({ success: true, data: user });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
