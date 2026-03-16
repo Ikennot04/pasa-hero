@@ -4,9 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { LiaBarsSolid } from "react-icons/lia";
-import { FaUsers, FaChartLine, FaBus, FaRoute, FaBell, FaChartBar } from "react-icons/fa";
-import { TbSteeringWheelFilled } from "react-icons/tb";
-import { FaGear, FaMapLocationDot } from "react-icons/fa6";
+import { FaBell, FaChartLine } from "react-icons/fa";
+import { MdBusAlert } from "react-icons/md";
+import { TbBusStop } from "react-icons/tb";
+import { LuLogs } from "react-icons/lu";
 
 const routes = [
   {
@@ -14,40 +15,29 @@ const routes = [
     icon: <FaChartLine className="size-6" />,
     label: "Dashboard",
   },
-  { path: "/admin/user", icon: <FaUsers className="size-6" />, label: "Users" },
-  { path: "/admin/bus", icon: <FaBus className="size-6" />, label: "Buses" },
   {
-    path: "/admin/driver",
-    icon: <TbSteeringWheelFilled className="size-7" />,
-    label: "Drivers",
+    path: "/admin/management",
+    icon: <MdBusAlert className="size-6" />,
+    label: "Arrival & Departure",
   },
   {
-    path: "/admin/terminal",
-    icon: <FaMapLocationDot className="size-6" />,
-    label: "Terminals",
+    path: "/admin/logs",
+    icon: <LuLogs className="size-6" />,
+    label: "Terminal Logs",
   },
   {
-    path: "/admin/route",
-    icon: <FaRoute className="size-6" />,
-    label: "Routes",
+    path: "/admin/bus",
+    icon: <TbBusStop className="size-6" />,
+    label: "Bus Status",
   },
   {
-    path: "/admin/notification",
+    path: "/admin/notifications",
     icon: <FaBell className="size-6" />,
     label: "Notifications",
   },
-  {
-    path: "/admin/setting",
-    icon: <FaGear className="size-6" />,
-    label: "Settings",
-  },
 ];
 
-export default function AdminShell({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function Drawer({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
@@ -62,7 +52,7 @@ export default function AdminShell({
           >
             <LiaBarsSolid className="size-6" />
           </label>
-          <div className="pl-3 text-xl font-semibold">Pasahero Admin</div>
+          <div className="pl-3 text-xl font-semibold">Terminal Admin</div>
         </nav>
         <div className="min-h-0 flex-1 overflow-y-auto px-4">{children}</div>
       </div>
