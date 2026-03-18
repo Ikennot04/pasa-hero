@@ -6,6 +6,13 @@ import '../../core/services/location_service.dart';
 import '../../core/services/map/map_service.dart';
 import '../../core/services/directions_service.dart';
 import '../profile/screen/profile_screen_data.dart';
+import 'services/bus_stop_icon_service.dart';
+
+/// Initial map center so bus stops are visible on first load.
+const CameraPosition _initialCameraOverBusStops = CameraPosition(
+  target: LatLng(10.3270, 123.9475),
+  zoom: 14.0,
+);
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -19,7 +26,9 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final LocationService _locationService = LocationService();
   final DirectionsService _directionsService = DirectionsService();
+  final BusStopIconService _busStopIconService = BusStopIconService.instance;
   GoogleMapController? _mapController;
+  BitmapDescriptor? _operatorIcon;
   bool _isLoading = true;
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
@@ -27,21 +36,199 @@ class _MapScreenState extends State<MapScreen> {
   Set<Polyline> _routePolylines = {};
   bool _isLocationRequestInProgress = false;
 
+  /// Polyline id for the bus stop route (so operator can see their route).
+  static const String _busStopRoutePolylineId = 'bus_stop_route';
+
   @override
   void initState() {
     super.initState();
-    // Set initial camera position immediately so map shows right away
-    _initialCameraPosition = MapService.getDefaultCameraPosition();
-    // Load operator route code and then initialize location
-    _loadOperatorRoute();
+    _initialCameraPosition = _initialCameraOverBusStops;
+    _loadOperatorIcon();
+    // Show bus stop markers immediately (orange) so they are never missing; upgrade to bus stop sign when loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _addBusStopMarkers(
+        _fallbackBusStops(),
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      );
+      setState(() => _isLoading = false);
+    });
+    // Then load bus stop sign icon and DB, and replace markers with bus stop sign
+    _loadBusStopsFromDatabaseAndShow();
+  }
+
+  /// Load bus stop sign icon and Route1 from DB, then replace markers with bus stop sign icon.
+  Future<void> _loadBusStopsFromDatabaseAndShow() async {
+    try {
+      await _busStopIconService.loadIcons();
+      if (!mounted) return;
+
+      await RouteDataService.ensureRoute1InFirestore();
+      if (!mounted) return;
+
+      final List<({String name, LatLng position})> stops =
+          await _getBusStopsFromDatabase();
+      if (!mounted) return;
+
+      _addBusStopMarkers(stops, _busStopIconService.defaultIcon);
+      if (!mounted) return;
+
+      setState(() => _isLoading = false);
+    } catch (e, st) {
+      print('⚠️ [MapScreen] _loadBusStopsFromDatabaseAndShow failed: $e');
+      print('   $st');
+      if (mounted) {
+        _addBusStopMarkers(
+          _fallbackBusStops(),
+          _busStopIconService.defaultIcon,
+        );
+        setState(() => _isLoading = false);
+      }
+    } finally {
+      if (mounted) _loadOperatorRoute();
+    }
+  }
+
+  /// Get bus stops from Firestore Route1; fallback to in-code Route1 stops.
+  Future<List<({String name, LatLng position})>> _getBusStopsFromDatabase() async {
+    try {
+      final data =
+          await RouteDataService.getRouteFromFirestore(AvailableRoutes.route1Code);
+      if (data == null) return _fallbackBusStops();
+
+      final stopsList = data['stops'] as List<dynamic>?;
+      if (stopsList == null || stopsList.isEmpty) return _fallbackBusStops();
+
+      final List<({String name, LatLng position})> result = [];
+      for (int i = 0; i < stopsList.length; i++) {
+        final stop = stopsList[i];
+        if (stop is! Map<String, dynamic>) continue;
+        final name = stop['name'] as String? ?? 'Stop ${i + 1}';
+        final lat = (stop['latitude'] as num?)?.toDouble();
+        final lng = (stop['longitude'] as num?)?.toDouble();
+        if (lat == null || lng == null) continue;
+        result.add((name: name, position: LatLng(lat, lng)));
+      }
+      if (result.isEmpty) return _fallbackBusStops();
+      final sliced = _sliceStopsBetweenEndpoints(result);
+      print('✅ [MapScreen] Loaded ${result.length} bus stops from Firestore Route1; using ${sliced.length} between endpoints');
+      return sliced;
+    } catch (e) {
+      print('⚠️ [MapScreen] Error loading bus stops from database: $e');
+      return _fallbackBusStops();
+    }
+  }
+
+  static const String _routeEndpointA = 'UCLM';
+  static const String _routeEndpointB = 'City Hall';
+
+  List<({String name, LatLng position})> _sliceStopsBetweenEndpoints(
+    List<({String name, LatLng position})> stops,
+  ) {
+    int? idxA;
+    int? idxB;
+    for (int i = 0; i < stops.length; i++) {
+      final n = stops[i].name.trim().toLowerCase();
+      if (n == _routeEndpointA.toLowerCase()) idxA = i;
+      if (n == _routeEndpointB.toLowerCase()) idxB = i;
+    }
+    if (idxA == null || idxB == null) return stops;
+    if (idxA == idxB) return [stops[idxA]];
+    if (idxA < idxB) {
+      return stops.sublist(idxA, idxB + 1);
+    }
+    // reverse so route can be City Hall -> UCLM (vice versa)
+    return stops.sublist(idxB, idxA + 1).reversed.toList();
+  }
+
+  List<({String name, LatLng position})> _fallbackBusStops() {
+    final all = AvailableRoutes.route1Stops
+        .map((s) => (name: s.name, position: s.position))
+        .toList();
+    return _sliceStopsBetweenEndpoints(all);
+  }
+
+  /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
+  Future<void> _addBusStopMarkers(
+    List<({String name, LatLng position})> stops,
+    BitmapDescriptor icon,
+  ) async {
+    if (!mounted || stops.isEmpty) return;
+    final points = stops.map((s) => s.position).toList();
+    setState(() {
+      final existingNonBusStop = _markers.where(
+        (m) => !m.markerId.value.startsWith('bus_stop_'),
+      ).toSet();
+      final busStopMarkers = <Marker>{};
+      for (int i = 0; i < stops.length; i++) {
+        final stop = stops[i];
+        busStopMarkers.add(
+          Marker(
+            markerId: MarkerId('bus_stop_$i'),
+            position: stop.position,
+            icon: icon,
+            infoWindow: InfoWindow(
+              title: stop.name,
+              snippet: 'Bus stop · Route1',
+            ),
+          ),
+        );
+      }
+      _markers = {...existingNonBusStop, ...busStopMarkers};
+      _routePolylines = _routePolylines
+          .where((p) => p.polylineId.value != _busStopRoutePolylineId)
+          .toSet();
+    });
+    final routeResult = await _directionsService.getRouteWithWaypoints(points);
+    if (!mounted) return;
+    if (routeResult != null && routeResult.polyline.isNotEmpty) {
+      setState(() {
+        _routePolylines = {
+          ..._routePolylines,
+          Polyline(
+            polylineId: const PolylineId(_busStopRoutePolylineId),
+            points: routeResult.polyline,
+            color: Colors.deepOrange,
+            width: 6,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            jointType: JointType.round,
+          ),
+        };
+      });
+    }
+    print('✅ [MapScreen] Added ${stops.length} bus stop markers and street route');
+  }
+
+  Future<void> _loadOperatorIcon() async {
+    try {
+      final icon = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(),
+        'assets/images/buspic.png',
+      );
+      if (mounted) {
+        setState(() {
+          _operatorIcon = icon;
+        });
+        // If we already know the current position, refresh the operator marker
+        if (_currentPosition != null) {
+          print('✅ [MapScreen] Operator icon loaded, refreshing operator marker');
+          _addOperatorMarker(_currentPosition!);
+        }
+      }
+    } catch (e) {
+      print('⚠️ [MapScreen] Failed to load operator icon: $e');
+    }
   }
 
   /// Loads the operator's route code from Firestore and highlights the route if set.
+  /// Bus stops are always shown (hardcoded); route polyline/start/end require a route in Profile.
   Future<void> _loadOperatorRoute() async {
     try {
       final routeCode = await ProfileDataService.getOperatorRouteCode();
-      if (mounted && routeCode != null) {
-        await _highlightRoute(routeCode);
+      final trimmedCode = routeCode?.trim();
+      if (mounted && trimmedCode != null && trimmedCode.isNotEmpty) {
+        await _highlightRoute(trimmedCode);
       }
     } catch (e) {
       print('⚠️ [MapScreen] Error loading route code: $e');
@@ -52,42 +239,50 @@ class _MapScreenState extends State<MapScreen> {
 
   /// Highlights the route on the map based on the route code.
   Future<void> _highlightRoute(String routeCode) async {
-    final coordinates = AvailableRoutes.getRouteCoordinates(routeCode);
+    final code = routeCode.trim();
+    final coordinates = AvailableRoutes.getRouteCoordinates(code);
     if (coordinates == null) {
-      print('⚠️ [MapScreen] No coordinates found for route code: $routeCode');
+      print('⚠️ [MapScreen] No coordinates found for route code: $code');
       return;
     }
 
     try {
-      // Get route polyline from Google Directions API
+      // Get route polyline from Google Directions API (optional)
       final routeResult = await _directionsService.getRouteWithDistance(
         coordinates.startPoint,
         coordinates.endPoint,
       );
 
-      if (routeResult == null || routeResult.polyline.isEmpty) {
-        print('⚠️ [MapScreen] Could not get route polyline for code: $routeCode');
-        return;
-      }
-
       // Get route info for display
-      final routeInfo = AvailableRoutes.getRouteByCode(routeCode);
+      final routeInfo = AvailableRoutes.getRouteByCode(code);
 
       if (mounted) {
         setState(() {
-          // Add route polyline
-          _routePolylines = {
-            Polyline(
-              polylineId: PolylineId('operator_route_$routeCode'),
-              points: routeResult.polyline,
-              color: Colors.blue,
-              width: 5,
-              patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-            ),
-          };
+          // Keep bus stop route highlight; add Directions polyline if available
+          final keepBusStopRoute = _routePolylines.where(
+            (p) => p.polylineId.value == _busStopRoutePolylineId,
+          ).toSet();
+          if (routeResult != null && routeResult.polyline.isNotEmpty) {
+            _routePolylines = {
+              ...keepBusStopRoute,
+              Polyline(
+                polylineId: PolylineId('operator_route_$code'),
+                points: routeResult.polyline,
+                color: Colors.blue,
+                width: 5,
+                patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+              ),
+            };
+          }
+          // else keep existing _routePolylines (bus stop route stays)
 
-          // Add start and end markers
-          _markers = {
+          // Add route start/end markers; preserve operator and hardcoded bus stop markers
+          final updatedMarkers = <Marker>{
+            ..._markers.where(
+              (m) =>
+                  m.markerId.value != 'route_start' &&
+                  m.markerId.value != 'route_end',
+            ),
             // Start point marker
             Marker(
               markerId: const MarkerId('route_start'),
@@ -95,7 +290,7 @@ class _MapScreenState extends State<MapScreen> {
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
               infoWindow: InfoWindow(
                 title: routeInfo?.name ?? 'Route Start',
-                snippet: 'Start: ${routeInfo?.name ?? routeCode}',
+                snippet: 'Start: ${routeInfo?.name ?? code}',
               ),
             ),
             // End point marker
@@ -105,14 +300,20 @@ class _MapScreenState extends State<MapScreen> {
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
               infoWindow: InfoWindow(
                 title: 'Route End',
-                snippet: 'End: ${routeInfo?.name ?? routeCode}',
+                snippet: 'End: ${routeInfo?.name ?? code}',
               ),
             ),
           };
+
+          _markers = updatedMarkers;
         });
 
-        // Fit camera to show the entire route
-        if (_mapController != null && routeResult.polyline.isNotEmpty) {
+        print('✅ [MapScreen] Added route start/end markers. Total markers: ${_markers.length}');
+
+        // Fit camera to show the entire route if we have a polyline
+        if (_mapController != null &&
+            routeResult != null &&
+            routeResult.polyline.isNotEmpty) {
           try {
             final bounds = _calculateBounds(routeResult.polyline);
             await _mapController!.animateCamera(
@@ -123,7 +324,7 @@ class _MapScreenState extends State<MapScreen> {
           }
         }
 
-        print('✅ [MapScreen] Route highlighted: ${routeInfo?.name ?? routeCode}');
+        print('✅ [MapScreen] Route highlighted: ${routeInfo?.name ?? code}');
       }
     } catch (e) {
       print('❌ [MapScreen] Error highlighting route: $e');
@@ -374,10 +575,9 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   /// Adds a marker for the operator's location.
-  /// Preserves existing route markers if they exist.
+  /// Keeps all existing markers (bus stops, route start/end) by building a new set.
   void _addOperatorMarker(Position position) {
     setState(() {
-      // Keep existing markers (route start/end) and add operator location
       final operatorMarker = Marker(
         markerId: const MarkerId('operator_location'),
         position: LatLng(position.latitude, position.longitude),
@@ -385,12 +585,16 @@ class _MapScreenState extends State<MapScreen> {
           title: 'Your Location',
           snippet: 'Operator current location',
         ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        icon: _operatorIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
       );
+      // Replace only operator marker; keep all bus_stop_*, route_start, route_end
+      _markers = {
+        ..._markers.where((m) => m.markerId.value != 'operator_location'),
+        operatorMarker,
+      };
       
-      // Remove old operator marker if it exists, then add new one
-      _markers.removeWhere((m) => m.markerId.value == 'operator_location');
-      _markers.add(operatorMarker);
+      print('✅ [MapScreen] Added operator marker. Total markers: ${_markers.length}');
+      print('   📍 Bus stop markers preserved: ${_markers.where((m) => m.markerId.value.startsWith('bus_stop_')).length}');
     });
   }
 
