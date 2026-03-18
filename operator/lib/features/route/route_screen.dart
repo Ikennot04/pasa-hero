@@ -3,8 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../../core/services/directions_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/map/map_service.dart';
+import '../profile/screen/profile_screen_data.dart';
+import '../map/services/bus_stop_icon_service.dart';
+
+/// Camera over Route1 bus stops so they are visible on first load.
+const CameraPosition _initialCameraOverBusStops = CameraPosition(
+  target: LatLng(10.3270, 123.9475),
+  zoom: 14.0,
+);
 
 class RouteScreen extends StatefulWidget {
   const RouteScreen({super.key});
@@ -17,22 +26,124 @@ class RouteScreen extends StatefulWidget {
 
 class _RouteScreenState extends State<RouteScreen> {
   final LocationService _locationService = LocationService();
+  final DirectionsService _directionsService = DirectionsService();
+  final BusStopIconService _busStopIconService = BusStopIconService.instance;
   GoogleMapController? _mapController;
+  BitmapDescriptor? _operatorIcon;
   String? _mapStyleJson;
   bool _isLoading = true;
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
   Set<Marker> _markers = {};
+  Set<Polyline> _routePolylines = {};
   bool _isLocationRequestInProgress = false;
+
+  static const String _busStopRoutePolylineId = 'bus_stop_route';
+
+  static const String _routeEndpointA = 'UCLM';
+  static const String _routeEndpointB = 'City Hall';
 
   @override
   void initState() {
     super.initState();
-    // Set initial camera position immediately so map shows right away
-    _initialCameraPosition = MapService.getDefaultCameraPosition();
+    _initialCameraPosition = _initialCameraOverBusStops;
+    _loadOperatorIcon();
     _loadMapStyle();
-    // Then try to get location in background
+    // Show bus stop markers and route line immediately (this is the map operators see first)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _addBusStopMarkersAndRoute(
+        _fallbackBusStops(),
+        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      );
+      setState(() => _isLoading = false);
+    });
+    _loadBusStopSignAndUpdateMarkers();
     _initializeLocation();
+  }
+
+  List<({String name, LatLng position})> _fallbackBusStops() {
+    final all = AvailableRoutes.route1Stops
+        .map((s) => (name: s.name, position: s.position))
+        .toList();
+    return _sliceStopsBetweenEndpoints(all);
+  }
+
+  List<({String name, LatLng position})> _sliceStopsBetweenEndpoints(
+    List<({String name, LatLng position})> stops,
+  ) {
+    int? idxA;
+    int? idxB;
+    for (int i = 0; i < stops.length; i++) {
+      final n = stops[i].name.trim().toLowerCase();
+      if (n == _routeEndpointA.toLowerCase()) idxA = i;
+      if (n == _routeEndpointB.toLowerCase()) idxB = i;
+    }
+    if (idxA == null || idxB == null) return stops;
+    if (idxA == idxB) return [stops[idxA]];
+    if (idxA < idxB) {
+      return stops.sublist(idxA, idxB + 1);
+    }
+    return stops.sublist(idxB, idxA + 1).reversed.toList();
+  }
+
+  /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
+  Future<void> _addBusStopMarkersAndRoute(
+    List<({String name, LatLng position})> stops,
+    BitmapDescriptor icon,
+  ) async {
+    if (!mounted || stops.isEmpty) return;
+    final points = stops.map((s) => s.position).toList();
+    setState(() {
+      final existingNonBusStop = _markers.where(
+        (m) => !m.markerId.value.startsWith('bus_stop_'),
+      ).toSet();
+      final busStopMarkers = <Marker>{};
+      for (int i = 0; i < stops.length; i++) {
+        final stop = stops[i];
+        busStopMarkers.add(
+          Marker(
+            markerId: MarkerId('bus_stop_$i'),
+            position: stop.position,
+            icon: icon,
+            infoWindow: InfoWindow(title: stop.name, snippet: 'Bus stop · Route1'),
+          ),
+        );
+      }
+      _markers = {...existingNonBusStop, ...busStopMarkers};
+      _routePolylines = _routePolylines
+          .where((p) => p.polylineId.value != _busStopRoutePolylineId)
+          .toSet();
+    });
+    final routeResult = await _directionsService.getRouteWithWaypoints(points);
+    if (!mounted) return;
+    if (routeResult != null && routeResult.polyline.isNotEmpty) {
+      setState(() {
+        _routePolylines = {
+          ..._routePolylines,
+          Polyline(
+            polylineId: const PolylineId(_busStopRoutePolylineId),
+            points: routeResult.polyline,
+            color: const Color.fromARGB(255, 34, 137, 255),
+            width: 6,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+            jointType: JointType.round,
+          ),
+        };
+      });
+    }
+  }
+
+  Future<void> _loadBusStopSignAndUpdateMarkers() async {
+    try {
+      await _busStopIconService.loadIcons();
+      if (!mounted) return;
+      _addBusStopMarkersAndRoute(
+        _fallbackBusStops(),
+        _busStopIconService.defaultIcon,
+      );
+    } catch (_) {}
   }
 
   Future<void> _loadMapStyle() async {
@@ -45,6 +156,27 @@ class _RouteScreenState extends State<RouteScreen> {
         _mapController?.setMapStyle(_mapStyleJson);
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadOperatorIcon() async {
+    try {
+      final icon = await BitmapDescriptor.fromAssetImage(
+        const ImageConfiguration(),
+        'assets/images/buspic.png',
+      );
+      if (mounted) {
+        setState(() {
+          _operatorIcon = icon;
+        });
+        // If we already know the current position, refresh the operator marker
+        if (_currentPosition != null) {
+          print('✅ [RouteScreen] Operator icon loaded, refreshing operator marker');
+          _addOperatorMarker(_currentPosition!);
+        }
+      }
+    } catch (e) {
+      print('⚠️ [RouteScreen] Failed to load operator icon: $e');
+    }
   }
 
   /// Initializes location services and gets operator's current position.
@@ -208,19 +340,21 @@ class _RouteScreenState extends State<RouteScreen> {
     }
   }
 
-  /// Adds a marker for the operator's location.
+  /// Adds a marker for the operator's location; keeps all bus stop markers.
   void _addOperatorMarker(Position position) {
     setState(() {
-      _markers = {
-        Marker(
-          markerId: const MarkerId('operator_location'),
-          position: LatLng(position.latitude, position.longitude),
-          infoWindow: const InfoWindow(
-            title: 'Your Location',
-            snippet: 'Operator current location',
-          ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+      final operatorMarker = Marker(
+        markerId: const MarkerId('operator_location'),
+        position: LatLng(position.latitude, position.longitude),
+        infoWindow: const InfoWindow(
+          title: 'Your Location',
+          snippet: 'Operator current location',
         ),
+        icon: _operatorIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+      );
+      _markers = {
+        ..._markers.where((m) => m.markerId.value != 'operator_location'),
+        operatorMarker,
       };
     });
   }
@@ -256,7 +390,7 @@ class _RouteScreenState extends State<RouteScreen> {
             markers: _markers,
             circles: const {},
             polygons: const {},
-            polylines: const {},
+            polylines: _routePolylines,
             trafficEnabled: true,
           ),
           if (_isLoading)

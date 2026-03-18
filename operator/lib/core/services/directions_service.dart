@@ -154,6 +154,81 @@ class DirectionsService {
     }
   }
 
+  /// Gets driving route along streets from first stop to last stop, with intermediate stops as waypoints.
+  /// Returns the road polyline (highway/street) or null if the request fails.
+  Future<RouteResult?> getRouteWithWaypoints(List<LatLng> orderedStops) async {
+    if (orderedStops.length < 2) return null;
+    final key = await _getApiKey();
+    if (key.isEmpty) {
+      print('⚠️ [Directions] No API key available');
+      return null;
+    }
+    final origin = orderedStops.first;
+    final destination = orderedStops.last;
+    final waypoints = orderedStops.length > 2
+        ? orderedStops.sublist(1, orderedStops.length - 1)
+        : <LatLng>[];
+    try {
+      final params = <String, String>{
+        'origin': '${origin.latitude},${origin.longitude}',
+        'destination': '${destination.latitude},${destination.longitude}',
+        'key': key,
+      };
+      if (waypoints.isNotEmpty) {
+        params['waypoints'] = waypoints
+            .map((p) => '${p.latitude},${p.longitude}')
+            .join('|');
+      }
+      final uri = Uri.parse(_baseUrl).replace(queryParameters: params);
+      final response = await http.get(uri).timeout(const Duration(seconds: 20));
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final status = data['status'] as String?;
+      if (status != 'OK') {
+        print('⚠️ [Directions] getRouteWithWaypoints status: $status');
+        return null;
+      }
+      final routes = data['routes'] as List<dynamic>?;
+      if (routes == null || routes.isEmpty) return null;
+      final route = routes.first as Map<String, dynamic>;
+      final overview = route['overview_polyline'] as Map<String, dynamic>?;
+      final encoded = overview?['points'] as String?;
+      if (encoded == null || encoded.isEmpty) return null;
+      final polyline = _decodePolyline(encoded);
+      double totalDistanceMeters = 0.0;
+      int totalDurationSeconds = 0;
+      final legs = route['legs'] as List<dynamic>?;
+      if (legs != null) {
+        for (final leg in legs) {
+          final legMap = leg as Map<String, dynamic>;
+          final dist = legMap['distance'] as Map<String, dynamic>?;
+          if (dist != null && dist['value'] != null) {
+            totalDistanceMeters += (dist['value'] as num).toDouble();
+          }
+          final dur = legMap['duration'] as Map<String, dynamic>?;
+          if (dur != null && dur['value'] != null) {
+            totalDurationSeconds += (dur['value'] as num).toInt();
+          }
+        }
+      }
+      String? durationText;
+      if (legs != null && legs.isNotEmpty) {
+        final firstLeg = legs.first as Map<String, dynamic>;
+        final duration = firstLeg['duration'] as Map<String, dynamic>?;
+        durationText = duration?['text'] as String?;
+      }
+      return RouteResult(
+        polyline: polyline,
+        distanceMeters: totalDistanceMeters,
+        distanceText: _formatDistance(totalDistanceMeters),
+        durationSeconds: totalDurationSeconds > 0 ? totalDurationSeconds : null,
+        durationText: durationText,
+      );
+    } catch (e) {
+      print('⚠️ [Directions] getRouteWithWaypoints error: $e');
+      return null;
+    }
+  }
+
   /// Gets driving route from [origin] to [destination]. Returns list of points for the polyline,
   /// or empty list if request fails or no route found.
   /// 
