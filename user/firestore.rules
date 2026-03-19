@@ -20,6 +20,13 @@ service cloud.firestore {
       allow update: if true; // Allow updating to mark as verified
       allow delete: if true; // Allow deleting expired OTPs
     }
+
+    // Routes collection - route definitions with bus stop coordinates (e.g. Route1)
+    // Authenticated users (operators) can read and write so Route1 can be saved and loaded
+    match /routes/{routeId} {
+      allow read, create, update: if request.auth != null;
+      allow delete: if false;
+    }
     
     // Default deny all other access
     match /{document=**} {
