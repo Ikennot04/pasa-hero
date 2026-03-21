@@ -10,6 +10,7 @@ type PendingDepartureRow = {
 type DepartureConfirmationProps = {
   pendingDepartures: PendingDepartureRow[];
   onConfirmDeparture: (id: string) => void;
+  onRejectDeparture: (id: string) => void;
 };
 
 function formatDateTime(iso: string) {
@@ -24,11 +25,12 @@ function formatDateTime(iso: string) {
 export default function DepartureConfirmation({
   pendingDepartures,
   onConfirmDeparture,
+  onRejectDeparture,
 }: DepartureConfirmationProps) {
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Departure confirmations</h2>
+        <h2 className="text-lg font-semibold">Pending departure confirmations</h2>
         <span className="badge badge-info">{pendingDepartures.length}</span>
       </div>
       <div className="overflow-x-auto">
@@ -38,7 +40,7 @@ export default function DepartureConfirmation({
               <th>Bus</th>
               <th>Route</th>
               <th>Reported at</th>
-              <th></th>
+              <th className="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -48,10 +50,23 @@ export default function DepartureConfirmation({
                   <td className="font-semibold">{row.busNumber}</td>
                   <td>{row.routeName}</td>
                   <td>{row.departureReportedAt ? formatDateTime(row.departureReportedAt) : "-"}</td>
-                  <td>
-                    <button className="btn btn-sm btn-info text-sm" onClick={() => onConfirmDeparture(row.id)}>
-                      Confirm departure
-                    </button>
+                  <td className="text-right">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-info"
+                        onClick={() => onConfirmDeparture(row.id)}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline btn-error"
+                        onClick={() => onRejectDeparture(row.id)}
+                      >
+                        Reject
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
