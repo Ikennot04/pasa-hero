@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as permission_handler;
 import 'location_cache_service.dart';
@@ -179,168 +181,216 @@ class LocationService {
     bool useCachedPosition = true,
     bool forceRefresh = false,
   }) async {
-    print('🔍 [LocationService] getCurrentPosition() called (forceRefresh: $forceRefresh)');
-    
-    // PRIORITY 0: Check app-level cache (1 minute cache to avoid recalibration)
-    if (!forceRefresh) {
+    print(
+      '🔍 [LocationService] getCurrentPosition(forceRefresh: $forceRefresh, '
+      'useCachedPosition: $useCachedPosition, preferLowAccuracy: $preferLowAccuracy)',
+    );
+
+    // PRIORITY 0: App-level in-memory cache (1 minute)
+    if (!forceRefresh && useCachedPosition) {
       final cachedLocation = LocationCacheService.instance.getValidCachedLocation();
       if (cachedLocation != null) {
-        print('📦 [LocationService] Using app-level cached location (less than 1 minute old)');
-        print('   This prevents recalibration when navigating between pages');
+        print('📦 [LocationService] Using app-level cached location (<1 minute old)');
         return cachedLocation;
       }
     }
-    
+
     try {
       // Check if location services are enabled
       print('🔍 [LocationService] Checking if location services are enabled...');
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       print('   📍 Location services enabled: $serviceEnabled');
-      
+
       if (!serviceEnabled) {
-        print('   ❌ Location services are DISABLED');
         throw Exception(
           'Location services are disabled. Please enable location services in your device settings.',
         );
       }
 
-      // Check permission
+      // Check permission (and request once if needed)
       print('🔍 [LocationService] Checking permission...');
       LocationPermission permission = await Geolocator.checkPermission();
-      print('   📍 Permission status: $permission');
-      
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        print('   ❌ Permission is DENIED or PERMANENTLY DENIED');
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
         throw Exception(
           'Location permission is denied. Please grant location permission to use this feature.',
         );
       }
 
-      print('   ✅ Permission is GRANTED');
+      print('   ✅ Permission granted: $permission');
 
-      // PRIORITY 1: Get last known position FIRST (fastest, no GPS needed)
-      print('🔍 [LocationService] Getting last known position (priority 1 - fastest)...');
+      final bool isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+      // (Optional) log if precise location is off on Android/iOS
+      try {
+        final accStatus = await Geolocator.getLocationAccuracy();
+        print('   📍 Location accuracy status: $accStatus');
+      } catch (_) {}
+
+      // PRIORITY 1: last known position
       Position? lastPosition;
       try {
         lastPosition = await Geolocator.getLastKnownPosition()
-            .timeout(const Duration(seconds: 2)); // Quick timeout for cached position
-      } catch (e) {
-        print('   ⚠️ Error getting last known position: $e');
-      }
-      
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {}
+
       if (lastPosition != null) {
         final age = DateTime.now().difference(lastPosition.timestamp);
-        print('   📍 Last known position found:');
-        print('      Latitude: ${lastPosition.latitude}');
-        print('      Longitude: ${lastPosition.longitude}');
-        print('      Age: ${age.inMinutes} minutes old');
-        print('      Accuracy: ${lastPosition.accuracy}m');
-        
-        // VERY AGGRESSIVE: Use cached position if it's less than 30 minutes old
-        // This prevents most GPS timeouts on slow devices
-        final maxCacheAge = preferLowAccuracy ? 30 : 15; // 30 min for low accuracy, 15 for normal
-        if (age.inMinutes < maxCacheAge) {
-          print('   ✅ Using cached position (${age.inSeconds} seconds old) - instant, no GPS needed!');
-          // Save to app-level cache for 1 minute
-          await LocationCacheService.instance.saveLocation(lastPosition);
-          return lastPosition;
-        }
-        
-        // If cached position is older but still reasonable, use it for low accuracy mode
-        if (preferLowAccuracy && age.inHours < 2) {
-          print('   ✅ Using older cached position (${age.inMinutes} min old) - preferLowAccuracy mode');
-          // Save to app-level cache for 1 minute
-          await LocationCacheService.instance.saveLocation(lastPosition);
-          return lastPosition;
-        }
-      } else {
-        print('   ⚠️ No last known position available');
-      }
-      
-      // PRIORITY 2: Try to get CURRENT position (only if cached is too old or unavailable)
-      // Use SHORT timeouts to fail fast and fall back to cached position
-      print('🔍 [LocationService] Attempting to get CURRENT position (priority 2)...');
-      if (preferLowAccuracy) {
-        print('   📍 Strategy: Low accuracy only with SHORT timeout (fail fast, use cache if timeout)');
-      } else {
-        print('   📍 Strategy: Low accuracy first, then medium if needed');
-      }
-      final startTime = DateTime.now();
-      
-      try {
-        // Try low accuracy with SHORT timeout (5 seconds)
-        // If it times out quickly, we'll use cached position
-        print('   🔄 Attempt: Low accuracy (network/WiFi, 5s timeout)...');
-        try {
-          Position currentPosition = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.low,
-            timeLimit: const Duration(seconds: 5), // SHORT timeout - fail fast
-          ).timeout(
-            const Duration(seconds: 5), // SHORT timeout
-            onTimeout: () {
-              print('   ⏱️ Low accuracy timed out after 5s - will use cached if available');
-              throw TimeoutException('Low accuracy timeout', const Duration(seconds: 5));
-            },
-          );
-          
-          final elapsed = DateTime.now().difference(startTime);
-          print('   ✅ Got position with LOW accuracy in ${elapsed.inSeconds} seconds');
-          // Save to cache for future use (1 minute cache)
-          await LocationCacheService.instance.saveLocation(currentPosition);
-          return currentPosition;
-        } on TimeoutException {
-          // Low accuracy timed out
-          if (preferLowAccuracy) {
-            // If preferLowAccuracy, don't try medium - use cached instead
-            print('   ⏱️ Low accuracy timed out, preferLowAccuracy=true - will use cached position');
-            throw TimeoutException('Low accuracy timeout', const Duration(seconds: 5));
-          }
-          // Try medium accuracy only if preferLowAccuracy is false
-          print('   🔄 Trying medium accuracy (GPS, 8s timeout)...');
-        }
-        
-        // Try medium accuracy with SHORT timeout (8 seconds)
-        Position currentPosition = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.medium,
-          timeLimit: const Duration(seconds: 8), // SHORT timeout
-        ).timeout(
-          const Duration(seconds: 8), // SHORT timeout
-          onTimeout: () {
-            print('   ⏱️ Medium accuracy also timed out after 8s');
-            throw TimeoutException('Medium accuracy timeout', const Duration(seconds: 8));
-          },
+        print(
+          '   📍 Last known position: age=${age.inSeconds}s, accuracy=${lastPosition.accuracy}m',
         );
-        
-        final elapsed = DateTime.now().difference(startTime);
-        print('   ✅ Got position with MEDIUM accuracy in ${elapsed.inSeconds} seconds');
-        // Save to cache for future use (1 minute cache)
-        await LocationCacheService.instance.saveLocation(currentPosition);
-        return currentPosition;
-      } on TimeoutException {
-        // GPS timed out - use cached position as fallback
-        print('   ❌ GPS timed out - falling back to cached position');
-        if (lastPosition != null) {
-          final age = DateTime.now().difference(lastPosition.timestamp);
-          print('   ✅ Using cached position (${age.inMinutes} min old) - better than timeout!');
-          // Save to cache even if it's from last known position
+        final maxReasonableAge = preferLowAccuracy
+            ? const Duration(hours: 2)
+            : const Duration(minutes: 30);
+        if (age <= maxReasonableAge) {
           await LocationCacheService.instance.saveLocation(lastPosition);
           return lastPosition;
         }
-        // No cached position available - throw timeout
-        print('   ❌ No cached position available - throwing TimeoutException');
-        rethrow;
+      } else {
+        print('   ⚠️ No last known position returned by Geolocator');
       }
+
+      // PRIORITY 2: fresh fix (one-shot), with a better order on Android
+      final order = isAndroid
+          ? <LocationAccuracy>[
+              LocationAccuracy.high,
+              LocationAccuracy.best,
+              LocationAccuracy.medium,
+              LocationAccuracy.low,
+            ]
+          : (preferLowAccuracy
+              ? <LocationAccuracy>[
+                  LocationAccuracy.low,
+                  LocationAccuracy.medium,
+                  LocationAccuracy.high,
+                  LocationAccuracy.best,
+                ]
+              : <LocationAccuracy>[
+                  LocationAccuracy.medium,
+                  LocationAccuracy.high,
+                  LocationAccuracy.best,
+                  LocationAccuracy.low,
+                ]);
+
+      Duration timeLimitFor(LocationAccuracy a) {
+        switch (a) {
+          case LocationAccuracy.low:
+            return const Duration(seconds: 25);
+          case LocationAccuracy.reduced:
+            return const Duration(seconds: 25);
+          case LocationAccuracy.medium:
+            return const Duration(seconds: 25);
+          case LocationAccuracy.high:
+            return const Duration(seconds: 35);
+          case LocationAccuracy.best:
+          case LocationAccuracy.bestForNavigation:
+            return const Duration(seconds: 40);
+          case LocationAccuracy.lowest:
+            return const Duration(seconds: 25);
+        }
+      }
+
+      Future<Position?> tryOnce({
+        required LocationAccuracy accuracy,
+        required bool forceAndroidLocationManager,
+      }) async {
+        try {
+          return await Geolocator.getCurrentPosition(
+            desiredAccuracy: accuracy,
+            timeLimit: timeLimitFor(accuracy),
+            forceAndroidLocationManager: forceAndroidLocationManager,
+          );
+        } on TimeoutException {
+          return null;
+        } catch (e) {
+          print('   ⚠️ One-shot ($accuracy) failed: $e');
+          return null;
+        }
+      }
+
+      // On some devices, Google Play Services / fused location can be unreliable.
+      // Prefer legacy LocationManager first; if it fails, try fused as a fallback.
+      final passes = isAndroid ? <bool>[true, false] : <bool>[false];
+
+      for (final forceAndroidLocationManager in passes) {
+        for (final accuracy in order) {
+          print('   🔄 One-shot: $accuracy (forceLM=$forceAndroidLocationManager)...');
+          final pos = await tryOnce(
+            accuracy: accuracy,
+            forceAndroidLocationManager: forceAndroidLocationManager,
+          );
+          if (pos != null) {
+            await LocationCacheService.instance.saveLocation(pos);
+            return pos;
+          }
+        }
+      }
+
+      // PRIORITY 3: position stream fallback
+      Future<Position?> tryStream({
+        required LocationAccuracy accuracy,
+        required Duration wait,
+      }) async {
+        try {
+          final locationSettings = isAndroid
+              ? AndroidSettings(
+                  forceLocationManager: true,
+                  accuracy: accuracy,
+                  distanceFilter: 0,
+                  intervalDuration: const Duration(seconds: 1),
+                )
+              : LocationSettings(
+                  accuracy: accuracy,
+                  distanceFilter: 0,
+                );
+
+          return await Geolocator.getPositionStream(
+            locationSettings: locationSettings,
+          ).first.timeout(wait);
+        } catch (e) {
+          print('   ⚠️ Stream ($accuracy) failed: $e');
+          return null;
+        }
+      }
+
+      final streamOrder = <LocationAccuracy>[
+        LocationAccuracy.best,
+        LocationAccuracy.high,
+        LocationAccuracy.medium,
+        LocationAccuracy.low,
+      ];
+
+      for (final accuracy in streamOrder) {
+        print('   🔄 Stream: $accuracy ...');
+        final pos = await tryStream(
+          accuracy: accuracy,
+          wait: const Duration(seconds: 25),
+        );
+        if (pos != null) {
+          await LocationCacheService.instance.saveLocation(pos);
+          return pos;
+        }
+      }
+
+      // PRIORITY 4: last-known fallback (avoid hard fail)
+      if (lastPosition != null) {
+        final age = DateTime.now().difference(lastPosition.timestamp);
+        const maxStale = Duration(days: 7);
+        if (age <= maxStale) {
+          print('   ⚠️ Using last-known position as last resort (age=${age.inHours}h)');
+          await LocationCacheService.instance.saveLocation(lastPosition);
+          return lastPosition;
+        }
+      }
+
+      throw TimeoutException(
+        'GPS timeout: no location fix after one-shot + stream + fallback',
+      );
     } catch (e) {
       print('   ❌ [LocationService] getCurrentPosition() ERROR: $e');
-      print('   📋 Error type: ${e.runtimeType}');
-      print('   📋 Error toString: ${e.toString()}');
-      if (e is TimeoutException) {
-        print('   📋 TimeoutException details:');
-        print('      Duration: ${e.duration}');
-        print('      Message: ${e.message}');
-      }
-      
       if (e.toString().contains('MissingPluginException')) {
         throw Exception(
           'Geolocator plugin not found. Please rebuild the app:\n'

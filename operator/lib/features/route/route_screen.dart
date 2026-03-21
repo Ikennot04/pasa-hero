@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/services/directions_service.dart';
+import '../../../core/services/driver_status_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/map/map_service.dart';
 import '../profile/screen/profile_screen_data.dart';
@@ -37,11 +38,9 @@ class _RouteScreenState extends State<RouteScreen> {
   Set<Marker> _markers = {};
   Set<Polyline> _routePolylines = {};
   bool _isLocationRequestInProgress = false;
+  String? _routeId;
 
   static const String _busStopRoutePolylineId = 'bus_stop_route';
-
-  static const String _routeEndpointA = 'UCLM';
-  static const String _routeEndpointB = 'City Hall';
 
   @override
   void initState() {
@@ -49,6 +48,7 @@ class _RouteScreenState extends State<RouteScreen> {
     _initialCameraPosition = _initialCameraOverBusStops;
     _loadOperatorIcon();
     _loadMapStyle();
+    _loadRouteId();
     // Show bus stop markers and route line immediately (this is the map operators see first)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -62,29 +62,16 @@ class _RouteScreenState extends State<RouteScreen> {
     _initializeLocation();
   }
 
+  Future<void> _loadRouteId() async {
+    final code = await ProfileDataService.getOperatorRouteCode();
+    if (mounted) setState(() => _routeId = code?.trim());
+  }
+
   List<({String name, LatLng position})> _fallbackBusStops() {
     final all = AvailableRoutes.route1Stops
         .map((s) => (name: s.name, position: s.position))
         .toList();
-    return _sliceStopsBetweenEndpoints(all);
-  }
-
-  List<({String name, LatLng position})> _sliceStopsBetweenEndpoints(
-    List<({String name, LatLng position})> stops,
-  ) {
-    int? idxA;
-    int? idxB;
-    for (int i = 0; i < stops.length; i++) {
-      final n = stops[i].name.trim().toLowerCase();
-      if (n == _routeEndpointA.toLowerCase()) idxA = i;
-      if (n == _routeEndpointB.toLowerCase()) idxB = i;
-    }
-    if (idxA == null || idxB == null) return stops;
-    if (idxA == idxB) return [stops[idxA]];
-    if (idxA < idxB) {
-      return stops.sublist(idxA, idxB + 1);
-    }
-    return stops.sublist(idxB, idxA + 1).reversed.toList();
+    return AvailableRoutes.route1StopsForHighlightRoad(all);
   }
 
   /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
@@ -238,7 +225,7 @@ class _RouteScreenState extends State<RouteScreen> {
       // Get current position (optimized for low-end devices)
       print('🗺️ [RouteScreen] Step 3: Getting current position (optimized mode)...');
       Position position = await _locationService.getCurrentPosition(
-        preferLowAccuracy: true,
+        preferLowAccuracy: false,
         useCachedPosition: true,
       );
       print('   ✅ Position received:');
@@ -275,8 +262,8 @@ class _RouteScreenState extends State<RouteScreen> {
       print('   📋 Error type: ${e.runtimeType}');
       
       // Check if it's a timeout error
-      bool isTimeout = e.toString().contains('timed out') || 
-                       e.toString().contains('TimeoutException');
+      bool isTimeout = e is TimeoutException ||
+          e.toString().toLowerCase().contains('timeout');
       
       // For timeout, show helpful message and use default location
       if (isTimeout) {
@@ -290,7 +277,7 @@ class _RouteScreenState extends State<RouteScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text(
-                'GPS timeout. Using default location.\n\nIf using emulator, set a mock location in emulator settings.',
+                'GPS timeout. Using default location.\n\nOn Android: set Location mode to "High accuracy" and enable "Precise location" for this app. Move outside and try again.',
               ),
               duration: const Duration(seconds: 5),
               action: SnackBarAction(
@@ -367,10 +354,19 @@ class _RouteScreenState extends State<RouteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final freeRideStream = _routeId != null && _routeId!.isNotEmpty
+        ? DriverStatusService.instance.freeRideActiveStream(_routeId!)
+        : Stream<bool>.value(false);
+
     return Scaffold(
-      body: Stack(
-        children: [
-          GoogleMap(
+      body: StreamBuilder<bool>(
+        stream: freeRideStream,
+        initialData: false,
+        builder: (context, snapshot) {
+          final showFreeRideBadge = snapshot.data == true;
+          return Stack(
+            children: [
+              GoogleMap(
             initialCameraPosition: _initialCameraPosition ?? MapService.getDefaultCameraPosition(),
             onMapCreated: (c) {
               _mapController = c;
@@ -397,17 +393,50 @@ class _RouteScreenState extends State<RouteScreen> {
             const Center(
               child: CircularProgressIndicator(),
             ),
-          Positioned(
-            top: 16,
-            right: 16,
-            child: FloatingActionButton(
-              mini: true,
-              onPressed: _isLocationRequestInProgress ? null : () => _initializeLocation(),
-              child: const Icon(Icons.my_location),
-              tooltip: 'Center on my location',
-            ),
-          ),
-        ],
+              Positioned(
+                top: 16,
+                right: 16,
+                child: FloatingActionButton(
+                  mini: true,
+                  onPressed: _isLocationRequestInProgress ? null : () => _initializeLocation(),
+                  child: const Icon(Icons.my_location),
+                  tooltip: 'Center on my location',
+                ),
+              ),
+              if (showFreeRideBadge)
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade600,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.card_giftcard, color: Colors.white, size: 20),
+                          SizedBox(width: 6),
+                          Text(
+                            'Free Ride',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

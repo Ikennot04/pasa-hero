@@ -27,6 +27,16 @@ service cloud.firestore {
       allow read, create, update: if request.auth != null;
       allow delete: if false;
     }
+
+    // route_code collection - driver route codes: point A, point B, bus stops along the way
+    match /route_code/{routeCodeId} {
+      allow read, create, update, delete: if request.auth != null;
+    }
+
+    // driver_status - active driver per route, is_free_ride, free_ride_until
+    match /driver_status/{documentId} {
+      allow read, create, update, delete: if request.auth != null;
+    }
     
     // Default deny all other access
     match /{document=**} {
