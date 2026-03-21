@@ -110,8 +110,8 @@ class _MapScreenState extends State<MapScreen> {
         result.add((name: name, position: LatLng(lat, lng)));
       }
       if (result.isEmpty) return _fallbackBusStops();
-      final sliced = _sliceStopsBetweenEndpoints(result);
-      print('✅ [MapScreen] Loaded ${result.length} bus stops from Firestore Route1; using ${sliced.length} between endpoints');
+      final sliced = AvailableRoutes.route1StopsForHighlightRoad(result);
+      print('✅ [MapScreen] Loaded ${result.length} bus stops from Firestore Route1; using ${sliced.length} (UCLM → City Hall order)');
       return sliced;
     } catch (e) {
       print('⚠️ [MapScreen] Error loading bus stops from database: $e');
@@ -119,33 +119,11 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  static const String _routeEndpointA = 'UCLM';
-  static const String _routeEndpointB = 'City Hall';
-
-  List<({String name, LatLng position})> _sliceStopsBetweenEndpoints(
-    List<({String name, LatLng position})> stops,
-  ) {
-    int? idxA;
-    int? idxB;
-    for (int i = 0; i < stops.length; i++) {
-      final n = stops[i].name.trim().toLowerCase();
-      if (n == _routeEndpointA.toLowerCase()) idxA = i;
-      if (n == _routeEndpointB.toLowerCase()) idxB = i;
-    }
-    if (idxA == null || idxB == null) return stops;
-    if (idxA == idxB) return [stops[idxA]];
-    if (idxA < idxB) {
-      return stops.sublist(idxA, idxB + 1);
-    }
-    // reverse so route can be City Hall -> UCLM (vice versa)
-    return stops.sublist(idxB, idxA + 1).reversed.toList();
-  }
-
   List<({String name, LatLng position})> _fallbackBusStops() {
     final all = AvailableRoutes.route1Stops
         .map((s) => (name: s.name, position: s.position))
         .toList();
-    return _sliceStopsBetweenEndpoints(all);
+    return AvailableRoutes.route1StopsForHighlightRoad(all);
   }
 
   /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
@@ -247,27 +225,40 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     try {
-      // Get route polyline from Google Directions API (optional)
-      final routeResult = await _directionsService.getRouteWithDistance(
-        coordinates.startPoint,
-        coordinates.endPoint,
-      );
+      // Reuse already-drawn bus-stop route first so blue highlight follows exactly
+      // the same street path and does not introduce alternate roads.
+      final existingBusStopPolyline = _routePolylines
+          .where((p) => p.polylineId.value == _busStopRoutePolylineId)
+          .firstOrNull;
+      final busStopPoints = existingBusStopPolyline?.points ?? const <LatLng>[];
+
+      final List<LatLng> highlightPoints;
+      if (busStopPoints.isNotEmpty) {
+        highlightPoints = busStopPoints;
+      } else {
+        final List<LatLng> waypointCoords = coordinates.stops.length >= 2
+            ? coordinates.stops
+            : [coordinates.startPoint, coordinates.endPoint];
+        final routeResult = waypointCoords.length >= 2
+            ? await _directionsService.getRouteWithWaypoints(waypointCoords)
+            : await _directionsService.getRouteWithDistance(
+                coordinates.startPoint,
+                coordinates.endPoint,
+              );
+        highlightPoints = routeResult?.polyline ?? const <LatLng>[];
+      }
 
       // Get route info for display
       final routeInfo = AvailableRoutes.getRouteByCode(code);
 
       if (mounted) {
         setState(() {
-          // Keep bus stop route highlight; add Directions polyline if available
-          final keepBusStopRoute = _routePolylines.where(
-            (p) => p.polylineId.value == _busStopRoutePolylineId,
-          ).toSet();
-          if (routeResult != null && routeResult.polyline.isNotEmpty) {
+          // One visible road: operator highlight only (same path as bus stops; no stacked lines).
+          if (highlightPoints.isNotEmpty) {
             _routePolylines = {
-              ...keepBusStopRoute,
               Polyline(
                 polylineId: PolylineId('operator_route_$code'),
-                points: routeResult.polyline,
+                points: highlightPoints,
                 color: Colors.blue,
                 width: 5,
                 patterns: [PatternItem.dash(20), PatternItem.gap(10)],
@@ -289,8 +280,12 @@ class _MapScreenState extends State<MapScreen> {
               position: coordinates.startPoint,
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
               infoWindow: InfoWindow(
-                title: routeInfo?.name ?? 'Route Start',
-                snippet: 'Start: ${routeInfo?.name ?? code}',
+                title: code.toUpperCase() == AvailableRoutes.route1Code.toUpperCase()
+                    ? AvailableRoutes.route1HighlightStopNamesInOrder.first
+                    : (routeInfo?.name ?? 'Route Start'),
+                snippet: code.toUpperCase() == AvailableRoutes.route1Code.toUpperCase()
+                    ? 'Stop 1 · ${routeInfo?.name ?? code}'
+                    : 'Start: ${routeInfo?.name ?? code}',
               ),
             ),
             // End point marker
@@ -299,8 +294,12 @@ class _MapScreenState extends State<MapScreen> {
               position: coordinates.endPoint,
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
               infoWindow: InfoWindow(
-                title: 'Route End',
-                snippet: 'End: ${routeInfo?.name ?? code}',
+                title: code.toUpperCase() == AvailableRoutes.route1Code.toUpperCase()
+                    ? AvailableRoutes.route1HighlightStopNamesInOrder.last
+                    : 'Route End',
+                snippet: code.toUpperCase() == AvailableRoutes.route1Code.toUpperCase()
+                    ? 'Stop 10 · ${routeInfo?.name ?? code}'
+                    : 'End: ${routeInfo?.name ?? code}',
               ),
             ),
           };
@@ -311,11 +310,9 @@ class _MapScreenState extends State<MapScreen> {
         print('✅ [MapScreen] Added route start/end markers. Total markers: ${_markers.length}');
 
         // Fit camera to show the entire route if we have a polyline
-        if (_mapController != null &&
-            routeResult != null &&
-            routeResult.polyline.isNotEmpty) {
+        if (_mapController != null && highlightPoints.isNotEmpty) {
           try {
-            final bounds = _calculateBounds(routeResult.polyline);
+            final bounds = _calculateBounds(highlightPoints);
             await _mapController!.animateCamera(
               CameraUpdate.newLatLngBounds(bounds, 100),
             );
@@ -437,7 +434,7 @@ class _MapScreenState extends State<MapScreen> {
       // Get current position (optimized for low-end devices)
       print('🗺️ [MapScreen] Step 3: Getting current position (optimized mode)...');
       Position position = await _locationService.getCurrentPosition(
-        preferLowAccuracy: true,
+        preferLowAccuracy: false,
         useCachedPosition: true,
       );
       print('   ✅ Position received:');
@@ -505,8 +502,8 @@ class _MapScreenState extends State<MapScreen> {
       print('   📋 Error toString: ${e.toString()}');
       
       // Check if it's a timeout error
-      bool isTimeout = e.toString().contains('timed out') || 
-                       e.toString().contains('TimeoutException');
+      bool isTimeout = e is TimeoutException ||
+          e.toString().toLowerCase().contains('timeout');
       print('   📋 Is timeout error: $isTimeout');
       
       // For timeout, show helpful message and use default location
@@ -522,7 +519,7 @@ class _MapScreenState extends State<MapScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Text(
-                'GPS timeout. Using default location.\n\nIf using emulator, set a mock location in emulator settings.',
+                'GPS timeout. Using default location.\n\nOn Android: set Location mode to "High accuracy" and enable "Precise location" for this app. Move outside and try again.',
               ),
               duration: const Duration(seconds: 5),
               action: SnackBarAction(
