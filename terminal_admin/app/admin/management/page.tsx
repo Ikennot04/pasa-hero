@@ -1,6 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import ArrivalConfirmation from "./components/ArrivalConfirmation";
+import DepartureConfirmation from "./components/DepartureConfirmation";
+import OperationsLog from "./components/OperationsLog";
 
 type ManagementBusRow = {
   id: string;
@@ -14,15 +17,6 @@ type ManagementBusRow = {
   departureReportedAt: string | null;
   departureConfirmedAt: string | null;
 };
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function buildRows(): ManagementBusRow[] {
   const now = new Date();
@@ -165,137 +159,15 @@ export default function Management() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Arrival confirmations</h2>
-            <span className="badge badge-warning">{pendingArrivals.length}</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="table table-zebra w-full">
-              <thead>
-                <tr>
-                  <th>Bus</th>
-                  <th>Route</th>
-                  <th>Reported at</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingArrivals.length ? (
-                  pendingArrivals.map((row) => (
-                    <tr key={row.id}>
-                      <td className="font-semibold">{row.busNumber}</td>
-                      <td>{row.routeName}</td>
-                      <td>{row.arrivalReportedAt ? formatDateTime(row.arrivalReportedAt) : "-"}</td>
-                      <td>
-                        <button className="btn btn-xs btn-warning" onClick={() => confirmArrival(row.id)}>
-                          Confirm arrival
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="text-center text-sm text-base-content/60">
-                      No arrival events waiting for confirmation.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <ArrivalConfirmation pendingArrivals={pendingArrivals} onConfirmArrival={confirmArrival} />
 
-        <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Departure confirmations</h2>
-            <span className="badge badge-info">{pendingDepartures.length}</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="table table-zebra w-full">
-              <thead>
-                <tr>
-                  <th>Bus</th>
-                  <th>Route</th>
-                  <th>Reported at</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingDepartures.length ? (
-                  pendingDepartures.map((row) => (
-                    <tr key={row.id}>
-                      <td className="font-semibold">{row.busNumber}</td>
-                      <td>{row.routeName}</td>
-                      <td>{row.departureReportedAt ? formatDateTime(row.departureReportedAt) : "-"}</td>
-                      <td>
-                        <button className="btn btn-xs btn-info" onClick={() => confirmDeparture(row.id)}>
-                          Confirm departure
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={4} className="text-center text-sm text-base-content/60">
-                      No departure events waiting for confirmation.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DepartureConfirmation
+          pendingDepartures={pendingDepartures}
+          onConfirmDeparture={confirmDeparture}
+        />
       </div>
 
-      <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Operations log</h2>
-          <span className="badge badge-outline">{departed.length} departed</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="table table-zebra w-full">
-            <thead>
-              <tr>
-                <th>Bus</th>
-                <th>Route</th>
-                <th>Driver / Conductor</th>
-                <th>Scheduled arrival</th>
-                <th>Arrival</th>
-                <th>Departure</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const status = row.departureConfirmedAt
-                  ? "Departed"
-                  : row.departureReportedAt
-                    ? "Departure pending"
-                    : row.arrivalConfirmedAt
-                      ? "At terminal"
-                      : row.arrivalReportedAt
-                        ? "Arrival pending"
-                        : "Inbound";
-
-                return (
-                  <tr key={row.id}>
-                    <td className="font-semibold">{row.busNumber}</td>
-                    <td>{row.routeName}</td>
-                    <td>{row.driver} / {row.conductor}</td>
-                    <td>{formatDateTime(row.scheduledArrivalAt)}</td>
-                    <td>{row.arrivalConfirmedAt ? formatDateTime(row.arrivalConfirmedAt) : "-"}</td>
-                    <td>{row.departureConfirmedAt ? formatDateTime(row.departureConfirmedAt) : "-"}</td>
-                    <td>
-                      <span className="badge badge-outline">{status}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <OperationsLog rows={rows} departedCount={departed.length} />
     </div>
   );
 }
