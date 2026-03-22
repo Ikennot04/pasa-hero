@@ -15,6 +15,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   String? _currentRouteCode;
+  List<RouteInfo> _routeOptions = const [];
   bool _isLoading = true;
 
   @override
@@ -25,10 +26,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadRouteCode() async {
     final routeCode = await ProfileDataService.getOperatorRouteCode();
+    final routeOptions = await RouteCatalogService.fetchAvailableRoutes();
     setState(() {
       _currentRouteCode = routeCode;
+      _routeOptions = routeOptions;
       _isLoading = false;
     });
+  }
+
+  String _routeNameForCode(String? code) {
+    if (code == null || code.trim().isEmpty) return 'Unknown';
+    final key = code.trim().toUpperCase();
+    for (final r in _routeOptions) {
+      if (r.code.trim().toUpperCase() == key) return r.name;
+    }
+    return code;
   }
 
   Future<void> _showProfileInformation() async {
@@ -55,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 12),
                 _buildInfoRow(
                   'Route Name',
-                  AvailableRoutes.getRouteByCode(_currentRouteCode!)?.name ?? 'Unknown',
+                  _routeNameForCode(_currentRouteCode),
                 ),
               ],
             ],
@@ -407,7 +419,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _showRouteSelection() async {
+    final latestOptions = await RouteCatalogService.fetchAvailableRoutes();
+    if (!mounted) return;
     String? selectedRouteCode = _currentRouteCode;
+    final options = latestOptions.isNotEmpty ? latestOptions : _routeOptions;
 
     if (!mounted) return;
 
@@ -417,24 +432,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Select Route'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: AvailableRoutes.routes.map((route) {
-                final isSelected = selectedRouteCode == route.code;
-                return RadioListTile<String>(
-                  title: Text(route.name),
-                  subtitle: Text('Code: ${route.code}'),
-                  value: route.code,
-                  groupValue: selectedRouteCode,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      selectedRouteCode = value;
-                    });
-                  },
-                  selected: isSelected,
-                );
-              }).toList(),
-            ),
+            child: options.isEmpty
+                ? const Text(
+                    'No routes found in Firestore yet. Add routes in `route_code` or `routes` first.',
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: options.map((route) {
+                      final isSelected = selectedRouteCode == route.code;
+                      return RadioListTile<String>(
+                        title: Text(route.name),
+                        subtitle: Text('Code: ${route.code}'),
+                        value: route.code,
+                        groupValue: selectedRouteCode,
+                        onChanged: (value) {
+                          setDialogState(() {
+                            selectedRouteCode = value;
+                          });
+                        },
+                        selected: isSelected,
+                      );
+                    }).toList(),
+                  ),
           ),
           actions: [
             TextButton(
@@ -459,9 +478,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _isLoading = false;
           if (success) {
             _currentRouteCode = result;
+            _routeOptions = options;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Route updated to: ${AvailableRoutes.getRouteByCode(result)?.name ?? result}'),
+                content: Text('Route updated to: ${_routeNameForCode(result)}'),
                 backgroundColor: Colors.green,
               ),
             );
@@ -537,7 +557,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         title: const Text('Route'),
                         subtitle: Text(
                           _currentRouteCode != null
-                              ? '${AvailableRoutes.getRouteByCode(_currentRouteCode!)?.name ?? _currentRouteCode} (Code: $_currentRouteCode)'
+                              ? '${_routeNameForCode(_currentRouteCode)} (Code: $_currentRouteCode)'
                               : 'Not set - Tap to select',
                         ),
                         trailing: const Icon(Icons.chevron_right),

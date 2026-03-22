@@ -35,6 +35,7 @@ class _MapScreenState extends State<MapScreen> {
   Set<Marker> _markers = {};
   Set<Polyline> _routePolylines = {};
   bool _isLocationRequestInProgress = false;
+  String? _activeRouteCode;
 
   /// Polyline id for the bus stop route (so operator can see their route).
   static const String _busStopRoutePolylineId = 'bus_stop_route';
@@ -44,33 +45,36 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _initialCameraPosition = _initialCameraOverBusStops;
     _loadOperatorIcon();
-    // Show bus stop markers immediately (orange) so they are never missing; upgrade to bus stop sign when loaded
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _addBusStopMarkers(
-        _fallbackBusStops(),
-        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-      );
-      setState(() => _isLoading = false);
-    });
-    // Then load bus stop sign icon and DB, and replace markers with bus stop sign
+    // Load bus stop sign icon and dynamic route stops from Firestore.
     _loadBusStopsFromDatabaseAndShow();
   }
 
-  /// Load bus stop sign icon and Route1 from DB, then replace markers with bus stop sign icon.
+  Future<String?> _resolveOperatorRouteCode() async {
+    final fromProfile = (await ProfileDataService.getOperatorRouteCode())?.trim();
+    if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
+    final routes = await RouteCatalogService.fetchAvailableRoutes();
+    if (routes.isNotEmpty) return routes.first.code.trim();
+    return null;
+  }
+
+  /// Load bus stop sign icon and route geometry from Firestore.
   Future<void> _loadBusStopsFromDatabaseAndShow() async {
     try {
       await _busStopIconService.loadIcons();
       if (!mounted) return;
-
-      await RouteDataService.ensureRoute1InFirestore();
+      final routeCode = await _resolveOperatorRouteCode();
       if (!mounted) return;
-
+      _activeRouteCode = routeCode;
+      if (routeCode == null || routeCode.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
+      }
       final List<({String name, LatLng position})> stops =
-          await _getBusStopsFromDatabase();
+          await RouteDataService.getRouteStops(routeCode);
       if (!mounted) return;
-
-      _addBusStopMarkers(stops, _busStopIconService.defaultIcon);
+      if (stops.isNotEmpty) {
+        _addBusStopMarkers(stops, _busStopIconService.defaultIcon);
+      }
       if (!mounted) return;
 
       setState(() => _isLoading = false);
@@ -78,52 +82,11 @@ class _MapScreenState extends State<MapScreen> {
       print('⚠️ [MapScreen] _loadBusStopsFromDatabaseAndShow failed: $e');
       print('   $st');
       if (mounted) {
-        _addBusStopMarkers(
-          _fallbackBusStops(),
-          _busStopIconService.defaultIcon,
-        );
         setState(() => _isLoading = false);
       }
     } finally {
       if (mounted) _loadOperatorRoute();
     }
-  }
-
-  /// Get bus stops from Firestore Route1; fallback to in-code Route1 stops.
-  Future<List<({String name, LatLng position})>> _getBusStopsFromDatabase() async {
-    try {
-      final data =
-          await RouteDataService.getRouteFromFirestore(AvailableRoutes.route1Code);
-      if (data == null) return _fallbackBusStops();
-
-      final stopsList = data['stops'] as List<dynamic>?;
-      if (stopsList == null || stopsList.isEmpty) return _fallbackBusStops();
-
-      final List<({String name, LatLng position})> result = [];
-      for (int i = 0; i < stopsList.length; i++) {
-        final stop = stopsList[i];
-        if (stop is! Map<String, dynamic>) continue;
-        final name = stop['name'] as String? ?? 'Stop ${i + 1}';
-        final lat = (stop['latitude'] as num?)?.toDouble();
-        final lng = (stop['longitude'] as num?)?.toDouble();
-        if (lat == null || lng == null) continue;
-        result.add((name: name, position: LatLng(lat, lng)));
-      }
-      if (result.isEmpty) return _fallbackBusStops();
-      final sliced = AvailableRoutes.route1StopsForHighlightRoad(result);
-      print('✅ [MapScreen] Loaded ${result.length} bus stops from Firestore Route1; using ${sliced.length} (UCLM → City Hall order)');
-      return sliced;
-    } catch (e) {
-      print('⚠️ [MapScreen] Error loading bus stops from database: $e');
-      return _fallbackBusStops();
-    }
-  }
-
-  List<({String name, LatLng position})> _fallbackBusStops() {
-    final all = AvailableRoutes.route1Stops
-        .map((s) => (name: s.name, position: s.position))
-        .toList();
-    return AvailableRoutes.route1StopsForHighlightRoad(all);
   }
 
   /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
@@ -147,7 +110,7 @@ class _MapScreenState extends State<MapScreen> {
             icon: icon,
             infoWindow: InfoWindow(
               title: stop.name,
-              snippet: 'Bus stop · Route1',
+              snippet: 'Bus stop · ${_activeRouteCode ?? 'Route'}',
             ),
           ),
         );
@@ -206,6 +169,7 @@ class _MapScreenState extends State<MapScreen> {
       final routeCode = await ProfileDataService.getOperatorRouteCode();
       final trimmedCode = routeCode?.trim();
       if (mounted && trimmedCode != null && trimmedCode.isNotEmpty) {
+        _activeRouteCode = trimmedCode;
         await _highlightRoute(trimmedCode);
       }
     } catch (e) {
@@ -218,7 +182,7 @@ class _MapScreenState extends State<MapScreen> {
   /// Highlights the route on the map based on the route code.
   Future<void> _highlightRoute(String routeCode) async {
     final code = routeCode.trim();
-    final coordinates = AvailableRoutes.getRouteCoordinates(code);
+    final coordinates = await RouteDataService.getRouteCoordinatesFromFirestore(code);
     if (coordinates == null) {
       print('⚠️ [MapScreen] No coordinates found for route code: $code');
       return;
@@ -248,8 +212,18 @@ class _MapScreenState extends State<MapScreen> {
         highlightPoints = routeResult?.polyline ?? const <LatLng>[];
       }
 
-      // Get route info for display
-      final routeInfo = AvailableRoutes.getRouteByCode(code);
+      // Get route info + stop names for display
+      final routeOptions = await RouteCatalogService.fetchAvailableRoutes();
+      RouteInfo? routeInfo;
+      for (final r in routeOptions) {
+        if (r.code.trim().toUpperCase() == code.toUpperCase()) {
+          routeInfo = r;
+          break;
+        }
+      }
+      final routeStops = await RouteDataService.getRouteStops(code);
+      final startStopName = routeStops.isNotEmpty ? routeStops.first.name : 'Route Start';
+      final endStopName = routeStops.isNotEmpty ? routeStops.last.name : 'Route End';
 
       if (mounted) {
         setState(() {
@@ -280,12 +254,8 @@ class _MapScreenState extends State<MapScreen> {
               position: coordinates.startPoint,
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
               infoWindow: InfoWindow(
-                title: code.toUpperCase() == AvailableRoutes.route1Code.toUpperCase()
-                    ? AvailableRoutes.route1HighlightStopNamesInOrder.first
-                    : (routeInfo?.name ?? 'Route Start'),
-                snippet: code.toUpperCase() == AvailableRoutes.route1Code.toUpperCase()
-                    ? 'Stop 1 · ${routeInfo?.name ?? code}'
-                    : 'Start: ${routeInfo?.name ?? code}',
+                title: startStopName,
+                snippet: 'Start · ${routeInfo?.name ?? code}',
               ),
             ),
             // End point marker
@@ -294,12 +264,8 @@ class _MapScreenState extends State<MapScreen> {
               position: coordinates.endPoint,
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
               infoWindow: InfoWindow(
-                title: code.toUpperCase() == AvailableRoutes.route1Code.toUpperCase()
-                    ? AvailableRoutes.route1HighlightStopNamesInOrder.last
-                    : 'Route End',
-                snippet: code.toUpperCase() == AvailableRoutes.route1Code.toUpperCase()
-                    ? 'Stop 10 · ${routeInfo?.name ?? code}'
-                    : 'End: ${routeInfo?.name ?? code}',
+                title: endStopName,
+                snippet: 'End · ${routeInfo?.name ?? code}',
               ),
             ),
           };
@@ -368,8 +334,8 @@ class _MapScreenState extends State<MapScreen> {
   /// 2. Requests location permission if needed
   /// 3. Gets current GPS position (or last known, or default)
   /// 4. Centers map on operator location
-  Future<void> _initializeLocation({bool showError = true}) async {
-    print('🗺️ [MapScreen] _initializeLocation() called (showError: $showError)');
+  Future<void> _initializeLocation({bool showError = true, bool forceRefresh = false}) async {
+    print('🗺️ [MapScreen] _initializeLocation() called (showError: $showError, forceRefresh: $forceRefresh)');
     
     // Prevent concurrent location requests
     if (_isLocationRequestInProgress) {
@@ -435,7 +401,8 @@ class _MapScreenState extends State<MapScreen> {
       print('🗺️ [MapScreen] Step 3: Getting current position (optimized mode)...');
       Position position = await _locationService.getCurrentPosition(
         preferLowAccuracy: false,
-        useCachedPosition: true,
+        useCachedPosition: !forceRefresh,
+        forceRefresh: forceRefresh,
       );
       print('   ✅ Position received:');
       print('      Latitude: ${position.latitude}');
@@ -524,7 +491,7 @@ class _MapScreenState extends State<MapScreen> {
               duration: const Duration(seconds: 5),
               action: SnackBarAction(
                 label: 'Retry',
-                onPressed: () => _initializeLocation(showError: true),
+                onPressed: () => _initializeLocation(showError: true, forceRefresh: true),
               ),
             ),
           );
@@ -559,7 +526,7 @@ class _MapScreenState extends State<MapScreen> {
                     )
                   : SnackBarAction(
                       label: 'Retry',
-                      onPressed: () => _initializeLocation(showError: true),
+                      onPressed: () => _initializeLocation(showError: true, forceRefresh: true),
                     ),
             ),
           );
@@ -658,7 +625,9 @@ class _MapScreenState extends State<MapScreen> {
           IconButton(
             icon: const Icon(Icons.my_location),
             tooltip: 'Center on my location',
-            onPressed: _isLocationRequestInProgress ? null : () => _initializeLocation(),
+            onPressed: _isLocationRequestInProgress
+                ? null
+                : () => _initializeLocation(forceRefresh: true),
           ),
         ],
       ),

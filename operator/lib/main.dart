@@ -6,6 +6,7 @@ import 'firebase_options.dart';
 import 'splashscreen/splashscreen.dart';
 import 'features/auth/login/login.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/profile/screen/profile_screen_data.dart';
 import 'features/route/route_screen.dart';
 import 'features/map/map_screen.dart';
 import 'shared/nav_bar.dart';
@@ -24,6 +25,8 @@ void main() async {
   try {
     final options = DefaultFirebaseOptions.currentPlatform;
     await Firebase.initializeApp(options: options);
+    // Keep route tables ready for both operator and passenger dynamic route flow.
+    await RouteCatalogService.ensureRouteCodeSeededFromRoutes();
     firebaseInitialized = true;
   } on UnsupportedError catch (e) {
     initError = '${e.message}\n\nRun from the operator folder: cd operator && flutter run';

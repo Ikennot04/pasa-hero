@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/services/operator_location_sync_service.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/route/route_screen.dart';
 
@@ -19,6 +20,18 @@ class _NavBarState extends State<NavBar> {
     RouteScreen(),
     ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    OperatorLocationSyncService.instance.start();
+  }
+
+  @override
+  void dispose() {
+    OperatorLocationSyncService.instance.stop();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
