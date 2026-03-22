@@ -1,13 +1,19 @@
 import type { ChartData, ChartOptions } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
 
+const doughnutChartOptions: ChartOptions<"doughnut"> = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { position: "bottom" } },
+  cutout: "62%",
+};
+
 type ConfirmationBacklogProps = {
   pendingTotal: number;
   pendingArrivalCount: number;
   pendingDepartureCount: number;
   mounted: boolean;
   doughnutChartData: ChartData<"doughnut">;
-  doughnutOptions: ChartOptions<"doughnut">;
 };
 
 export default function ConfirmationBacklog({
@@ -16,7 +22,6 @@ export default function ConfirmationBacklog({
   pendingDepartureCount,
   mounted,
   doughnutChartData,
-  doughnutOptions,
 }: ConfirmationBacklogProps) {
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm lg:col-span-1">
@@ -27,7 +32,7 @@ export default function ConfirmationBacklog({
 
       <div className="mt-3 h-64">
         {mounted ? (
-          <Doughnut data={doughnutChartData} options={doughnutOptions} />
+          <Doughnut data={doughnutChartData} options={doughnutChartOptions} />
         ) : (
           <div className="h-full w-full flex items-center justify-center text-sm text-base-content/60">
             Loading chart...

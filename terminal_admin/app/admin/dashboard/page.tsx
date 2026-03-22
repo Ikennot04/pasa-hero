@@ -12,7 +12,6 @@ import {
   Title,
   Tooltip,
 } from "chart.js";
-import type { ChartOptions } from "chart.js";
 import Link from "next/link";
 import Notifications from "./components/Notifications";
 import PendingConfirmation from "./components/PendingConfirmation";
@@ -437,40 +436,6 @@ export default function Dashboard() {
     };
   }, [notifications, terminalId]);
 
-  const barOptions: ChartOptions<"bar"> = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: "top" } },
-      scales: {
-        y: { beginAtZero: true, ticks: { precision: 0 } },
-      },
-    }),
-    [],
-  );
-
-  const doughnutOptions: ChartOptions<"doughnut"> = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { position: "bottom" } },
-      cutout: "62%",
-    }),
-    [],
-  );
-
-  const terminalEventsChartOptions: ChartOptions<"bar"> = useMemo(
-    () => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, ticks: { precision: 0 } },
-      },
-    }),
-    [],
-  );
-
   const confirmArrival = (busId: string) => {
     const nowTs = new Date().toISOString();
     const busNumber = assignments.find((a) => a.bus_id === busId)?.bus_number ?? "";
@@ -613,7 +578,7 @@ export default function Dashboard() {
   }, [departedBuses]);
 
   return (
-    <div className="space-y-6 pb-6">
+    <div className="space-y-6 pb-6 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Terminal Dashboard</h1>
@@ -669,7 +634,6 @@ export default function Dashboard() {
           totalBuses={presentBuses.length + departedBuses.length}
           mounted={mounted}
           barChartData={barChartData}
-          barOptions={barOptions}
         />
 
         <ConfirmationBacklog
@@ -678,13 +642,11 @@ export default function Dashboard() {
           pendingDepartureCount={pendingDepartureBuses.length}
           mounted={mounted}
           doughnutChartData={doughnutChartData}
-          doughnutOptions={doughnutOptions}
         />
 
         <TerminalEventFlow
           mounted={mounted}
           terminalEventsChartData={terminalEventsChartData}
-          terminalEventsChartOptions={terminalEventsChartOptions}
         />
       </div>
 
