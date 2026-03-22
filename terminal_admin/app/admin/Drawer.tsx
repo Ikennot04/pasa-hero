@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback } from "react";
 
 import { LiaBarsSolid } from "react-icons/lia";
-import { FaBell, FaChartLine } from "react-icons/fa";
+import { FaBell, FaChartLine, FaSignOutAlt } from "react-icons/fa";
 import { MdBusAlert } from "react-icons/md";
 import { TbBusStop } from "react-icons/tb";
 import { LuLogs } from "react-icons/lu";
@@ -37,22 +38,47 @@ const routes = [
   },
 ];
 
+const PROFILE_NAME = "Terminal Admin";
+
 export default function Drawer({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const logout = useCallback(() => {
+    router.push("/login");
+  }, [router]);
 
   return (
     <div className="drawer lg:drawer-open">
       <input id="my-drawer-4" type="checkbox" className="drawer-toggle" />
       <div className="drawer-content flex min-h-screen flex-col">
-        <nav className="navbar w-full shrink-0 bg-base-300">
-          <label
-            htmlFor="my-drawer-4"
-            aria-label="open sidebar"
-            className="btn btn-square btn-ghost"
-          >
-            <LiaBarsSolid className="size-6" />
-          </label>
-          <div className="pl-3 text-xl font-semibold">Terminal Admin</div>
+        <nav className="navbar min-h-16 w-full shrink-0 bg-base-300 px-2 sm:px-4">
+          <div className="flex flex-1 items-center gap-2 min-w-0">
+            <label
+              htmlFor="my-drawer-4"
+              aria-label="open sidebar"
+              className="btn btn-square btn-ghost btn-lg shrink-0"
+            >
+              <LiaBarsSolid className="size-7" />
+            </label>
+            <div className="pl-0.5 sm:pl-1 text-xl sm:text-2xl font-semibold truncate">
+              Terminal Admin
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+            <span className="max-w-48 truncate text-base font-semibold text-base-content/90 sm:max-w-none sm:text-lg">
+              {PROFILE_NAME}
+            </span>
+            <button
+              type="button"
+              onClick={logout}
+              className="btn btn-ghost gap-2 normal-case"
+              aria-label="Log out"
+            >
+              <FaSignOutAlt className="size-5 shrink-0" />
+              <span className="hidden sm:inline text-base">Logout</span>
+            </button>
+          </div>
         </nav>
         <div className="min-h-0 flex-1 overflow-y-auto px-4">{children}</div>
       </div>
