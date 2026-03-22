@@ -230,35 +230,47 @@ class LocationService {
         print('   📍 Location accuracy status: $accStatus');
       } catch (_) {}
 
-      // PRIORITY 1: last known position
+      // PRIORITY 1: last known position (skip when [forceRefresh] — need a real fix for drivers)
       Position? lastPosition;
-      try {
-        lastPosition = await Geolocator.getLastKnownPosition()
-            .timeout(const Duration(seconds: 5));
-      } catch (_) {}
+      if (!forceRefresh) {
+        try {
+          lastPosition = await Geolocator.getLastKnownPosition()
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {}
 
-      if (lastPosition != null) {
-        final age = DateTime.now().difference(lastPosition.timestamp);
-        print(
-          '   📍 Last known position: age=${age.inSeconds}s, accuracy=${lastPosition.accuracy}m',
-        );
-        final maxReasonableAge = preferLowAccuracy
-            ? const Duration(hours: 2)
-            : const Duration(minutes: 30);
-        if (age <= maxReasonableAge) {
-          await LocationCacheService.instance.saveLocation(lastPosition);
-          return lastPosition;
+        if (lastPosition != null) {
+          final age = DateTime.now().difference(lastPosition.timestamp);
+          print(
+            '   📍 Last known position: age=${age.inSeconds}s, accuracy=${lastPosition.accuracy}m',
+          );
+          // Operators need a recent fix; 30m stale was often wrong (e.g. home vs road).
+          final maxReasonableAge = preferLowAccuracy
+              ? const Duration(hours: 2)
+              : const Duration(minutes: 2);
+          if (age <= maxReasonableAge) {
+            await LocationCacheService.instance.saveLocation(lastPosition);
+            return lastPosition;
+          }
+        } else {
+          print('   ⚠️ No last known position returned by Geolocator');
         }
       } else {
-        print('   ⚠️ No last known position returned by Geolocator');
+        print('   🔄 forceRefresh: skipping last-known shortcut');
+        try {
+          lastPosition = await Geolocator.getLastKnownPosition()
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {}
       }
 
-      // PRIORITY 2: fresh fix (one-shot), with a better order on Android
+      // PRIORITY 2: fresh fix (one-shot).
+      // Android: fused location first + high/medium before bestForNavigation so the first
+      // fix returns in seconds instead of waiting out long GPS-only timeouts.
       final order = isAndroid
           ? <LocationAccuracy>[
               LocationAccuracy.high,
-              LocationAccuracy.best,
               LocationAccuracy.medium,
+              LocationAccuracy.best,
+              LocationAccuracy.bestForNavigation,
               LocationAccuracy.low,
             ]
           : (preferLowAccuracy
@@ -269,8 +281,8 @@ class LocationService {
                   LocationAccuracy.best,
                 ]
               : <LocationAccuracy>[
-                  LocationAccuracy.medium,
                   LocationAccuracy.high,
+                  LocationAccuracy.medium,
                   LocationAccuracy.best,
                   LocationAccuracy.low,
                 ]);
@@ -278,18 +290,16 @@ class LocationService {
       Duration timeLimitFor(LocationAccuracy a) {
         switch (a) {
           case LocationAccuracy.low:
-            return const Duration(seconds: 25);
+          case LocationAccuracy.lowest:
           case LocationAccuracy.reduced:
-            return const Duration(seconds: 25);
+            return const Duration(seconds: 8);
           case LocationAccuracy.medium:
-            return const Duration(seconds: 25);
+            return const Duration(seconds: 8);
           case LocationAccuracy.high:
-            return const Duration(seconds: 35);
+            return const Duration(seconds: 10);
           case LocationAccuracy.best:
           case LocationAccuracy.bestForNavigation:
-            return const Duration(seconds: 40);
-          case LocationAccuracy.lowest:
-            return const Duration(seconds: 25);
+            return const Duration(seconds: 14);
         }
       }
 
@@ -311,9 +321,9 @@ class LocationService {
         }
       }
 
-      // On some devices, Google Play Services / fused location can be unreliable.
-      // Prefer legacy LocationManager first; if it fails, try fused as a fallback.
-      final passes = isAndroid ? <bool>[true, false] : <bool>[false];
+      // Try fused (Play Services) first — usually fastest warm fix; fall back to
+      // LocationManager if needed.
+      final passes = isAndroid ? <bool>[false, true] : <bool>[false];
 
       for (final forceAndroidLocationManager in passes) {
         for (final accuracy in order) {
@@ -357,9 +367,9 @@ class LocationService {
       }
 
       final streamOrder = <LocationAccuracy>[
-        LocationAccuracy.best,
         LocationAccuracy.high,
         LocationAccuracy.medium,
+        LocationAccuracy.best,
         LocationAccuracy.low,
       ];
 
@@ -367,7 +377,7 @@ class LocationService {
         print('   🔄 Stream: $accuracy ...');
         final pos = await tryStream(
           accuracy: accuracy,
-          wait: const Duration(seconds: 25),
+          wait: const Duration(seconds: 12),
         );
         if (pos != null) {
           await LocationCacheService.instance.saveLocation(pos);

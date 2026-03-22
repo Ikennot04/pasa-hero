@@ -49,29 +49,21 @@ class _RouteScreenState extends State<RouteScreen> {
     _loadOperatorIcon();
     _loadMapStyle();
     _loadRouteId();
-    // Show bus stop markers and route line immediately (this is the map operators see first)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _addBusStopMarkersAndRoute(
-        _fallbackBusStops(),
-        BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-      );
-      setState(() => _isLoading = false);
-    });
-    _loadBusStopSignAndUpdateMarkers();
     _initializeLocation();
   }
 
   Future<void> _loadRouteId() async {
-    final code = await ProfileDataService.getOperatorRouteCode();
-    if (mounted) setState(() => _routeId = code?.trim());
-  }
-
-  List<({String name, LatLng position})> _fallbackBusStops() {
-    final all = AvailableRoutes.route1Stops
-        .map((s) => (name: s.name, position: s.position))
-        .toList();
-    return AvailableRoutes.route1StopsForHighlightRoad(all);
+    final code = (await ProfileDataService.getOperatorRouteCode())?.trim();
+    String? t = code;
+    if (t == null || t.isEmpty) {
+      final options = await RouteCatalogService.fetchAvailableRoutes();
+      if (options.isNotEmpty) t = options.first.code.trim();
+    }
+    ProfileDataService.setLocationSyncRouteFallback(t);
+    if (mounted) {
+      setState(() => _routeId = t);
+      await _loadBusStopSignAndUpdateMarkers(routeCode: t);
+    }
   }
 
   /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
@@ -93,7 +85,10 @@ class _RouteScreenState extends State<RouteScreen> {
             markerId: MarkerId('bus_stop_$i'),
             position: stop.position,
             icon: icon,
-            infoWindow: InfoWindow(title: stop.name, snippet: 'Bus stop · Route1'),
+            infoWindow: InfoWindow(
+              title: stop.name,
+              snippet: 'Bus stop · ${_routeId ?? 'Route'}',
+            ),
           ),
         );
       }
@@ -122,14 +117,21 @@ class _RouteScreenState extends State<RouteScreen> {
     }
   }
 
-  Future<void> _loadBusStopSignAndUpdateMarkers() async {
+  Future<void> _loadBusStopSignAndUpdateMarkers({String? routeCode}) async {
     try {
       await _busStopIconService.loadIcons();
       if (!mounted) return;
-      _addBusStopMarkersAndRoute(
-        _fallbackBusStops(),
-        _busStopIconService.defaultIcon,
-      );
+      final code = routeCode?.trim();
+      if (code == null || code.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      final stops = await RouteDataService.getRouteStops(code);
+      if (!mounted) return;
+      if (stops.isNotEmpty) {
+        _addBusStopMarkersAndRoute(stops, _busStopIconService.defaultIcon);
+      }
+      setState(() => _isLoading = false);
     } catch (_) {}
   }
 
@@ -167,7 +169,7 @@ class _RouteScreenState extends State<RouteScreen> {
   }
 
   /// Initializes location services and gets operator's current position.
-  Future<void> _initializeLocation({bool showError = true}) async {
+  Future<void> _initializeLocation({bool showError = true, bool forceRefresh = false}) async {
     if (_isLocationRequestInProgress) return;
     
     _isLocationRequestInProgress = true;
@@ -226,7 +228,8 @@ class _RouteScreenState extends State<RouteScreen> {
       print('🗺️ [RouteScreen] Step 3: Getting current position (optimized mode)...');
       Position position = await _locationService.getCurrentPosition(
         preferLowAccuracy: false,
-        useCachedPosition: true,
+        useCachedPosition: !forceRefresh,
+        forceRefresh: forceRefresh,
       );
       print('   ✅ Position received:');
       print('      Latitude: ${position.latitude}');
@@ -282,7 +285,7 @@ class _RouteScreenState extends State<RouteScreen> {
               duration: const Duration(seconds: 5),
               action: SnackBarAction(
                 label: 'Retry',
-                onPressed: () => _initializeLocation(showError: true),
+                onPressed: () => _initializeLocation(showError: true, forceRefresh: true),
               ),
             ),
           );
@@ -315,7 +318,7 @@ class _RouteScreenState extends State<RouteScreen> {
                     )
                   : SnackBarAction(
                       label: 'Retry',
-                      onPressed: () => _initializeLocation(showError: true),
+                      onPressed: () => _initializeLocation(showError: true, forceRefresh: true),
                     ),
             ),
           );
@@ -398,7 +401,9 @@ class _RouteScreenState extends State<RouteScreen> {
                 right: 16,
                 child: FloatingActionButton(
                   mini: true,
-                  onPressed: _isLocationRequestInProgress ? null : () => _initializeLocation(),
+                  onPressed: _isLocationRequestInProgress
+                      ? null
+                      : () => _initializeLocation(forceRefresh: true),
                   child: const Icon(Icons.my_location),
                   tooltip: 'Center on my location',
                 ),
