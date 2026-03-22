@@ -26,7 +26,9 @@ export default function PendingConfirmation({
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Pending confirmations</h2>
-        <span className="badge badge-sm badge-warning">{pendingTotal} waiting</span>
+        <span className="badge badge-sm badge-warning">
+          {pendingTotal} waiting
+        </span>
       </div>
 
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -50,7 +52,10 @@ export default function PendingConfirmation({
                       <td>{r.routeName}</td>
                       <td>{r.time ? formatTime(r.time) : "-"}</td>
                       <td className="text-right">
-                        <button className="btn btn-xs btn-primary" onClick={() => onConfirmArrival(r.busId)}>
+                        <button
+                          className="btn btn-sm bg-[#0062CA] text-white"
+                          onClick={() => onConfirmArrival(r.busId)}
+                        >
                           Confirm
                         </button>
                       </td>
@@ -58,7 +63,10 @@ export default function PendingConfirmation({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="text-center text-sm text-base-content/60">
+                    <td
+                      colSpan={4}
+                      className="text-center text-sm text-base-content/60"
+                    >
                       No pending arrivals
                     </td>
                   </tr>
@@ -89,7 +97,7 @@ export default function PendingConfirmation({
                       <td>{r.time ? formatTime(r.time) : "-"}</td>
                       <td className="text-right">
                         <button
-                          className="btn btn-xs btn-primary"
+                          className="btn btn-sm bg-[#0062CA] text-white"
                           onClick={() => onConfirmDeparture(r.busId)}
                         >
                           Confirm
@@ -99,7 +107,10 @@ export default function PendingConfirmation({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="text-center text-sm text-base-content/60">
+                    <td
+                      colSpan={4}
+                      className="text-center text-sm text-base-content/60"
+                    >
                       No pending departures
                     </td>
                   </tr>

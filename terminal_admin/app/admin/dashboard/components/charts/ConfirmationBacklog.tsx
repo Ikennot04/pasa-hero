@@ -60,10 +60,10 @@ export default function ConfirmationBacklog({
       </div>
 
       <div className="mt-3 flex items-center gap-4 flex-wrap">
-        <span className="badge badge-outline badge-warning">
+        <span className="badge border-[#017f7d] text-[#017f7d]">
           Arrivals: {pendingArrivalCount}
         </span>
-        <span className="badge badge-outline badge-primary">
+        <span className="badge border-[#ffd180] text-[#ffd180]">
           Departures: {pendingDepartureCount}
         </span>
       </div>
