@@ -1,4 +1,5 @@
-import type { ChartData, ChartOptions } from "chart.js";
+import { useMemo } from "react";
+import type { ChartOptions } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
 const barChartOptions: ChartOptions<"bar"> = {
@@ -11,16 +12,35 @@ const barChartOptions: ChartOptions<"bar"> = {
 };
 
 type TerminalSnapshotProps = {
-  totalBuses: number;
+  presentCount: number;
+  departedCount: number;
   mounted: boolean;
-  barChartData: ChartData<"bar">;
 };
 
 export default function TerminalSnapshot({
-  totalBuses,
+  presentCount,
+  departedCount,
   mounted,
-  barChartData,
 }: TerminalSnapshotProps) {
+  const totalBuses = presentCount + departedCount;
+
+  const barChartData = useMemo(
+    () => ({
+      labels: ["Present", "Departed"],
+      datasets: [
+        {
+          label: "Buses",
+          data: [presentCount, departedCount],
+          backgroundColor: ["rgb(128, 94, 0, 0.50)", "rgb(22, 127, 1, 0.50)"],
+          borderColor: ["rgb(128, 94, 0)", "rgb(22, 127, 1)"],
+          borderWidth: 1.5,
+          borderRadius: 6,
+        },
+      ],
+    }),
+    [presentCount, departedCount],
+  );
+
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm lg:col-span-1">
       <div className="flex items-center justify-between">

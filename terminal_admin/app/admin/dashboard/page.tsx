@@ -358,84 +358,6 @@ export default function Dashboard() {
       .slice(0, 8);
   }, [notifications, terminalId]);
 
-  const barChartData = useMemo(() => {
-    return {
-      labels: ["Present", "Departed"],
-      datasets: [
-        {
-          label: "Buses",
-          data: [presentBuses.length, departedBuses.length],
-          backgroundColor: ["rgba(0, 98, 202, 0.65)", "rgba(34, 197, 94, 0.65)"],
-          borderColor: ["rgba(0, 98, 202, 1)", "rgba(34, 197, 94, 1)"],
-          borderWidth: 1.5,
-          borderRadius: 6,
-        },
-      ],
-    };
-  }, [presentBuses.length, departedBuses.length]);
-
-  const doughnutChartData = useMemo(() => {
-    return {
-      labels: ["Arrival confirmations", "Departure confirmations"],
-      datasets: [
-        {
-          data: [pendingArrivalBuses.length, pendingDepartureBuses.length],
-          backgroundColor: ["rgba(255, 159, 64, 0.75)", "rgba(59, 130, 246, 0.75)"],
-          borderColor: ["rgba(255, 159, 64, 1)", "rgba(59, 130, 246, 1)"],
-          borderWidth: 1.5,
-        },
-      ],
-    };
-  }, [pendingArrivalBuses.length, pendingDepartureBuses.length]);
-
-  const terminalEventsChartData = useMemo(() => {
-    const terminalNotifications = notifications.filter((n) => n.terminal_id === terminalId);
-    const eventCounts = {
-      arrival_reported: 0,
-      arrival_confirmed: 0,
-      departure_reported: 0,
-      departure_confirmed: 0,
-    };
-
-    for (const n of terminalNotifications) {
-      eventCounts[n.event_type] += 1;
-    }
-
-    return {
-      labels: [
-        "Arrival reported",
-        "Arrival confirmed",
-        "Departure reported",
-        "Departure confirmed",
-      ],
-      datasets: [
-        {
-          label: "Events",
-          data: [
-            eventCounts.arrival_reported,
-            eventCounts.arrival_confirmed,
-            eventCounts.departure_reported,
-            eventCounts.departure_confirmed,
-          ],
-          backgroundColor: [
-            "rgba(245, 158, 11, 0.75)",
-            "rgba(34, 197, 94, 0.75)",
-            "rgba(59, 130, 246, 0.75)",
-            "rgba(16, 185, 129, 0.75)",
-          ],
-          borderColor: [
-            "rgba(245, 158, 11, 1)",
-            "rgba(34, 197, 94, 1)",
-            "rgba(59, 130, 246, 1)",
-            "rgba(16, 185, 129, 1)",
-          ],
-          borderWidth: 1.5,
-          borderRadius: 6,
-        },
-      ],
-    };
-  }, [notifications, terminalId]);
-
   const confirmArrival = (busId: string) => {
     const nowTs = new Date().toISOString();
     const busNumber = assignments.find((a) => a.bus_id === busId)?.bus_number ?? "";
@@ -631,9 +553,9 @@ export default function Dashboard() {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <TerminalSnapshot
-          totalBuses={presentBuses.length + departedBuses.length}
+          presentCount={presentBuses.length}
+          departedCount={departedBuses.length}
           mounted={mounted}
-          barChartData={barChartData}
         />
 
         <ConfirmationBacklog
@@ -641,12 +563,12 @@ export default function Dashboard() {
           pendingArrivalCount={pendingArrivalBuses.length}
           pendingDepartureCount={pendingDepartureBuses.length}
           mounted={mounted}
-          doughnutChartData={doughnutChartData}
         />
 
         <TerminalEventFlow
           mounted={mounted}
-          terminalEventsChartData={terminalEventsChartData}
+          notifications={notifications}
+          terminalId={terminalId}
         />
       </div>
 

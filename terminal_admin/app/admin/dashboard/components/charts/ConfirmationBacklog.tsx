@@ -1,4 +1,5 @@
-import type { ChartData, ChartOptions } from "chart.js";
+import { useMemo } from "react";
+import type { ChartOptions } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
 
 const doughnutChartOptions: ChartOptions<"doughnut"> = {
@@ -13,7 +14,6 @@ type ConfirmationBacklogProps = {
   pendingArrivalCount: number;
   pendingDepartureCount: number;
   mounted: boolean;
-  doughnutChartData: ChartData<"doughnut">;
 };
 
 export default function ConfirmationBacklog({
@@ -21,13 +21,32 @@ export default function ConfirmationBacklog({
   pendingArrivalCount,
   pendingDepartureCount,
   mounted,
-  doughnutChartData,
 }: ConfirmationBacklogProps) {
+  const doughnutChartData = useMemo(
+    () => ({
+      labels: ["Arrival confirmations", "Departure confirmations"],
+      datasets: [
+        {
+          data: [pendingArrivalCount, pendingDepartureCount],
+          backgroundColor: [
+            "rgb(1, 127, 125, 0.50)",
+            "rgb(255, 209, 128, 0.50)",
+          ],
+          borderColor: ["rgb(1, 127, 125)", "rgb(255, 209, 128)"],
+          borderWidth: 1.5,
+        },
+      ],
+    }),
+    [pendingArrivalCount, pendingDepartureCount],
+  );
+
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm lg:col-span-1">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Confirmation backlog</h2>
-        <span className="badge badge-sm badge-warning">{pendingTotal} pending</span>
+        <span className="badge badge-sm badge-warning">
+          {pendingTotal} pending
+        </span>
       </div>
 
       <div className="mt-3 h-64">
@@ -41,8 +60,12 @@ export default function ConfirmationBacklog({
       </div>
 
       <div className="mt-3 flex items-center gap-4 flex-wrap">
-        <span className="badge badge-outline badge-warning">Arrivals: {pendingArrivalCount}</span>
-        <span className="badge badge-outline badge-primary">Departures: {pendingDepartureCount}</span>
+        <span className="badge badge-outline badge-warning">
+          Arrivals: {pendingArrivalCount}
+        </span>
+        <span className="badge badge-outline badge-primary">
+          Departures: {pendingDepartureCount}
+        </span>
       </div>
     </div>
   );
