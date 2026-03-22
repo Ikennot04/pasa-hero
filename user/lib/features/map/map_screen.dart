@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../core/models/nearby_operator.dart';
 import '../../core/models/bus_stop.dart';
 import '../../core/services/bus_stops_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/map/map_service.dart';
 import 'services/bus_stop_icon_service.dart';
+import 'services/operator_bus_icon_service.dart';
 import 'services/bus_stop_marker_service.dart';
 import 'services/route_service.dart';
 import 'services/map_style_service.dart';
@@ -22,6 +25,7 @@ class MapScreen extends StatefulWidget {
     super.key,
     this.routeOrigin,
     this.routeDestination,
+    this.nearbyOperators = const [],
   });
 
   /// Start of the route (e.g. closest bus stop to user). When set with [routeDestination], route is drawn.
@@ -29,6 +33,9 @@ class MapScreen extends StatefulWidget {
 
   /// End of the route (e.g. selected destination bus stop).
   final LatLng? routeDestination;
+
+  /// Live operator positions for the current Near Me route filter (bus image marker).
+  final List<NearbyOperator> nearbyOperators;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -62,6 +69,7 @@ class _MapScreenState extends State<MapScreen> {
   final RouteService _routeService = RouteService();
   final MapStyleService _mapStyleService = MapStyleService();
   final BusStopIconService _iconService = BusStopIconService.instance;
+  final OperatorBusIconService _operatorBusIcon = OperatorBusIconService.instance;
 
   // Guard to prevent concurrent location requests
   bool _isLocationRequestInProgress = false;
@@ -87,19 +95,15 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _loadMapStyle();
-    // Load custom bus stop icons asynchronously
-    _iconService.loadIcons().then((_) {
-      // Reload markers after icons are loaded
-      if (mounted) {
-        setState(() {
-          if (_busStopMarkers.isNotEmpty) {
-            _applyMarkers();
-          }
-        });
-      }
-    });
     // Show all Cebu bus stops (sample on first frame, then from Firestore)
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Future.wait([
+        _iconService.loadIcons(),
+        _operatorBusIcon.load(context),
+      ]).then((_) {
+        if (mounted) setState(_applyMarkers);
+      });
       if (mounted && _busStopMarkers.isEmpty) {
         _applySampleBusStopMarkersCebu();
       }
@@ -121,6 +125,9 @@ class _MapScreenState extends State<MapScreen> {
       } else {
         setState(() => _routePolylines = {});
       }
+    }
+    if (!listEquals(oldWidget.nearbyOperators, widget.nearbyOperators)) {
+      setState(_applyMarkers);
     }
   }
 
@@ -654,6 +661,22 @@ class _MapScreenState extends State<MapScreen> {
   void _applyMarkers() {
     final Set<Marker> next = Set<Marker>.from(_busStopMarkers);
     final Set<Circle> nextCircles = {};
+    for (final op in widget.nearbyOperators) {
+      next.add(
+        Marker(
+          markerId: MarkerId('operator_${op.operatorId}'),
+          position: LatLng(op.latitude, op.longitude),
+          icon: _operatorBusIcon.icon,
+          anchor: const Offset(0.5, 0.92),
+          infoWindow: InfoWindow(
+            title: 'Live bus',
+            snippet: op.routeCode != null && op.routeCode!.isNotEmpty
+                ? 'Route ${op.routeCode} · ${op.distanceLabel}'
+                : op.distanceLabel,
+          ),
+        ),
+      );
+    }
     if (_currentPosition != null) {
       final pos = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
       next.add(Marker(
