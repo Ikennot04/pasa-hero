@@ -1,11 +1,18 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../core/models/bus_stop.dart';
+import '../../../core/models/nearby_operator.dart';
+import '../../../core/models/operator_route_option.dart';
 import '../../../core/services/bus_stops_service.dart';
+import '../../../core/services/operator_route_options_service.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/location_cache_service.dart';
 import '../../../core/services/map/map_service.dart';
+import '../../../core/services/nearby_operators_service.dart';
 import '../../../shared/bottom_navBar.dart';
 import '../../map/map.dart';
 import '../Module/free_ride.dart';
@@ -53,6 +60,18 @@ class _NearMeContentState extends State<_NearMeContent> {
   final LocationService _locationService = LocationService();
   final BusStopsService _busStopsService = BusStopsService();
   final LocationCacheService _locationCache = LocationCacheService.instance;
+  final NearbyOperatorsService _nearbyOperatorsService = NearbyOperatorsService();
+  final OperatorRouteOptionsService _routeOptionsService = OperatorRouteOptionsService();
+
+  List<NearbyOperator> _nearbyOperators = [];
+  StreamSubscription<List<NearbyOperator>>? _nearbyOperatorsSub;
+  Timer? _nearbyServerPoll;
+  String? _operatorsFirestoreError;
+
+  List<OperatorRouteOption> _routeOptions = [];
+  bool _routeOptionsLoading = true;
+  /// `null` = show all nearby operators (distance filter only).
+  String? _selectedRouteCode;
 
   /// Fallback list when API hasn't loaded yet; includes lat/lng for route drawing.
   static const List<Map<String, dynamic>> _terminalsFallback = [
@@ -80,10 +99,76 @@ class _NearMeContentState extends State<_NearMeContent> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _updateFromSheetExtent(_sheetController.size);
+        // Listen to Firestore immediately so a slow route-catalog fetch never delays drivers.
+        _subscribeNearbyOperators();
+        _loadRouteOptions();
         // Try to load from cache first, then fetch if needed
         _loadFromCacheOrFetch();
       }
     });
+  }
+
+  void _startNearbyServerPolling() {
+    _nearbyServerPoll?.cancel();
+    // One-shot + periodic server reads so we are not stuck on an empty cache snapshot.
+    Future<void> pull() async {
+      final p = _userPosition;
+      final q = _selectedRouteCode?.trim();
+      try {
+        final list = await _nearbyOperatorsService.fetchNearby(
+          userLat: p?.latitude,
+          userLng: p?.longitude,
+          routeCodeFilter: (q == null || q.isEmpty) ? null : q,
+          source: Source.server,
+        );
+        if (!mounted) return;
+        setState(() {
+          _operatorsFirestoreError = null;
+          if (list.isNotEmpty) {
+            _nearbyOperators = list;
+          }
+        });
+      } catch (e) {
+        if (mounted) {
+          setState(() => _operatorsFirestoreError = e.toString());
+        }
+      }
+    }
+
+    Future<void>.delayed(const Duration(seconds: 2), () {
+      if (mounted) pull();
+    });
+    _nearbyServerPoll = Timer.periodic(const Duration(seconds: 25), (_) {
+      if (mounted) pull();
+    });
+  }
+
+  Future<void> _loadRouteOptions() async {
+    setState(() => _routeOptionsLoading = true);
+    final list = await _routeOptionsService.fetchAvailableRoutes();
+    if (!mounted) return;
+    setState(() {
+      _routeOptions = list;
+      _routeOptionsLoading = false;
+      if (_selectedRouteCode != null) {
+        final stillThere = list.any(
+          (o) => o.code.toUpperCase() == _selectedRouteCode!.toUpperCase(),
+        );
+        if (!stillThere) _selectedRouteCode = null;
+      }
+    });
+    _subscribeNearbyOperators();
+  }
+
+  String _labelForSelectedRoute() {
+    final c = _selectedRouteCode;
+    if (c == null || c.isEmpty) return '';
+    for (final o in _routeOptions) {
+      if (o.code.toUpperCase() == c.toUpperCase()) {
+        return o.displayName;
+      }
+    }
+    return c;
   }
 
   /// Loads from cache first, then fetches if cache is expired or unavailable.
@@ -102,6 +187,7 @@ class _NearMeContentState extends State<_NearMeContent> {
           _userPosition = cachedPosition;
           _destinationsLoading = true;
         });
+        _subscribeNearbyOperators();
         // Load bus stops with cached location
         await _loadBusStopsWithPosition(cachedPosition);
         _hasLoadedOnce = true;
@@ -154,6 +240,7 @@ class _NearMeContentState extends State<_NearMeContent> {
       if (!mounted) return;
       _applyDestinationsFromStops(result.stops, null);
       _hasLoadedOnce = true;
+      _subscribeNearbyOperators();
     } catch (e) {
       if (mounted) {
         setState(() => _destinationsLoading = false);
@@ -169,7 +256,8 @@ class _NearMeContentState extends State<_NearMeContent> {
       _userPosition = position;
       _destinationsLoading = true;
     });
-    
+    _subscribeNearbyOperators();
+
     try {
       final result = await _busStopsService.getBusStopsWithClosestHighlighted(
         position.latitude,
@@ -279,8 +367,39 @@ class _NearMeContentState extends State<_NearMeContent> {
     }
   }
 
+  void _subscribeNearbyOperators() {
+    _nearbyOperatorsSub?.cancel();
+    final p = _userPosition;
+    final q = _selectedRouteCode?.trim();
+    _nearbyOperatorsSub = _nearbyOperatorsService
+        .watchNearby(
+          userLat: p?.latitude,
+          userLng: p?.longitude,
+          routeCodeFilter: (q == null || q.isEmpty) ? null : q,
+        )
+        .listen(
+      (list) {
+        if (mounted) {
+          setState(() {
+            _nearbyOperators = list;
+            _operatorsFirestoreError = null;
+          });
+        }
+      },
+      onError: (Object e, StackTrace st) {
+        debugPrint('NearbyOperators listen error: $e\n$st');
+        if (mounted) {
+          setState(() => _operatorsFirestoreError = e.toString());
+        }
+      },
+    );
+    _startNearbyServerPolling();
+  }
+
   @override
   void dispose() {
+    _nearbyServerPoll?.cancel();
+    _nearbyOperatorsSub?.cancel();
     _sheetController.dispose();
     super.dispose();
   }
@@ -322,6 +441,7 @@ class _NearMeContentState extends State<_NearMeContent> {
             child: MapWidget(
               routeOrigin: _routeOrigin,
               routeDestination: _routeDestination,
+              nearbyOperators: _nearbyOperators,
             ),
           ),
 
@@ -464,6 +584,195 @@ class _NearMeContentState extends State<_NearMeContent> {
                         ),
                       ),
                     ),
+
+                    if (_sheetExtent > 0.15) ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Route / jeepney code',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey.shade800,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              if (_routeOptionsLoading)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Loading route list…',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade700,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                DropdownButtonFormField<String?>(
+                                  value: _selectedRouteCode,
+                                  isExpanded: true,
+                                  decoration: InputDecoration(
+                                    prefixIcon: const Icon(Icons.directions_bus_outlined),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade100,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  hint: const Text('All nearby buses'),
+                                  items: [
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('All nearby buses (any route)'),
+                                    ),
+                                    ..._routeOptions.map(
+                                      (o) => DropdownMenuItem<String?>(
+                                        value: o.code,
+                                        child: Text(
+                                          o.description != null
+                                              ? '${o.displayName} · ${o.code}'
+                                              : '${o.displayName} (${o.code})',
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() => _selectedRouteCode = value);
+                                    _subscribeNearbyOperators();
+                                  },
+                                ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Same routes operators pick in the driver app. Choose one to see those buses on the map.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                          child: Text(
+                            (_selectedRouteCode == null || _selectedRouteCode!.isEmpty)
+                                ? (_nearbyOperators.isEmpty
+                                    ? 'Operators near you'
+                                    : 'Operators near you (${_nearbyOperators.length})')
+                                : (_nearbyOperators.isEmpty
+                                    ? 'Drivers — ${_labelForSelectedRoute()}'
+                                    : 'Drivers — ${_labelForSelectedRoute()} (${_nearbyOperators.length})'),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_nearbyOperators.isEmpty)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_operatorsFirestoreError != null) ...[
+                                  Text(
+                                    'Could not load live buses from the server. '
+                                    'Sign in, check your connection, and confirm Firestore rules allow '
+                                    'authenticated reads on operator_locations. '
+                                    '(${_operatorsFirestoreError!.length > 120 ? '${_operatorsFirestoreError!.substring(0, 120)}…' : _operatorsFirestoreError})',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.red.shade800,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                Text(
+                                  (_selectedRouteCode != null && _selectedRouteCode!.isNotEmpty)
+                                      ? 'No drivers match this route. Try "All nearby buses", or ensure the driver chose the same route in Profile and keeps the driver app open.'
+                                      : _userPosition == null
+                                          ? 'Allow location to see buses near you, or choose a route above.'
+                                          : 'No live bus locations yet. Drivers must open the operator app (logged in) so GPS can publish to Firestore.',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade700,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final op = _nearbyOperators[index];
+                              return Padding(
+                                padding: EdgeInsets.only(
+                                  bottom:
+                                      index == _nearbyOperators.length - 1 ? 8 : 6,
+                                  left: 16,
+                                  right: 16,
+                                ),
+                                child: Material(
+                                  elevation: 1,
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: Colors.orange.shade50,
+                                  child: ListTile(
+                                    leading: Icon(
+                                      Icons.directions_bus_filled_rounded,
+                                      color: Colors.orange.shade800,
+                                    ),
+                                    title: Text(
+                                      op.routeCode != null &&
+                                              op.routeCode!.isNotEmpty
+                                          ? 'Route ${op.routeCode}'
+                                          : 'Bus operator',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    subtitle: Text(op.distanceLabel),
+                                  ),
+                                ),
+                              );
+                            },
+                            childCount: _nearbyOperators.length,
+                          ),
+                        ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                    ],
 
                     // 🔹 Title - only show when sheet is above minimum threshold
                     if (_sheetExtent > 0.15)
