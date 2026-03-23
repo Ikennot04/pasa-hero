@@ -13,13 +13,13 @@ import {
   Tooltip,
 } from "chart.js";
 import Link from "next/link";
-import Notifications from "./components/Notifications";
-import PendingConfirmation from "./components/PendingConfirmation";
-import TerminalSnapshot from "./components/charts/TerminalSnapshot";
-import ConfirmationBacklog from "./components/charts/ConfirmationBacklog";
-import TerminalEventFlow from "./components/charts/TerminalEventFlow";
-import BusPresent from "./components/BusPresent";
-import BusDeparted from "./components/BusDeparted";
+import Notifications from "./_components/Notifications";
+import PendingConfirmation from "./_components/PendingConfirmation";
+import TerminalSnapshot from "./_components/charts/TerminalSnapshot";
+import ConfirmationBacklog from "./_components/charts/ConfirmationBacklog";
+import TerminalEventFlow from "./_components/charts/TerminalEventFlow";
+import BusPresent from "./_components/BusPresent";
+import BusDeparted from "./_components/BusDeparted";
 
 ChartJS.register(
   CategoryScale,

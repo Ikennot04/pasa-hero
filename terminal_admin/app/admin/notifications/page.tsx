@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import CreateNotificationModal from "./components/CreateNotificationModal";
+import CreateNotificationModal from "./_components/CreateNotificationModal";
 import NotificationTable, {
   type PriorityFilter,
   type ScopeFilter,
-} from "./components/NotificationTable";
+} from "./_components/NotificationTable";
 import { buildInitialNotifications } from "./terminalBroadcastMock";
 import {
   busRefLabel,

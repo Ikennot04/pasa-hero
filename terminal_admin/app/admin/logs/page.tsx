@@ -8,7 +8,7 @@ import {
   type EventType,
   type ReportSource,
   type TerminalLogEvent,
-} from "./components/ArrivalDepartureLog";
+} from "./_components/ArrivalDepartureLog";
 
 function toIsoOffset(minutesFromNow: number) {
   return new Date(Date.now() + minutesFromNow * 60_000).toISOString();
