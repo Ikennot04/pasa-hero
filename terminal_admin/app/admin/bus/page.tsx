@@ -9,7 +9,7 @@ import BusRoutes, {
   pendingArrival,
   pendingDeparture,
   type OpsStatus,
-} from "./components/BusRoutes";
+} from "./_components/BusRoutes";
 
 const TERMINAL_NAME = "PITX";
 
