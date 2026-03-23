@@ -100,7 +100,7 @@ export default function BusRoutes({ enriched, counts, now }: BusRoutesProps) {
           <button
             key={value}
             type="button"
-            className={`btn btn-sm ${statusFilter === value ? "btn-primary" : "btn-outline"}`}
+            className={`btn btn-sm ${statusFilter === value ? "bg-[#0062CA] text-white" : "btn-outline"}`}
             onClick={() => setStatusFilter(value)}
           >
             {label}
