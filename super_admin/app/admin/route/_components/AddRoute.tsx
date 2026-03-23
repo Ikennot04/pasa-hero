@@ -23,6 +23,8 @@ export default function AddRouteModal() {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<AddRouteFormData>({
     resolver: yupResolver(addRouteSchema),
@@ -49,6 +51,33 @@ export default function AddRouteModal() {
     return () => dialog.removeEventListener("close", onClose);
   }, [open]);
 
+  const startTerminalValue = watch("start_terminal_id");
+  const endTerminalValue = watch("end_terminal_id");
+
+  function resolveTerminalId(value: string) {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return "";
+
+    const match = TERMINAL_OPTIONS.find((t) => {
+      const terminalName = t.terminal_name.toLowerCase();
+      return (
+        t.id.toLowerCase() === normalized ||
+        terminalName === normalized ||
+        terminalName.includes(normalized)
+      );
+    });
+
+    return match?.id ?? value.trim();
+  }
+
+  useEffect(() => {
+    const generatedRouteName =
+      startTerminalValue.trim() && endTerminalValue.trim()
+        ? `${startTerminalValue.trim()} - ${endTerminalValue.trim()}`
+        : "";
+    setValue("route_name", generatedRouteName, { shouldValidate: false });
+  }, [endTerminalValue, setValue, startTerminalValue]);
+
   function openModal() {
     setOpen(true);
     reset();
@@ -68,8 +97,8 @@ export default function AddRouteModal() {
         body: JSON.stringify({
           route_name: data.route_name,
           route_code: data.route_code,
-          start_terminal_id: data.start_terminal_id,
-          end_terminal_id: data.end_terminal_id,
+          start_terminal_id: resolveTerminalId(data.start_terminal_id),
+          end_terminal_id: resolveTerminalId(data.end_terminal_id),
           estimated_duration:
             data.estimated_duration != null ? data.estimated_duration : undefined,
           status: "active",
@@ -92,106 +121,87 @@ export default function AddRouteModal() {
         Add route
       </button>
       <dialog ref={dialogRef} className="modal">
-        <div className="modal-box">
-          <h3 className="font-bold text-lg">Add route</h3>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Route name</span>
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. PITX — SM North EDSA"
-                className={`input input-bordered w-full ${errors.route_name ? "input-error" : ""}`}
-                {...register("route_name")}
-              />
-              {errors.route_name && (
-                <p className="text-error text-sm mt-1">
-                  {errors.route_name.message}
-                </p>
-              )}
-            </div>
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Route code</span>
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. PITX-NEDSA"
-                className={`input input-bordered w-full ${errors.route_code ? "input-error" : ""}`}
-                {...register("route_code")}
-              />
-              {errors.route_code && (
-                <p className="text-error text-sm mt-1">
-                  {errors.route_code.message}
-                </p>
-              )}
-            </div>
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Start terminal</span>
-              </label>
-              <select
-                className={`select select-bordered w-full ${errors.start_terminal_id ? "select-error" : ""}`}
-                {...register("start_terminal_id")}
+        <div className="modal-box max-w-[500px] rounded-md p-5">
+          <h3 className="text-xl font-semibold text-[#222222]">Add route</h3>
+          <p className="mt-1 text-sm text-[#6B7280]">
+            Create a new route profile with core operational details.
+          </p>
+
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-4 space-y-3">
+            <input type="hidden" {...register("route_name")} />
+
+            <section className="rounded-md border border-[#E5E7EB] p-3.5">
+              <h4 className="text-sm font-semibold text-[#4B5563]">Route identity</h4>
+              <div className="mt-3">
+                <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">Route code</label>
+                <input
+                  type="text"
+                  placeholder="e.g. PITX-QC-05"
+                  className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.route_code ? "input-error" : ""}`}
+                  {...register("route_code")}
+                />
+                {errors.route_code && <p className="mt-1 text-sm text-error">{errors.route_code.message}</p>}
+              </div>
+            </section>
+
+            <section className="rounded-md border border-[#E5E7EB] p-3.5">
+              <h4 className="text-sm font-semibold text-[#4B5563]">Route coverage</h4>
+              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">Start route</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PITX"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_terminal_id ? "input-error" : ""}`}
+                    {...register("start_terminal_id")}
+                  />
+                  {errors.start_terminal_id && <p className="mt-1 text-sm text-error">{errors.start_terminal_id.message}</p>}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">End route</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Fairview"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.end_terminal_id ? "input-error" : ""}`}
+                    {...register("end_terminal_id")}
+                  />
+                  {errors.end_terminal_id && <p className="mt-1 text-sm text-error">{errors.end_terminal_id.message}</p>}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-md border border-[#E5E7EB] p-3.5">
+              <h4 className="text-sm font-semibold text-[#4B5563]">Operations setup</h4>
+              <div className="mt-3">
+                <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">ETA (minutes)</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.estimated_duration ? "input-error" : ""}`}
+                  {...register("estimated_duration", { valueAsNumber: true })}
+                />
+                {errors.estimated_duration && (
+                  <p className="mt-1 text-sm text-error">{errors.estimated_duration.message}</p>
+                )}
+              </div>
+            </section>
+
+            {errors.route_name && <p className="text-sm text-error">{errors.route_name.message}</p>}
+
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                className="text-sm font-semibold text-[#242424] hover:text-[#111111]"
+                onClick={closeModal}
               >
-                <option value="">Select start terminal</option>
-                {TERMINAL_OPTIONS.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.terminal_name}
-                  </option>
-                ))}
-              </select>
-              {errors.start_terminal_id && (
-                <p className="text-error text-sm mt-1">
-                  {errors.start_terminal_id.message}
-                </p>
-              )}
-            </div>
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">End terminal</span>
-              </label>
-              <select
-                className={`select select-bordered w-full ${errors.end_terminal_id ? "select-error" : ""}`}
-                {...register("end_terminal_id")}
-              >
-                <option value="">Select end terminal</option>
-                {TERMINAL_OPTIONS.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.terminal_name}
-                  </option>
-                ))}
-              </select>
-              {errors.end_terminal_id && (
-                <p className="text-error text-sm mt-1">
-                  {errors.end_terminal_id.message}
-                </p>
-              )}
-            </div>
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Estimated duration (minutes)</span>
-              </label>
-              <input
-                type="number"
-                min={1}
-                step={1}
-                placeholder="e.g. 45"
-                className={`input input-bordered w-full ${errors.estimated_duration ? "input-error" : ""}`}
-                {...register("estimated_duration", { valueAsNumber: true })}
-              />
-              {errors.estimated_duration && (
-                <p className="text-error text-sm mt-1">
-                  {errors.estimated_duration.message}
-                </p>
-              )}
-            </div>
-            <div className="modal-action">
-              <button type="button" className="btn" onClick={closeModal}>
                 Cancel
               </button>
-              <button type="submit" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" disabled={isSubmitting}>
+              <button
+                type="submit"
+                className="btn h-10 min-h-10 rounded-md border-none bg-[#0062CA] px-5 text-sm font-semibold text-white hover:bg-[#0052A8]"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? "Adding…" : "Add route"}
               </button>
             </div>
