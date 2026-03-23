@@ -127,7 +127,7 @@ export default function CreateNotificationModal({ onCreated }: Props) {
 
   return (
     <>
-      <button type="button" className="btn btn-primary" onClick={openModal}>
+      <button type="button" className="btn bg-[#0062CA] text-white" onClick={openModal}>
         Create notification
       </button>
 
@@ -267,7 +267,7 @@ export default function CreateNotificationModal({ onCreated }: Props) {
               >
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary">
+              <button type="submit" className="btn bg-[#0062CA] text-white">
                 Send notification
               </button>
             </div>
