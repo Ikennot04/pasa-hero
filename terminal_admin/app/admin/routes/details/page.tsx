@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FaArrowLeft } from "react-icons/fa";
+import AddBusStop from "./_components/AddBusStop";
 
 type RouteStatus = "active" | "paused";
 
@@ -120,19 +121,6 @@ function normalizeStopOrder(stops: RouteStopRow[]) {
     .map((stop, index) => ({ ...stop, stopOrder: index + 1 }));
 }
 
-function toMapPercent(lat: number, lng: number) {
-  const minLat = 14.45;
-  const maxLat = 14.8;
-  const minLng = 120.9;
-  const maxLng = 121.12;
-  const x = ((lng - minLng) / (maxLng - minLng)) * 100;
-  const y = ((maxLat - lat) / (maxLat - minLat)) * 100;
-  return {
-    left: `${Math.min(100, Math.max(0, x))}%`,
-    top: `${Math.min(100, Math.max(0, y))}%`,
-  };
-}
-
 export default function RouteDetailsPage() {
   const searchParams = useSearchParams();
   const routeId = searchParams.get("routeId");
@@ -153,12 +141,7 @@ export default function RouteDetailsPage() {
     useState<Record<string, RouteStopRow[]>>(() => routeStopsByRouteId);
   const [draggingStopId, setDraggingStopId] = useState<string | null>(null);
   const [dragOverStopId, setDragOverStopId] = useState<string | null>(null);
-  const [openAddStopModal, setOpenAddStopModal] = useState(false);
-  const [newStopName, setNewStopName] = useState("");
-  const [newStopLatitude, setNewStopLatitude] = useState<number>(14.5995);
-  const [newStopLongitude, setNewStopLongitude] = useState<number>(120.9842);
   const [toast, setToast] = useState<string | null>(null);
-  const addStopDialogRef = useRef<HTMLDialogElement>(null);
 
   const route = useMemo(
     () => INITIAL_ROUTES.find((row) => row.id === routeId) ?? null,
@@ -177,17 +160,6 @@ export default function RouteDetailsPage() {
     const timeoutId = setTimeout(() => setToast(null), 2600);
     return () => clearTimeout(timeoutId);
   }, [toast]);
-
-  useEffect(() => {
-    const dialog = addStopDialogRef.current;
-    if (!dialog) return;
-    if (openAddStopModal) dialog.showModal();
-    else dialog.close();
-
-    const onClose = () => setOpenAddStopModal(false);
-    dialog.addEventListener("close", onClose);
-    return () => dialog.removeEventListener("close", onClose);
-  }, [openAddStopModal]);
 
   function onDragStartStop(event: React.DragEvent<HTMLTableRowElement>, stopId: string) {
     setDraggingStopId(stopId);
@@ -230,67 +202,29 @@ export default function RouteDetailsPage() {
     setToast("Route stop order saved.");
   }
 
-  function onAddRouteStop() {
-    if (!route?.id) return;
-    const stopName = newStopName.trim();
-    if (!stopName) {
-      setToast("Please enter a stop name.");
-      return;
-    }
+  function onAddRouteStop(payload: { stopName: string; latitude: number; longitude: number }) {
+    if (!route?.id) return { ok: false, message: "Route not found." };
+    const stopName = payload.stopName.trim();
 
     const current = normalizeStopOrder(routeStopsByRouteId[route.id] ?? []);
     const duplicate = current.some((stop) => stop.stopName.toLowerCase() === stopName.toLowerCase());
     if (duplicate) {
-      setToast("This stop already exists for the route.");
-      return;
-    }
-    if (!Number.isFinite(newStopLatitude) || !Number.isFinite(newStopLongitude)) {
-      setToast("Please select a valid location on the mini map.");
-      return;
+      return { ok: false, message: "This stop already exists for the route." };
     }
 
     const nextStop: RouteStopRow = {
       id: `stop-${crypto.randomUUID()}`,
       stopName,
       stopOrder: current.length + 1,
-      latitude: Number(newStopLatitude.toFixed(6)),
-      longitude: Number(newStopLongitude.toFixed(6)),
+      latitude: payload.latitude,
+      longitude: payload.longitude,
     };
 
     setRouteStopsByRouteId((prev) => ({
       ...prev,
       [route.id]: [...current, nextStop],
     }));
-    setNewStopName("");
-    setOpenAddStopModal(false);
-    setToast(`Route stop "${stopName}" added.`);
-  }
-
-  function onOpenAddStopModal() {
-    if (!route?.id) return;
-    const current = normalizeStopOrder(routeStopsByRouteId[route.id] ?? []);
-    const last = current[current.length - 1];
-    setNewStopName("");
-    setNewStopLatitude(last?.latitude ?? 14.5995);
-    setNewStopLongitude(last?.longitude ?? 120.9842);
-    setOpenAddStopModal(true);
-  }
-
-  function onMiniMapClick(event: React.MouseEvent<HTMLDivElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
-    const y = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
-    const xRatio = rect.width === 0 ? 0 : x / rect.width;
-    const yRatio = rect.height === 0 ? 0 : y / rect.height;
-
-    const minLat = 14.45;
-    const maxLat = 14.8;
-    const minLng = 120.9;
-    const maxLng = 121.12;
-    const lat = maxLat - yRatio * (maxLat - minLat);
-    const lng = minLng + xRatio * (maxLng - minLng);
-    setNewStopLatitude(Number(lat.toFixed(6)));
-    setNewStopLongitude(Number(lng.toFixed(6)));
+    return { ok: true, message: `Route stop "${stopName}" added.` };
   }
 
   return (
@@ -381,11 +315,12 @@ export default function RouteDetailsPage() {
               </button>
             </div>
 
-            <div className="mb-4">
-              <button type="button" className="btn btn-outline" onClick={onOpenAddStopModal}>
-                Add route stop
-              </button>
-            </div>
+            <AddBusStop
+              routeId={route?.id}
+              activeStops={activeStops}
+              onAddStop={onAddRouteStop}
+              onToast={setToast}
+            />
 
             <div className="overflow-x-auto">
               <table className="table table-zebra w-full">
@@ -428,93 +363,6 @@ export default function RouteDetailsPage() {
             </div>
           </div>
 
-          <dialog ref={addStopDialogRef} className="modal">
-            <div className="modal-box w-11/12 max-w-4xl">
-              <h3 className="text-xl font-bold">Add route stop</h3>
-              <p className="mt-1 text-sm text-base-content/70">
-                Enter the stop name and pick location from the mini map.
-              </p>
-
-              <div className="mt-4 space-y-3">
-                <label className="form-control w-full">
-                  <span className="label-text font-medium">Route stop name</span>
-                  <input
-                    type="text"
-                    className="input input-bordered w-full"
-                    placeholder="e.g. Quezon Avenue"
-                    value={newStopName}
-                    onChange={(e) => setNewStopName(e.target.value)}
-                  />
-                </label>
-
-                <div className="rounded-lg border border-base-300 p-3">
-                  <p className="mb-2 text-sm font-medium">Mini map picker</p>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={onMiniMapClick}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                      }
-                    }}
-                    className="relative h-96 w-full cursor-crosshair overflow-hidden rounded-md border border-base-300 bg-linear-to-br from-sky-100 via-emerald-100 to-slate-200"
-                    aria-label="Mini map picker"
-                  >
-                    <div className="absolute inset-0 opacity-40">
-                      <div className="h-full w-full bg-[linear-gradient(to_right,rgba(0,0,0,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.08)_1px,transparent_1px)] bg-size-[24px_24px]" />
-                    </div>
-                    <div
-                      className="absolute -translate-x-1/2 -translate-y-1/2"
-                      style={toMapPercent(newStopLatitude, newStopLongitude)}
-                    >
-                      <span className="inline-block h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow" />
-                    </div>
-                  </div>
-                  <p className="mt-2 text-xs text-base-content/70">
-                    Click anywhere on the mini map to set the stop coordinates.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="form-control w-full">
-                    <span className="label-text text-sm font-medium">Latitude</span>
-                    <input
-                      type="number"
-                      step="0.000001"
-                      className="input input-bordered w-full"
-                      value={newStopLatitude}
-                      onChange={(e) => setNewStopLatitude(Number(e.target.value))}
-                    />
-                  </label>
-                  <label className="form-control w-full">
-                    <span className="label-text text-sm font-medium">Longitude</span>
-                    <input
-                      type="number"
-                      step="0.000001"
-                      className="input input-bordered w-full"
-                      value={newStopLongitude}
-                      onChange={(e) => setNewStopLongitude(Number(e.target.value))}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="modal-action flex-wrap gap-2">
-                <button type="button" className="btn btn-ghost" onClick={() => setOpenAddStopModal(false)}>
-                  Cancel
-                </button>
-                <button type="button" className="btn bg-[#0062CA] text-white" onClick={onAddRouteStop}>
-                  Add stop
-                </button>
-              </div>
-            </div>
-            <form method="dialog" className="modal-backdrop">
-              <button type="submit" aria-label="Close">
-                close
-              </button>
-            </form>
-          </dialog>
         </div>
       )}
     </div>
