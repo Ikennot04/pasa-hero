@@ -73,7 +73,7 @@ export default function BusStatus() {
   }, [todayRows]);
 
   return (
-    <div className="space-y-6 text-[calc(1em+0.2rem)]">
+    <div className="space-y-6 text-[calc(1em+0.2rem)] pt-4">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Bus status monitoring</h1>
         <p className="mt-1 max-w-3xl text-sm text-base-content/70">
