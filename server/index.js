@@ -15,6 +15,7 @@ import driverRoutes from "./modules/driver/driver.route.js";
 import busStatusRoutes from "./modules/bus_status/bus_status.route.js";
 import routeStopRoutes from "./modules/route_stop/route_stop.route.js";
 import otpRoutes from "./modules/otp/otp.route.js";
+import terminalLogRoutes from "./modules/terminal_log/terminal_log.route.js";
 
 const app = express();
 
@@ -108,6 +109,7 @@ app.use("/api/drivers", driverRoutes);
 app.use("/api/bus-status", busStatusRoutes);
 app.use("/api/route-stops", routeStopRoutes);
 app.use("/api/otp", otpRoutes);
+app.use("/api/terminal-logs", terminalLogRoutes);
 
 // 404 handler
 app.use((req, res) => {
