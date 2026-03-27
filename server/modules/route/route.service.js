@@ -10,6 +10,11 @@ export const RouteService = {
   },
   // CREATE ROUTE ===================================================================
   async createRoute(routeData) {
+    const normalizedRouteType =
+      routeData.route_type === "vice_versa" ? "vice_versa" : "normal";
+    const primaryRouteData = { ...routeData, route_type: normalizedRouteType };
+    const reverseRouteType = normalizedRouteType === "normal" ? "vice_versa" : "normal";
+
     if (routeData.start_terminal_id == routeData.end_terminal_id) {
       const error = new Error("Start and end terminals cannot be the same.");
       error.statusCode = 400;
@@ -36,9 +41,10 @@ export const RouteService = {
     }
 
     const reverseRouteData = {
-      ...routeData,
+      ...primaryRouteData,
       start_terminal_id: routeData.end_terminal_id,
       end_terminal_id: routeData.start_terminal_id,
+      route_type: reverseRouteType,
     };
 
     if (typeof routeData.route_name === "string") {
@@ -50,7 +56,7 @@ export const RouteService = {
 
     const session = await Route.startSession().catch(() => null);
     if (!session) {
-      const route = await Route.create(routeData);
+      const route = await Route.create(primaryRouteData);
 
       const reverseExists = await Route.findOne({
         start_terminal_id: reverseRouteData.start_terminal_id,
@@ -67,7 +73,9 @@ export const RouteService = {
       let createdRoute;
 
       await session.withTransaction(async () => {
-        createdRoute = await Route.create([routeData], { session }).then((docs) => docs[0]);
+        createdRoute = await Route.create([primaryRouteData], { session }).then(
+          (docs) => docs[0],
+        );
 
         const reverseExists = await Route.findOne(
           {

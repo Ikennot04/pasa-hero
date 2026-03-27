@@ -20,6 +20,11 @@ const routeSchema = new mongoose.Schema(
       default: "active",
       enum: ["active", "inactive", "suspended"],
     },
+    route_type: {
+      type: String,
+      default: "normal",
+      enum: ["normal", "vice_versa"],
+    },
   },
   { timestamps: true },
 );
