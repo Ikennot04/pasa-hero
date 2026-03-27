@@ -9,3 +9,14 @@ export const getAllTerminalLogs = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const createTerminalLog = async (req, res) => {
+  try {
+    const terminalLogData = req.body;
+    const terminalLog = await TerminalLogService.createTerminalLog(terminalLogData);
+    res.status(201).json({ success: true, data: terminalLog });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
