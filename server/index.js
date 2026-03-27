@@ -101,14 +101,14 @@ app.use("/images", express.static("images"));
 
 // API Routes
 app.use('/api/users/firebase', userFirebaseRoutes);
+app.use("/api/otp", otpRoutes)
 app.use("/api/users", userRoutes);
 app.use("/api/terminals", terminalRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/buses", busRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/bus-status", busStatusRoutes);
-app.use("/api/route-stops", routeStopRoutes);
-app.use("/api/otp", otpRoutes);
+app.use("/api/route-stops", routeStopRoutes);;
 app.use("/api/terminal-logs", terminalLogRoutes);
 
 // 404 handler

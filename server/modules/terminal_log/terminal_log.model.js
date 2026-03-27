@@ -16,8 +16,8 @@ const terminalLogSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending_confirmation", "confirmed", "rejected"],
-      default: "pending_confirmation",
+      enum: ["pending", "confirmed", "rejected"],
+      default: "pending",
     },
 
     event_time: { type: Date, required: true },
