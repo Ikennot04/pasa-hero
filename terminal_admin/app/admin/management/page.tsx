@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import ArrivalConfirmation from "./components/ArrivalConfirmation";
-import ConfirmationHistory, { type ConfirmationHistoryEntry } from "./components/ConfirmationHistory";
-import DepartureConfirmation from "./components/DepartureConfirmation";
-import ScheduledBusesForToday, { type BusDayStatus, type ScheduledBusRow } from "./components/ScheduledBusesForToday";
+import ArrivalConfirmation from "./_components/ArrivalConfirmation";
+import ConfirmationHistory, { type ConfirmationHistoryEntry } from "./_components/ConfirmationHistory";
+import DepartureConfirmation from "./_components/DepartureConfirmation";
+import ScheduledBusesForToday, { type BusDayStatus, type ScheduledBusRow } from "./_components/ScheduledBusesForToday";
 
 const CURRENT_ADMIN = "A. Reyes (Terminal Admin)";
 
@@ -299,7 +299,7 @@ export default function Management() {
   );
 
   return (
-    <div className="space-y-6 pb-6">
+    <div className="space-y-6 pb-6 pt-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Bus Arrival & Departure Management</h1>

@@ -40,15 +40,20 @@ export default function ScheduledBusesForToday({
   onStatusFilterChange,
 }: ScheduledBusesForTodayProps) {
   const filtered =
-    statusFilter === "all" ? rows : rows.filter((r) => r.status === statusFilter);
+    statusFilter === "all"
+      ? rows
+      : rows.filter((r) => r.status === statusFilter);
 
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Today&apos;s scheduled buses</h2>
+          <h2 className="text-lg font-semibold">
+            Today&apos;s scheduled buses
+          </h2>
           <p className="text-sm text-base-content/70">
-            All trips scheduled for today at this terminal. Filter by operational status.
+            All trips scheduled for today at this terminal. Filter by
+            operational status.
           </p>
         </div>
         <span className="badge badge-outline">
@@ -69,7 +74,7 @@ export default function ScheduledBusesForToday({
           <button
             key={value}
             type="button"
-            className={`btn btn-sm ${statusFilter === value ? "btn-primary" : "btn-outline"}`}
+            className={`btn btn-sm text-sm ${statusFilter === value ? "bg-[#0062CA] text-white" : "btn-outline"}`}
             onClick={() => onStatusFilterChange(value)}
           >
             {label}
@@ -91,7 +96,10 @@ export default function ScheduledBusesForToday({
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="text-center text-sm text-base-content/60">
+                <td
+                  colSpan={5}
+                  className="text-center text-sm text-base-content/60"
+                >
                   No buses match this status for today.
                 </td>
               </tr>
@@ -103,9 +111,13 @@ export default function ScheduledBusesForToday({
                   <td>
                     {row.driver} / {row.conductor}
                   </td>
-                  <td className="whitespace-nowrap">{formatDateTime(row.scheduledArrivalAt)}</td>
+                  <td className="whitespace-nowrap">
+                    {formatDateTime(row.scheduledArrivalAt)}
+                  </td>
                   <td>
-                    <span className={`badge badge-outline capitalize ${statusBadge(row.status)}`}>
+                    <span
+                      className={`badge badge-outline capitalize ${statusBadge(row.status)}`}
+                    >
                       {row.status}
                     </span>
                   </td>

@@ -15,6 +15,8 @@ import driverRoutes from "./modules/driver/driver.route.js";
 import busStatusRoutes from "./modules/bus_status/bus_status.route.js";
 import routeStopRoutes from "./modules/route_stop/route_stop.route.js";
 import otpRoutes from "./modules/otp/otp.route.js";
+import terminalLogRoutes from "./modules/terminal_log/terminal_log.route.js";
+import busAssignmentRoutes from "./modules/bus_assignment/bus_assignment.route.js";
 
 const app = express();
 
@@ -100,14 +102,16 @@ app.use("/images", express.static("images"));
 
 // API Routes
 app.use('/api/users/firebase', userFirebaseRoutes);
+app.use("/api/otp", otpRoutes)
 app.use("/api/users", userRoutes);
 app.use("/api/terminals", terminalRoutes);
 app.use("/api/routes", routeRoutes);
 app.use("/api/buses", busRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/bus-status", busStatusRoutes);
-app.use("/api/route-stops", routeStopRoutes);
-app.use("/api/otp", otpRoutes);
+app.use("/api/route-stops", routeStopRoutes);;
+app.use("/api/terminal-logs", terminalLogRoutes);
+app.use("/api/bus-assignments", busAssignmentRoutes);
 
 // 404 handler
 app.use((req, res) => {

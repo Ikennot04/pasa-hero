@@ -26,8 +26,67 @@ export const RouteService = {
       throw error;
     }
 
-    const route = await Route.create(routeData);
-    return route;
+    const duplicateRouteCode = await Route.findOne({
+      route_code: routeData.route_code,
+    });
+    if (duplicateRouteCode) {
+      const error = new Error("This route code already exists.");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const reverseRouteData = {
+      ...routeData,
+      start_terminal_id: routeData.end_terminal_id,
+      end_terminal_id: routeData.start_terminal_id,
+    };
+
+    if (typeof routeData.route_name === "string") {
+      const parts = routeData.route_name.split("-").map((p) => p.trim()).filter(Boolean);
+      if (parts.length === 2) {
+        reverseRouteData.route_name = `${parts[1]} - ${parts[0]}`;
+      }
+    }
+
+    const session = await Route.startSession().catch(() => null);
+    if (!session) {
+      const route = await Route.create(routeData);
+
+      const reverseExists = await Route.findOne({
+        start_terminal_id: reverseRouteData.start_terminal_id,
+        end_terminal_id: reverseRouteData.end_terminal_id,
+      });
+      if (!reverseExists) {
+        await Route.create(reverseRouteData);
+      }
+
+      return route;
+    }
+
+    try {
+      let createdRoute;
+
+      await session.withTransaction(async () => {
+        createdRoute = await Route.create([routeData], { session }).then((docs) => docs[0]);
+
+        const reverseExists = await Route.findOne(
+          {
+            start_terminal_id: reverseRouteData.start_terminal_id,
+            end_terminal_id: reverseRouteData.end_terminal_id,
+          },
+          null,
+          { session },
+        );
+
+        if (!reverseExists) {
+          await Route.create([reverseRouteData], { session });
+        }
+      });
+
+      return createdRoute;
+    } finally {
+      session.endSession();
+    }
   },
   // GET ROUTE BY ID ===================================================================
   async getRouteById(id) {

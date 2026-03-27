@@ -31,7 +31,7 @@ export default function DepartureConfirmation({
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Pending departure confirmations</h2>
-        <span className="badge badge-info">{pendingDepartures.length}</span>
+        <span className="badge bg-[#0062CA] text-white">{pendingDepartures.length}</span>
       </div>
       <div className="overflow-x-auto">
         <table className="table table-zebra w-full">
@@ -54,14 +54,14 @@ export default function DepartureConfirmation({
                     <div className="flex flex-wrap justify-end gap-2">
                       <button
                         type="button"
-                        className="btn btn-sm btn-info"
+                        className="btn btn-sm text-sm bg-[#0062CA] text-white"
                         onClick={() => onConfirmDeparture(row.id)}
                       >
                         Confirm
                       </button>
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline btn-error"
+                        className="btn btn-sm text-sm btn-outline btn-error"
                         onClick={() => onRejectDeparture(row.id)}
                       >
                         Reject
