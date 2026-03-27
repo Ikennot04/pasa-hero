@@ -16,12 +16,6 @@ export const RouteService = {
       throw error;
     }
 
-    if (!routeData.route_code) {
-      const error = new Error("Route code is required.");
-      error.statusCode = 400;
-      throw error;
-    }
-
     const duplicateRoute = await Route.findOne({
       start_terminal_id: routeData.start_terminal_id,
       end_terminal_id: routeData.end_terminal_id,

@@ -1,4 +1,5 @@
 import TerminalLog from "./terminal_log.model.js";
+import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 
 export const TerminalLogService = {
   // GET ALL TERMINAL LOGS =============================================================
@@ -50,6 +51,11 @@ export const TerminalLogService = {
   // CREATE TERMINAL LOG ===============================================================
   async createTerminalLog(terminalLogData) {
     const terminalLog = await TerminalLog.create(terminalLogData);
+
+    await BusAssignment.findByIdAndUpdate(terminalLog.bus_assignment_id, {
+      latest_terminal_log_id: terminalLog._id,
+    });
+
     return terminalLog;
   },
 
