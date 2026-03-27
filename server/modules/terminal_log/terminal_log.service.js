@@ -52,4 +52,10 @@ export const TerminalLogService = {
     const terminalLog = await TerminalLog.create(terminalLogData);
     return terminalLog;
   },
+
+  // DELETE TERMINAL LOG BY ID ==========================================================
+  async deleteTerminalLogById(id) {
+    const terminalLog = await TerminalLog.findByIdAndDelete(id);
+    return terminalLog;
+  },
 };
