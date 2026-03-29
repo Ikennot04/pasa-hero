@@ -7,12 +7,12 @@ const routeSchema = new mongoose.Schema(
     start_terminal_id: {
       type: String,
       ref: "Terminal",
-      required: true,
+      default: null,
     },
     end_terminal_id: {
       type: String,
       ref: "Terminal",
-      required: true,
+      default: null,
     },
     estimated_duration: { type: Number }, // minutes
     status: {
