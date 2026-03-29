@@ -9,6 +9,17 @@ export const getAllBusAssignments = async (req, res) => {
   }
 };
 
+export const getBusAssignmentById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const assignment = await BusAssignmentService.getBusAssignmentById(id);
+    res.status(200).json({ success: true, data: assignment });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 export const createBusAssignment = async (req, res) => {
   try {
     const busAssignmentData = req.body;

@@ -1,30 +1,47 @@
 import BusAssignment from "./bus_assignment.model.js";
 
+function populateBusAssignmentRefs(query) {
+  return query
+    .populate({
+      path: "bus_id",
+      select: "bus_number plate_number capacity status",
+    })
+    .populate({
+      path: "driver_id",
+      select: "f_name l_name",
+    })
+    .populate({
+      path: "operator_user_id",
+      select: "f_name l_name",
+    })
+    .populate({
+      path: "route_id",
+      select: "route_name route_code",
+    })
+    .populate({
+      path: "latest_terminal_log_id",
+      select: "terminal_id bus_id",
+    });
+}
+
 export const BusAssignmentService = {
   async getAllBusAssignments() {
-    const assignments = await BusAssignment.find()
-      .populate({
-        path: "bus_id",
-        select: "bus_number plate_number capacity status",
-      })
-      .populate({
-        path: "driver_id",
-        select: "f_name l_name",
-      })
-      .populate({
-        path: "operator_user_id",
-        select: "f_name l_name",
-      })
-      .populate({
-        path: "route_id",
-        select: "route_name route_code",
-      })
-      .populate({
-        path: "latest_terminal_log_id",
-        select: "terminal_id bus_id",
-      })
-      .sort({ createdAt: -1 });
+    const assignments = await populateBusAssignmentRefs(
+      BusAssignment.find(),
+    ).sort({ createdAt: -1 });
     return assignments;
+  },
+
+  async getBusAssignmentById(id) {
+    const assignment = await populateBusAssignmentRefs(
+      BusAssignment.findById(id),
+    );
+    if (!assignment) {
+      const error = new Error("Bus assignment not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    return assignment;
   },
 
   async createBusAssignment(busAssignmentData) {
