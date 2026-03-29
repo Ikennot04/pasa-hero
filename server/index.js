@@ -17,6 +17,7 @@ import routeStopRoutes from "./modules/route_stop/route_stop.route.js";
 import otpRoutes from "./modules/otp/otp.route.js";
 import terminalLogRoutes from "./modules/terminal_log/terminal_log.route.js";
 import busAssignmentRoutes from "./modules/bus_assignment/bus_assignment.route.js";
+import notificationRoutes from "./modules/notification/notification.route.js";
 
 const app = express();
 
@@ -112,6 +113,7 @@ app.use("/api/bus-status", busStatusRoutes);
 app.use("/api/route-stops", routeStopRoutes);;
 app.use("/api/terminal-logs", terminalLogRoutes);
 app.use("/api/bus-assignments", busAssignmentRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // 404 handler
 app.use((req, res) => {
