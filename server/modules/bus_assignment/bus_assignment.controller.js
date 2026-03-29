@@ -20,6 +20,21 @@ export const getBusAssignmentById = async (req, res) => {
   }
 };
 
+export const updateBusAssignmentById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+    const assignment = await BusAssignmentService.updateBusAssignmentById(
+      id,
+      updateData,
+    );
+    res.status(200).json({ success: true, data: assignment });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 export const createBusAssignment = async (req, res) => {
   try {
     const busAssignmentData = req.body;
