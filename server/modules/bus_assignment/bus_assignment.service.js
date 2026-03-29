@@ -1,10 +1,40 @@
 import BusAssignment from "./bus_assignment.model.js";
 
 export const BusAssignmentService = {
+  async getAllBusAssignments() {
+    const assignments = await BusAssignment.find()
+      .populate({
+        path: "bus_id",
+        select: "bus_number plate_number capacity status",
+      })
+      .populate({
+        path: "driver_id",
+        select: "f_name l_name",
+      })
+      .populate({
+        path: "operator_user_id",
+        select: "f_name l_name",
+      })
+      .populate({
+        path: "route_id",
+        select: "route_name route_code",
+      })
+      .populate({
+        path: "latest_terminal_log_id",
+        select: "terminal_id bus_id",
+      })
+      .sort({ createdAt: -1 });
+    return assignments;
+  },
+
   async createBusAssignment(busAssignmentData) {
     const { bus_id, driver_id, operator_user_id, route_id } = busAssignmentData;
 
-    const [activeBusAssignment, activeDriverAssignment, activeOperatorAssignment] = await Promise.all([
+    const [
+      activeBusAssignment,
+      activeDriverAssignment,
+      activeOperatorAssignment,
+    ] = await Promise.all([
       BusAssignment.findOne({
         bus_id,
         assignment_status: "active",
@@ -35,7 +65,9 @@ export const BusAssignmentService = {
     }
 
     if (activeOperatorAssignment) {
-      const error = new Error("This operator already has an active assignment.");
+      const error = new Error(
+        "This operator already has an active assignment.",
+      );
       error.statusCode = 409;
       throw error;
     }
