@@ -1,7 +1,4 @@
 import BusAssignment from "./bus_assignment.model.js";
-import Bus from "../bus/bus.model.js";
-import Driver from "../driver/driver.model.js";
-import Route from "../route/route.model.js";
 
 export const BusAssignmentService = {
   async createBusAssignment(busAssignmentData) {
