@@ -1,6 +1,7 @@
 import express from "express";
 import {
   createBusAssignment,
+  deleteBusAssignmentById,
   getAllBusAssignments,
   getBusAssignmentById,
   updateBusAssignmentById,
@@ -12,5 +13,6 @@ router.get("/", getAllBusAssignments);
 router.post("/", createBusAssignment);
 router.get("/:id", getBusAssignmentById);
 router.patch("/:id", updateBusAssignmentById);
+router.delete("/:id", deleteBusAssignmentById);
 
 export default router;

@@ -46,3 +46,15 @@ export const createBusAssignment = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const deleteBusAssignmentById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const assignment =
+      await BusAssignmentService.deleteBusAssignmentById(id);
+    res.status(200).json({ success: true, data: assignment });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};

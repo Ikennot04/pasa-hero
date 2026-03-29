@@ -133,4 +133,16 @@ export const BusAssignmentService = {
     );
     return updated;
   },
+
+  // DELETE BUS ASSIGNMENT BY ID ===================================================================
+  async deleteBusAssignmentById(id) {
+    const assignment = await BusAssignment.findById(id);
+    if (!assignment) {
+      const error = new Error("Bus assignment not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    await BusAssignment.findByIdAndDelete(id);
+    return assignment;
+  },
 };
