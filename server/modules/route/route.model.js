@@ -7,18 +7,23 @@ const routeSchema = new mongoose.Schema(
     start_terminal_id: {
       type: String,
       ref: "Terminal",
-      required: true,
+      default: null,
     },
     end_terminal_id: {
       type: String,
       ref: "Terminal",
-      required: true,
+      default: null,
     },
     estimated_duration: { type: Number }, // minutes
     status: {
       type: String,
       default: "active",
       enum: ["active", "inactive", "suspended"],
+    },
+    route_type: {
+      type: String,
+      default: "normal",
+      enum: ["normal", "vice_versa"],
     },
   },
   { timestamps: true },
