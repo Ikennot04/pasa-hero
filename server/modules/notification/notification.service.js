@@ -17,4 +17,11 @@ export const NotificationService = {
     );
     return populated;
   },
+
+  // GET ALL NOTIFICATIONS =================================================
+  async getAllNotifications() {
+    const query = Notification.find().sort({ createdAt: -1 });
+    const populatedQuery = populateNotificationRefs(query);
+    return populatedQuery;
+  },
 };
