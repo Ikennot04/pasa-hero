@@ -29,4 +29,38 @@ export const UserNotificationService = {
     const populatedQuery = populateUserNotificationRefs(query);
     return populatedQuery;
   },
+
+  async markNotificationsAsRead(userId, userNotificationIds) {
+    if (!userId) {
+      const error = new Error("user_id is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!Array.isArray(userNotificationIds) || userNotificationIds.length === 0) {
+      const error = new Error("user_notification_ids must be a non-empty array");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const now = new Date();
+    const result = await UserNotification.updateMany(
+      {
+        user_id: userId,
+        _id: { $in: userNotificationIds },
+        is_read: false,
+      },
+      {
+        $set: {
+          is_read: true,
+          read_at: now,
+        },
+      },
+    );
+
+    return {
+      matched_count: result.matchedCount ?? 0,
+      modified_count: result.modifiedCount ?? 0,
+    };
+  },
 };
