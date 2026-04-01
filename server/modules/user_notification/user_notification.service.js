@@ -63,4 +63,33 @@ export const UserNotificationService = {
       modified_count: result.modifiedCount ?? 0,
     };
   },
+
+  async deleteNotificationById(userId, userNotificationId) {
+    if (!userId) {
+      const error = new Error("user_id is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!userNotificationId) {
+      const error = new Error("user_notification_id is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const deleted = await UserNotification.findOneAndDelete({
+      _id: userNotificationId,
+      user_id: userId,
+    });
+
+    if (!deleted) {
+      const error = new Error("User notification not found");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return {
+      deleted_id: deleted._id,
+    };
+  },
 };
