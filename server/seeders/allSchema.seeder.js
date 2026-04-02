@@ -123,6 +123,33 @@ const seedData = async () => {
         status: "active",
         firebase_id: "firebase_terminal_002",
       },
+      {
+        f_name: "Nina",
+        l_name: "Ocampo",
+        email: "nina.ocampo@email.com",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "user",
+        status: "active",
+        firebase_id: "firebase_user_006",
+      },
+      {
+        f_name: "Derek",
+        l_name: "Chua",
+        email: "derek.chua@email.com",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "user",
+        status: "active",
+        firebase_id: "firebase_user_007",
+      },
+      {
+        f_name: "Elena",
+        l_name: "Villanueva",
+        email: "elena.villanueva@email.com",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "user",
+        status: "suspended",
+        firebase_id: "firebase_user_008",
+      },
     ]);
 
     console.log(`✅ Created ${users.length} users`);
@@ -138,6 +165,9 @@ const seedData = async () => {
       user5,
       operator2,
       terminalAdmin2,
+      user6,
+      user7,
+      user8,
     ] = users;
 
     // ==========================================
@@ -174,6 +204,18 @@ const seedData = async () => {
         location_lng: 123.9044,
         status: "active",
       },
+      {
+        terminal_name: "Cebu South Bus Terminal",
+        location_lat: 10.2476,
+        location_lng: 123.8494,
+        status: "active",
+      },
+      {
+        terminal_name: "Waterfront Lahug Terminal",
+        location_lat: 10.2942,
+        location_lng: 123.9171,
+        status: "active",
+      },
     ]);
 
     console.log(`✅ Created ${terminals.length} terminals`);
@@ -184,6 +226,8 @@ const seedData = async () => {
       carbonTerminal,
       mandaueTerminal,
       itParkTerminal,
+      southBusTerminal,
+      waterfrontTerminal,
     ] = terminals;
 
     // ==========================================
@@ -230,11 +274,30 @@ const seedData = async () => {
         estimated_duration: 40,
         status: "active",
       },
+      {
+        route_name: "South Bus to SM Express",
+        route_code: "06F",
+        start_terminal_id: southBusTerminal._id,
+        end_terminal_id: smTerminal._id,
+        estimated_duration: 50,
+        status: "active",
+        route_type: "normal",
+      },
+      {
+        route_name: "Waterfront to Ayala Shuttle",
+        route_code: "07G",
+        start_terminal_id: waterfrontTerminal._id,
+        end_terminal_id: ayalaTerminal._id,
+        estimated_duration: 20,
+        status: "active",
+        route_type: "vice_versa",
+      },
     ]);
 
     console.log(`✅ Created ${routes.length} routes`);
 
-    const [route01A, route02B, route03C, route04D, route05E] = routes;
+    const [route01A, route02B, route03C, route04D, route05E, route06F, route07G] =
+      routes;
 
     // ==========================================
     // 4. CREATE ROUTE STOPS
@@ -403,6 +466,66 @@ const seedData = async () => {
         latitude: 10.3241,
         longitude: 123.9044,
       },
+
+      // Route 06F: South Bus to SM
+      {
+        route_id: route06F._id,
+        stop_name: "Cebu South Bus Terminal",
+        stop_order: 1,
+        latitude: 10.2476,
+        longitude: 123.8494,
+      },
+      {
+        route_id: route06F._id,
+        stop_name: "Talisay City Hall",
+        stop_order: 2,
+        latitude: 10.2442,
+        longitude: 123.8491,
+      },
+      {
+        route_id: route06F._id,
+        stop_name: "Natalio B. Bacalso Ave (Highway)",
+        stop_order: 3,
+        latitude: 10.275,
+        longitude: 123.8612,
+      },
+      {
+        route_id: route06F._id,
+        stop_name: "SM City Cebu",
+        stop_order: 4,
+        latitude: 10.3115,
+        longitude: 123.9185,
+      },
+
+      // Route 07G: Waterfront to Ayala
+      {
+        route_id: route07G._id,
+        stop_name: "Waterfront Lahug",
+        stop_order: 1,
+        latitude: 10.2942,
+        longitude: 123.9171,
+      },
+      {
+        route_id: route07G._id,
+        stop_name: "Salinas Drive",
+        stop_order: 2,
+        latitude: 10.3021,
+        longitude: 123.9114,
+      },
+      {
+        route_id: route07G._id,
+        stop_name: "Camputhaw",
+        stop_order: 3,
+        latitude: 10.3098,
+        longitude: 123.9075,
+      },
+      {
+        route_id: route07G._id,
+        stop_name: "Ayala Center",
+        stop_order: 4,
+        latitude: 10.3181,
+        longitude: 123.9061,
+      },
     ]);
 
     console.log(`✅ Created ${routeStops.length} route stops`);
@@ -471,11 +594,43 @@ const seedData = async () => {
         capacity: 50,
         status: "out of service",
       },
+      {
+        bus_number: "CEB-011",
+        plate_number: "CEB-9011",
+        capacity: 52,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-012",
+        plate_number: "CEB-9012",
+        capacity: 48,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-013",
+        plate_number: "CEB-9013",
+        capacity: 50,
+        status: "active",
+      },
     ]);
 
     console.log(`✅ Created ${buses.length} buses`);
 
-    const [bus1, bus2, bus3, bus4, bus5, bus6, bus7, bus8, bus9, bus10] = buses;
+    const [
+      bus1,
+      bus2,
+      bus3,
+      bus4,
+      bus5,
+      bus6,
+      bus7,
+      bus8,
+      bus9,
+      bus10,
+      bus11,
+      bus12,
+      bus13,
+    ] = buses;
 
     // ==========================================
     // 6. CREATE DRIVERS
@@ -530,12 +685,35 @@ const seedData = async () => {
         contact_number: "09171234573",
         status: "inactive",
       },
+      {
+        f_name: "Paolo",
+        l_name: "Navarro",
+        license_number: "D01-12-345685",
+        contact_number: "09171234574",
+        status: "active",
+      },
+      {
+        f_name: "Luis",
+        l_name: "Fernandez",
+        license_number: "D01-12-345686",
+        contact_number: "09171234575",
+        status: "active",
+      },
     ]);
 
     console.log(`✅ Created ${drivers.length} drivers`);
 
-    const [driver1, driver2, driver3, driver4, driver5, driver6, driver7] =
-      drivers;
+    const [
+      driver1,
+      driver2,
+      driver3,
+      driver4,
+      driver5,
+      driver6,
+      driver7,
+      driver8,
+      driver9,
+    ] = drivers;
 
     // ==========================================
     // 7. CREATE USER SUBSCRIPTIONS
@@ -565,6 +743,12 @@ const seedData = async () => {
       // Some users subscribe to same routes (for testing broadcast)
       { user_id: user1._id, route_id: route03C._id, bus_id: null },
       { user_id: user3._id, route_id: route01A._id, bus_id: null },
+
+      { user_id: user6._id, route_id: route06F._id, bus_id: null },
+      { user_id: user6._id, route_id: null, bus_id: bus11._id },
+      { user_id: user7._id, route_id: route07G._id, bus_id: null },
+      { user_id: user7._id, route_id: null, bus_id: bus9._id },
+      { user_id: user8._id, route_id: route04D._id, bus_id: null },
     ]);
 
     console.log(`✅ Created ${subscriptions.length} user subscriptions`);
@@ -665,12 +849,73 @@ const seedData = async () => {
         total_stops: 4,
         stops_completed: 0,
       },
+      {
+        bus_id: bus11._id,
+        driver_id: driver8._id,
+        operator_user_id: operator1._id,
+        route_id: route06F._id,
+        assignment_date: today,
+        scheduled_departure_time: new Date(
+          today.getTime() + 12 * 60 * 60 * 1000,
+        ),
+        scheduled_arrival_time: new Date(
+          today.getTime() + 12.83 * 60 * 60 * 1000,
+        ),
+        status: "scheduled",
+        total_stops: 4,
+        stops_completed: 0,
+      },
+      {
+        bus_id: bus12._id,
+        driver_id: driver9._id,
+        operator_user_id: operator2._id,
+        route_id: route07G._id,
+        assignment_date: today,
+        scheduled_departure_time: new Date(
+          today.getTime() + 6.5 * 60 * 60 * 1000,
+        ),
+        scheduled_arrival_time: new Date(
+          today.getTime() + 6.83 * 60 * 60 * 1000,
+        ),
+        status: "active",
+        actual_departure_time: new Date(
+          today.getTime() + 6.52 * 60 * 60 * 1000,
+        ),
+        total_stops: 4,
+        stops_completed: 2,
+        is_delayed: true,
+        departure_delay_minutes: 2,
+      },
+      {
+        bus_id: bus9._id,
+        driver_id: driver6._id,
+        operator_user_id: operator1._id,
+        route_id: route02B._id,
+        assignment_date: new Date(today.getTime() + 24 * 60 * 60 * 1000),
+        scheduled_departure_time: new Date(
+          today.getTime() + 24 * 60 * 60 * 1000 + 14 * 60 * 60 * 1000,
+        ),
+        scheduled_arrival_time: new Date(
+          today.getTime() + 24 * 60 * 60 * 1000 + 14.5 * 60 * 60 * 1000,
+        ),
+        status: "scheduled",
+        total_stops: 5,
+        stops_completed: 0,
+      },
     ]);
 
     console.log(`✅ Created ${assignments.length} bus assignments`);
 
-    const [assignment1, assignment2, assignment3, assignment4, assignment5] =
-      assignments;
+    const [
+      assignment1,
+      assignment2,
+      assignment3,
+      assignment4,
+      assignment5,
+      assignment6,
+      assignment7,
+      assignment8,
+    ] = assignments;
 
     // ==========================================
     // 9. CREATE NOTIFICATIONS
@@ -827,6 +1072,48 @@ const seedData = async () => {
         scope: "terminal",
         createdAt: new Date(now.getTime() - 20 * 60 * 1000), // 20 minutes ago
       },
+
+      {
+        sender_id: superAdmin._id,
+        bus_id: null,
+        route_id: null,
+        terminal_id: null,
+        title: "Peak Season Travel Advisory",
+        message:
+          "Expect heavier passenger volume on provincial and mall-linked routes this weekend. Arrive at terminals at least 15 minutes before departure.",
+        notification_type: "info",
+        priority: "medium",
+        scope: "system",
+        createdAt: new Date(now.getTime() - 5 * 60 * 60 * 1000),
+      },
+
+      {
+        sender_id: operator1._id,
+        bus_id: null,
+        route_id: route06F._id,
+        terminal_id: null,
+        title: "Route 06F Extra Morning Trip",
+        message:
+          "An additional southbound trip on Route 06F (South Bus to SM) departs at 5:45 AM on weekdays until further notice.",
+        notification_type: "info",
+        priority: "medium",
+        scope: "route",
+        createdAt: new Date(now.getTime() - 90 * 60 * 1000),
+      },
+
+      {
+        sender_id: operator1._id,
+        bus_id: bus9._id,
+        route_id: route02B._id,
+        terminal_id: null,
+        title: "Bus CEB-009 On Schedule",
+        message:
+          "Bus CEB-009 on Route 02B is on time for tomorrow's 2:00 PM departure from Carbon Market Terminal.",
+        notification_type: "info",
+        priority: "low",
+        scope: "bus",
+        createdAt: new Date(now.getTime() - 10 * 60 * 1000),
+      },
     ]);
 
     console.log(`✅ Created ${notifications.length} notifications`);
@@ -842,6 +1129,9 @@ const seedData = async () => {
       notif8,
       notif9,
       notif10,
+      notif11,
+      notif12,
+      notif13,
     ] = notifications;
 
     // ==========================================
@@ -990,6 +1280,30 @@ const seedData = async () => {
         is_read: true,
         read_at: new Date(now.getTime() - 42 * 60 * 1000),
       },
+
+      { user_id: user6._id, notification_id: notif1._id, is_read: false },
+      { user_id: user6._id, notification_id: notif11._id, is_read: false },
+      { user_id: user6._id, notification_id: notif12._id, is_read: false },
+
+      {
+        user_id: user7._id,
+        notification_id: notif11._id,
+        is_read: true,
+        read_at: new Date(now.getTime() - 4 * 60 * 60 * 1000),
+      },
+      { user_id: user7._id, notification_id: notif13._id, is_read: false },
+      { user_id: user7._id, notification_id: notif1._id, is_read: false },
+
+      { user_id: user8._id, notification_id: notif1._id, is_read: false },
+      { user_id: user8._id, notification_id: notif8._id, is_read: false },
+
+      {
+        user_id: operator1._id,
+        notification_id: notif12._id,
+        is_read: true,
+        read_at: new Date(now.getTime() - 85 * 60 * 1000),
+      },
+      { user_id: operator1._id, notification_id: notif13._id, is_read: false },
     ]);
 
     console.log(`✅ Created ${userNotifications.length} user notifications`);
@@ -1003,7 +1317,7 @@ const seedData = async () => {
     console.log(`  - Super Admin: 1`);
     console.log(`  - Operators: 2`);
     console.log(`  - Terminal Admins: 2`);
-    console.log(`  - Regular Users: 5`);
+    console.log(`  - Regular Users: 8`);
     console.log(`Terminals: ${terminals.length}`);
     console.log(`Routes: ${routes.length}`);
     console.log(`Route Stops: ${routeStops.length}`);
@@ -1011,11 +1325,8 @@ const seedData = async () => {
     console.log(`Drivers: ${drivers.length}`);
     console.log(`Bus Assignments: ${assignments.length}`);
     console.log(`Notifications: ${notifications.length}`);
-    console.log(`  - System: 1`);
-    console.log(`  - Delay: 2`);
-    console.log(`  - Full: 1`);
-    console.log(`  - Skipped Stop: 1`);
-    console.log(`  - Info: 5`);
+    console.log(`  - Scope system: 2`);
+    console.log(`  - Type delay: 2, full: 1, skipped_stop: 1, info: 9`);
     console.log(`User Subscriptions: ${subscriptions.length}`);
     console.log(`User Notifications: ${userNotifications.length}`);
 
