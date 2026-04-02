@@ -25,7 +25,9 @@ export const UserNotificationService = {
       throw error;
     }
 
-    const query = UserNotification.find({ user_id: userId }).sort({ createdAt: -1 });
+    const query = UserNotification.find({ user_id: userId }).sort({
+      createdAt: -1,
+    });
     const populatedQuery = populateUserNotificationRefs(query);
     return populatedQuery;
   },
@@ -37,8 +39,13 @@ export const UserNotificationService = {
       throw error;
     }
 
-    if (!Array.isArray(userNotificationIds) || userNotificationIds.length === 0) {
-      const error = new Error("user_notification_ids must be a non-empty array");
+    if (
+      !Array.isArray(userNotificationIds) ||
+      userNotificationIds.length === 0
+    ) {
+      const error = new Error(
+        "user_notification_ids must be a non-empty array",
+      );
       error.statusCode = 400;
       throw error;
     }
@@ -64,23 +71,15 @@ export const UserNotificationService = {
     };
   },
 
-  async deleteNotificationById(userId, userNotificationId) {
-    if (!userId) {
-      const error = new Error("user_id is required");
-      error.statusCode = 400;
-      throw error;
-    }
-
+  async deleteNotificationById(userNotificationId) {
     if (!userNotificationId) {
       const error = new Error("user_notification_id is required");
       error.statusCode = 400;
       throw error;
     }
 
-    const deleted = await UserNotification.findOneAndDelete({
-      _id: userNotificationId,
-      user_id: userId,
-    });
+    const deleted =
+      await UserNotification.findByIdAndDelete(userNotificationId);
 
     if (!deleted) {
       const error = new Error("User notification not found");

@@ -30,11 +30,9 @@ export const markCurrentUserNotificationsAsRead = async (req, res) => {
 
 export const deleteCurrentUserNotificationById = async (req, res) => {
   try {
-    const userId = req.query.user_id || req.body?.user_id || req.user?.id || req.user?._id;
     const userNotificationId = req.params?.id;
 
     const result = await UserNotificationService.deleteNotificationById(
-      userId,
       userNotificationId,
     );
 
