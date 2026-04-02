@@ -91,4 +91,21 @@ export const UserNotificationService = {
       deleted_id: deleted._id,
     };
   },
+
+  async deleteAllReadNotificationsByUser(userId) {
+    if (!userId) {
+      const error = new Error("user_id is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const result = await UserNotification.deleteMany({
+      user_id: userId,
+      is_read: true,
+    });
+
+    return {
+      deleted_count: result.deletedCount ?? 0,
+    };
+  },
 };
