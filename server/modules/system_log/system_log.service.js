@@ -10,4 +10,12 @@ export const SystemLogService = {
       .sort({ createdAt: -1 });
     return logs;
   },
+
+  async getSystemLogById(id) {
+    const log = await SystemLog.findById(id).populate({
+      path: "user_id",
+      select: "f_name l_name email role",
+    });
+    return log;
+  },
 };
