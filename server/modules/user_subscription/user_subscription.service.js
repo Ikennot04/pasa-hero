@@ -70,6 +70,49 @@ export const UserSubscriptionService = {
       });
   },
 
+  // UNSUBSCRIBE FROM ROUTE OR BUS ===================================================================
+  async unsubscribeFromRouteOrBus({ user_id, route_id, bus_id }) {
+    if (!user_id) {
+      const error = new Error("user_id is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const hasRoute = Boolean(route_id);
+    const hasBus = Boolean(bus_id);
+
+    if (hasRoute === hasBus) {
+      const error = new Error(
+        "Provide exactly one of route_id or bus_id to unsubscribe.",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const filter = hasRoute
+      ? { user_id, route_id, bus_id: null }
+      : { user_id, route_id: null, bus_id };
+
+    const subscription = await UserSubscription.findOne(filter)
+      .populate({
+        path: "route_id",
+        select: "route_name route_code status",
+      })
+      .populate({
+        path: "bus_id",
+        select: "bus_number plate_number status",
+      });
+
+    if (!subscription) {
+      const error = new Error("Subscription not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    await UserSubscription.deleteOne({ _id: subscription._id });
+    return subscription;
+  },
+
   // GET SUBSCRIPTIONS BY USER ===================================================================
   async getSubscriptionsByUser(userId) {
     if (!userId) {
