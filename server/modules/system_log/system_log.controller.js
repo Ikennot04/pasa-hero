@@ -10,6 +10,17 @@ export const getAllSystemLogs = async (req, res) => {
   }
 };
 
+export const getSystemLogsByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const logs = await SystemLogService.getSystemLogsByUserId(userId);
+    res.status(200).json({ success: true, data: logs });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 export const getSystemLogById = async (req, res) => {
   try {
     const { id } = req.params;
