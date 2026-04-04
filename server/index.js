@@ -20,6 +20,7 @@ import busAssignmentRoutes from "./modules/bus_assignment/bus_assignment.route.j
 import notificationRoutes from "./modules/notification/notification.route.js";
 import userNotificationRoutes from "./modules/user_notification/user_notification.route.js";
 import userSubscriptionRoutes from "./modules/user_subscription/user_subscription.route.js";
+import systemLogRoutes from "./modules/system_log/system_log.route.js";
 
 const app = express();
 
@@ -118,6 +119,7 @@ app.use("/api/bus-assignments", busAssignmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/user-notifications", userNotificationRoutes);
 app.use("/api/user-subscriptions", userSubscriptionRoutes);
+app.use("/api/system-logs", systemLogRoutes);
 
 // 404 handler
 app.use((req, res) => {
