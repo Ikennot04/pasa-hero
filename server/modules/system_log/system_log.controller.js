@@ -27,3 +27,14 @@ export const getSystemLogById = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const createSystemLog = async (req, res) => {
+  try {
+    const systemLogData = req.body;
+    const log = await SystemLogService.createSystemLog(systemLogData);
+    res.status(201).json({ success: true, data: log });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};

@@ -18,4 +18,13 @@ export const SystemLogService = {
     });
     return log;
   },
+
+  async createSystemLog(systemLogData) {
+    const created = await SystemLog.create(systemLogData);
+    const log = await SystemLog.findById(created._id).populate({
+      path: "user_id",
+      select: "f_name l_name email role",
+    });
+    return log;
+  },
 };
