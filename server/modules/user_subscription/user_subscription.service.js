@@ -19,4 +19,30 @@ export const UserSubscriptionService = {
         select: "bus_number plate_number status",
       });
   },
+
+  async getSubscriptionById(id) {
+    if (!id) {
+      const error = new Error("Subscription id is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const subscription = await UserSubscription.findById(id)
+      .populate({
+        path: "route_id",
+        select: "route_name route_code status",
+      })
+      .populate({
+        path: "bus_id",
+        select: "bus_number plate_number status",
+      });
+
+    if (!subscription) {
+      const error = new Error("User subscription not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return subscription;
+  },
 };
