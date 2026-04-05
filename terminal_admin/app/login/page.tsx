@@ -7,7 +7,8 @@ import logoName from "@/public/LogoName.jpg";
 import { useLogin } from "@/app/login/_hooks/useLogin";
 
 export default function Login() {
-  const { register, errors, isSubmitting, submitForm } = useLogin();
+  const { register, errors, isSubmitting, serverError, submitForm } =
+    useLogin();
   const [showPassword, setShowPassword] = useState(false);
 
   const inputBase =
@@ -45,6 +46,14 @@ export default function Login() {
           </div>
 
           <form onSubmit={submitForm} className="space-y-5">
+            {serverError && (
+              <p
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+              >
+                {serverError}
+              </p>
+            )}
             <div>
               <label
                 htmlFor="email"
