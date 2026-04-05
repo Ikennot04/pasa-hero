@@ -85,6 +85,23 @@ export const UserService = {
     delete userObj.password;
     return { user: userObj, token };
   },
+  // VERIFY JWT (auth check) =========================================================
+  async verifyJwtAuth(token) {
+    if (!token || typeof token !== "string") {
+      throw new Error("No token provided");
+    }
+    console.log(token);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+    if (!userId) {
+      throw new Error("Invalid token payload");
+    }
+    const user = await User.findById(userId).select("-password");
+    if (!user) {
+      throw new Error("User not found");
+    }
+    return { user: user };
+  },
   // LOGOUT USER ====================================================================
   async logoutUser(id) {
     let user;
