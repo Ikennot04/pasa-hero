@@ -43,6 +43,7 @@ const seedData = async () => {
         role: "super admin",
         status: "active",
         firebase_id: "firebase_admin_001",
+        profile_image: "default.png",
       },
       {
         f_name: "Maria",
@@ -52,6 +53,7 @@ const seedData = async () => {
         role: "operator",
         status: "active",
         firebase_id: "firebase_operator_001",
+        profile_image: "default.png",
       },
       {
         f_name: "Pedro",
@@ -61,6 +63,7 @@ const seedData = async () => {
         role: "terminal admin",
         status: "active",
         firebase_id: "firebase_terminal_001",
+        profile_image: "default.png",
       },
       {
         f_name: "Ana",
@@ -70,6 +73,7 @@ const seedData = async () => {
         role: "user",
         status: "active",
         firebase_id: "firebase_user_001",
+        profile_image: "default.png",
       },
       {
         f_name: "Carlos",
@@ -79,6 +83,7 @@ const seedData = async () => {
         role: "user",
         status: "active",
         firebase_id: "firebase_user_002",
+        profile_image: "default.png",
       },
       {
         f_name: "Lisa",
@@ -88,6 +93,7 @@ const seedData = async () => {
         role: "user",
         status: "active",
         firebase_id: "firebase_user_003",
+        profile_image: "default.png",
       },
       {
         f_name: "Mark",
@@ -97,6 +103,7 @@ const seedData = async () => {
         role: "user",
         status: "active",
         firebase_id: "firebase_user_004",
+        profile_image: "default.png",
       },
       {
         f_name: "Sofia",
@@ -106,6 +113,7 @@ const seedData = async () => {
         role: "user",
         status: "active",
         firebase_id: "firebase_user_005",
+        profile_image: "default.png",
       },
       {
         f_name: "Rico",
@@ -115,6 +123,7 @@ const seedData = async () => {
         role: "operator",
         status: "active",
         firebase_id: "firebase_operator_002",
+        profile_image: "default.png",
       },
       {
         f_name: "Jenny",
@@ -124,6 +133,7 @@ const seedData = async () => {
         role: "terminal admin",
         status: "active",
         firebase_id: "firebase_terminal_002",
+        profile_image: "default.png",
       },
       {
         f_name: "Nina",
@@ -133,6 +143,7 @@ const seedData = async () => {
         role: "user",
         status: "active",
         firebase_id: "firebase_user_006",
+        profile_image: "default.png",
       },
       {
         f_name: "Derek",
@@ -142,6 +153,7 @@ const seedData = async () => {
         role: "user",
         status: "active",
         firebase_id: "firebase_user_007",
+        profile_image: "default.png",
       },
       {
         f_name: "Elena",
@@ -151,6 +163,7 @@ const seedData = async () => {
         role: "user",
         status: "suspended",
         firebase_id: "firebase_user_008",
+        profile_image: "default.png",
       },
     ]);
 
@@ -298,8 +311,15 @@ const seedData = async () => {
 
     console.log(`✅ Created ${routes.length} routes`);
 
-    const [route01A, route02B, route03C, route04D, route05E, route06F, route07G] =
-      routes;
+    const [
+      route01A,
+      route02B,
+      route03C,
+      route04D,
+      route05E,
+      route06F,
+      route07G,
+    ] = routes;
 
     // ==========================================
     // 4. CREATE ROUTE STOPS
@@ -1335,7 +1355,8 @@ const seedData = async () => {
       {
         user_id: String(superAdmin._id),
         action: "Update User",
-        description: "Updated role for elena.villanueva@email.com to suspended.",
+        description:
+          "Updated role for elena.villanueva@email.com to suspended.",
         createdAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
       },
       {
