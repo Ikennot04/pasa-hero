@@ -35,6 +35,9 @@ const busAssignmentSchema = new mongoose.Schema(
       ref: "TerminalLog",
       default: null,
     },
+
+    /** Scheduled arrival at the route destination terminal (see Route.end_terminal_id). */
+    scheduled_arrival_at: { type: Date, default: null },
   },
   { timestamps: true },
 );
