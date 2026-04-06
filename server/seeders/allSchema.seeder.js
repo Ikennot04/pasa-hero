@@ -791,7 +791,7 @@ const seedData = async () => {
         scheduled_departure_time: new Date(
           today.getTime() + 8 * 60 * 60 * 1000,
         ), // 8:00 AM
-        scheduled_arrival_time: new Date(
+        scheduled_arrival_at: new Date(
           today.getTime() + 8.75 * 60 * 60 * 1000,
         ), // 8:45 AM
         status: "active",
@@ -810,7 +810,7 @@ const seedData = async () => {
         scheduled_departure_time: new Date(
           today.getTime() + 9 * 60 * 60 * 1000,
         ), // 9:00 AM
-        scheduled_arrival_time: new Date(
+        scheduled_arrival_at: new Date(
           today.getTime() + 9.5 * 60 * 60 * 1000,
         ), // 9:30 AM
         status: "scheduled",
@@ -826,7 +826,7 @@ const seedData = async () => {
         scheduled_departure_time: new Date(
           today.getTime() + 7 * 60 * 60 * 1000,
         ), // 7:00 AM
-        scheduled_arrival_time: new Date(
+        scheduled_arrival_at: new Date(
           today.getTime() + 7.58 * 60 * 60 * 1000,
         ), // 7:35 AM
         status: "completed",
@@ -847,7 +847,7 @@ const seedData = async () => {
         scheduled_departure_time: new Date(
           today.getTime() + 10 * 60 * 60 * 1000,
         ), // 10:00 AM
-        scheduled_arrival_time: new Date(
+        scheduled_arrival_at: new Date(
           today.getTime() + 10.42 * 60 * 60 * 1000,
         ), // 10:25 AM
         status: "arrival_pending",
@@ -864,7 +864,7 @@ const seedData = async () => {
         scheduled_departure_time: new Date(
           today.getTime() + 11 * 60 * 60 * 1000,
         ), // 11:00 AM
-        scheduled_arrival_time: new Date(
+        scheduled_arrival_at: new Date(
           today.getTime() + 11.67 * 60 * 60 * 1000,
         ), // 11:40 AM
         status: "scheduled",
@@ -880,7 +880,7 @@ const seedData = async () => {
         scheduled_departure_time: new Date(
           today.getTime() + 12 * 60 * 60 * 1000,
         ),
-        scheduled_arrival_time: new Date(
+        scheduled_arrival_at: new Date(
           today.getTime() + 12.83 * 60 * 60 * 1000,
         ),
         status: "scheduled",
@@ -896,7 +896,7 @@ const seedData = async () => {
         scheduled_departure_time: new Date(
           today.getTime() + 6.5 * 60 * 60 * 1000,
         ),
-        scheduled_arrival_time: new Date(
+        scheduled_arrival_at: new Date(
           today.getTime() + 6.83 * 60 * 60 * 1000,
         ),
         status: "active",
@@ -917,7 +917,7 @@ const seedData = async () => {
         scheduled_departure_time: new Date(
           today.getTime() + 24 * 60 * 60 * 1000 + 14 * 60 * 60 * 1000,
         ),
-        scheduled_arrival_time: new Date(
+        scheduled_arrival_at: new Date(
           today.getTime() + 24 * 60 * 60 * 1000 + 14.5 * 60 * 60 * 1000,
         ),
         status: "scheduled",
