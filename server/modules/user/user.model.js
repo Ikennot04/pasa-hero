@@ -19,6 +19,11 @@ const userSchema = new mongoose.Schema(
       default: "active",
       enum: ["active", "inactive", "suspended"],
     },
+    assigned_terminal: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Terminal",
+      default: null,
+    },
   },
   { timestamps: true },
 );
