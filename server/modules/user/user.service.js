@@ -96,7 +96,7 @@ export const UserService = {
     if (!userId) {
       throw new Error("Invalid token payload");
     }
-    const user = await User.findById(userId).select("-password");
+    const user = await User.findById(userId).select("f_name l_name");
     if (!user) {
       throw new Error("User not found");
     }

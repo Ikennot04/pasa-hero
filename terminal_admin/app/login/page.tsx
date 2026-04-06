@@ -1,15 +1,46 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LuEye, LuEyeOff } from "react-icons/lu";
 import logoName from "@/public/LogoName.jpg";
 import { useLogin } from "@/app/login/_hooks/useLogin";
+import axios from "axios";
 
 export default function Login() {
+  const router = useRouter();
   const { register, errors, isSubmitting, serverError, submitForm } =
     useLogin();
   const [showPassword, setShowPassword] = useState(false);
+
+  const checkToken = async () => {
+    const token = localStorage.getItem("terminal_admin_auth_token");
+    if (!token) return;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+    try {
+      const { data: response } = await axios.get(
+        `${baseUrl}/api/users/auth/check`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      router.push("/admin/dashboard");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        localStorage.removeItem("terminal_admin_auth_token");
+        router.push("/login");
+      }
+    }
+  };
+
+  useEffect(() => {
+    checkToken();
+  }, []);
 
   const inputBase =
     "w-full px-4 py-3 rounded-xl border bg-white/80 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200";

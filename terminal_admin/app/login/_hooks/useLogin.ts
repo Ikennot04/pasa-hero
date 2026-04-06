@@ -38,9 +38,9 @@ export function useLogin() {
   const onSubmit = useCallback(
     async (data: LoginFormData) => {
       setServerError(null);
-      const base = process.env.NEXT_PUBLIC_API_URL ?? "";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-      const url = `${base}${SIGNIN_PATH}`;
+      const url = `${baseUrl}/api/users/auth/signin`;
 
       try {
         const { data: res } = await axios.post(url, {
