@@ -76,9 +76,13 @@ export const UserService = {
     }
 
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      {
+        userId: user._id,
+        email: user.email,
+        assigned_terminal: user.assigned_terminal,
+      },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES || "7d" }
+      { expiresIn: process.env.JWT_EXPIRES || "7d" },
     );
 
     const userObj = user.toObject();
@@ -93,14 +97,17 @@ export const UserService = {
     console.log(token);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.userId;
+
     if (!userId) {
       throw new Error("Invalid token payload");
     }
-    const user = await User.findById(userId).select("f_name l_name");
+    const user = await User.findById(userId).select(
+      "f_name l_name assigned_terminal",
+    );
     if (!user) {
       throw new Error("User not found");
     }
-    return { user: user };
+    return { user };
   },
   // LOGOUT USER ====================================================================
   async logoutUser(id) {
@@ -121,7 +128,7 @@ export const UserService = {
       throw new Error("User not found");
     }
     return user;
-    },
+  },
   // GET ALL USERS ===================================================================
   async getAllUsers() {
     const users = await User.find();
@@ -179,7 +186,9 @@ export const UserService = {
           console.log("user img delete");
         });
       }
-      throw Error("Invalid admin role. Must be one of: super admin, operator, terminal admin");
+      throw Error(
+        "Invalid admin role. Must be one of: super admin, operator, terminal admin",
+      );
     }
 
     // Hash and Salt Password

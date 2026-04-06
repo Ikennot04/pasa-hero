@@ -7,7 +7,12 @@ import * as yup from "yup";
 import axios from "axios";
 import { useRouter } from "next/navigation";
 
-const SIGNIN_PATH = "/api/users/auth/signin";
+type SignInResponse = {
+  success?: boolean;
+  token?: string;
+  message?: string;
+  data?: { role?: string, assigned_terminal?: string };
+};
 
 export const loginSchema = yup.object({
   email: yup
@@ -43,13 +48,21 @@ export function useLogin() {
       const url = `${baseUrl}/api/users/auth/signin`;
 
       try {
-        const { data: res } = await axios.post(url, {
+        const { data: res } = await axios.post<SignInResponse>(url, {
           email: data.email,
           password: data.password,
         });
 
         if (res.success && res.token) {
+          const role = res.data?.role;
+          if (role !== "terminal admin") {
+            setServerError(
+              "Access denied. This portal is for terminal administrators only.",
+            );
+            return;
+          }
           localStorage.setItem("terminal_admin_auth_token", res.token);
+          localStorage.setItem("assigned_terminal", res.data?.assigned_terminal ?? "");
           router.push("/admin/dashboard");
           return;
         }
