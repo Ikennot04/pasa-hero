@@ -643,10 +643,10 @@ export default function Dashboard() {
         />
 
         <ConfirmationBacklog
-          pendingTotal={pendingTotal}
-          pendingArrivalCount={pendingArrivalBuses.length}
-          pendingDepartureCount={pendingDepartureBuses.length}
-          mounted={mounted}
+          pendingTotal={terminalSummary?.pending_confirmations}
+          pendingArrivalCount={terminalSummary?.pending_arrivals}
+          pendingDepartureCount={terminalSummary?.pending_departures}
+          mounted={true}
         />
 
         <TerminalEventFlow
