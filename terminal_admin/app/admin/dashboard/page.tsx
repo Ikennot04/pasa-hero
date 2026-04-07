@@ -13,6 +13,8 @@ import {
   Tooltip,
 } from "chart.js";
 import Link from "next/link";
+
+// Components imports
 import Notifications from "./_components/Notifications";
 import PendingConfirmation from "./_components/PendingConfirmation";
 import TerminalSnapshot from "./_components/charts/TerminalSnapshot";
@@ -20,6 +22,10 @@ import ConfirmationBacklog from "./_components/charts/ConfirmationBacklog";
 import TerminalEventFlow from "./_components/charts/TerminalEventFlow";
 import BusPresent from "./_components/BusPresent";
 import BusDeparted from "./_components/BusDeparted";
+
+// Hooks imports
+import { useGetTerminalSummary } from "./_components/_hooks/useGetTerminalSummary";
+import { useGetNotifications } from "./_components/_hooks/useGetNotifications";
 
 ChartJS.register(
   CategoryScale,
@@ -56,8 +62,8 @@ type TerminalNotification = {
   terminal_id: string;
   bus_id: string;
   bus_number: string;
-  event_type: "arrival_reported" | "arrival_confirmed" | "departure_reported" | "departure_confirmed";
-  status: "pending_confirmation" | "confirmed" | "rejected";
+  event_type: string;
+  status: string;
   event_time: string;
   confirmation_time: string | null;
   auto_detected: boolean;
@@ -80,7 +86,8 @@ function formatDate(iso: string) {
 
 function buildInitialMockData() {
   const now = new Date();
-  const isoOffset = (minutes: number) => new Date(now.getTime() + minutes * 60_000).toISOString();
+  const isoOffset = (minutes: number) =>
+    new Date(now.getTime() + minutes * 60_000).toISOString();
 
   // NOTE: These timestamps are relative to the current client time so the dashboard
   // stays meaningful when you reload it.
@@ -231,7 +238,9 @@ function buildInitialMockData() {
         event_time: b.departure_reported_at,
         confirmation_time: b.departure_confirmed_at,
         auto_detected: false,
-        remarks: b.departure_confirmed_at ? null : "Awaiting terminal admin confirmation",
+        remarks: b.departure_confirmed_at
+          ? null
+          : "Awaiting terminal admin confirmation",
       });
     }
 
@@ -262,6 +271,10 @@ export default function Dashboard() {
   const terminalId = DEFAULT_TERMINAL_ID;
   const terminalName = DEFAULT_TERMINAL_NAME;
 
+  // Imported Hooks
+  const { getTerminalSummary } = useGetTerminalSummary();
+  const { getNotifications } = useGetNotifications();
+
   // Hydration-safe: server renders a stable placeholder; real "now" + mock data are set after mount.
   const [uiState, setUiState] = useState<{
     assignments: BusAssignmentLike[];
@@ -278,6 +291,52 @@ export default function Dashboard() {
   const notifications = uiState.notifications;
   const nowIso = uiState.nowIso;
   const mounted = uiState.nowIso !== null;
+
+  // Terminal Summary States
+  const [terminalSummary, setTerminalSummary] = useState({
+    total_scheduled_arrivals_today: 0,
+    buses_present: 0,
+    buses_departed_today: 0,
+    pending_confirmations: 0,
+    pending_arrivals: 0,
+    pending_departures: 0,
+  });
+
+  // Notifications States
+  const [fetchedNotifications, setFetchedNotifications] = useState<
+    TerminalNotification[]
+  >([]);
+  const [notificationCounts, setNotificationCounts] = useState({
+    arrival_confirmed: 0,
+    arrival_reported: 0,
+    departure_confirmed: 0,
+    departure_reported: 0,
+  });
+
+  // Hooks UseEffect
+  useEffect(() => {
+    // Terminal Summary
+    const fetchTerminalSummary = async () => {
+      const data = await getTerminalSummary();
+      setTerminalSummary(data.data);
+    };
+    fetchTerminalSummary();
+
+    // Operational Notification Counts
+    const fetchNotifications = async () => {
+      const data = await getNotifications();
+
+      if (data.success) {
+        setFetchedNotifications(data.data.notifications);
+        setNotificationCounts(data.data.counts);
+
+      } else {
+        setToast(data.message);
+        setTimeout(() => setToast(null), 3500);
+      }
+    };
+    fetchNotifications();
+  }, []);
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | undefined;
@@ -309,19 +368,28 @@ export default function Dashboard() {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, []);
 
-  const now = useMemo(() => (nowIso ? new Date(nowIso) : new Date(0)), [nowIso]);
+  const now = useMemo(
+    () => (nowIso ? new Date(nowIso) : new Date(0)),
+    [nowIso],
+  );
 
   const scheduledToday = useMemo(
-    () => assignments.filter((a) => sameLocalDay(new Date(a.scheduled_arrival_at), now)),
+    () =>
+      assignments.filter((a) =>
+        sameLocalDay(new Date(a.scheduled_arrival_at), now),
+      ),
     [assignments, now],
   );
 
   const presentBuses = useMemo(() => {
     return assignments.filter((a) => {
-      const arrived = a.arrival_reported_at ? new Date(a.arrival_reported_at) <= now : false;
-      const notDepartedConfirmed = !a.departure_confirmed_at || new Date(a.departure_confirmed_at) > now;
+      const arrived = a.arrival_reported_at
+        ? new Date(a.arrival_reported_at) <= now
+        : false;
+      const notDepartedConfirmed =
+        !a.departure_confirmed_at || new Date(a.departure_confirmed_at) > now;
       return arrived && notDepartedConfirmed;
     });
   }, [assignments, now]);
@@ -349,18 +417,23 @@ export default function Dashboard() {
     });
   }, [assignments, now]);
 
-  const pendingTotal = pendingArrivalBuses.length + pendingDepartureBuses.length;
+  const pendingTotal =
+    pendingArrivalBuses.length + pendingDepartureBuses.length;
 
   const recentNotifications = useMemo(() => {
     return [...notifications]
-      .sort((a, b) => new Date(b.event_time).getTime() - new Date(a.event_time).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.event_time).getTime() - new Date(a.event_time).getTime(),
+      )
       .filter((n) => n.terminal_id === terminalId)
       .slice(0, 8);
   }, [notifications, terminalId]);
 
   const confirmArrival = (busId: string) => {
     const nowTs = new Date().toISOString();
-    const busNumber = assignments.find((a) => a.bus_id === busId)?.bus_number ?? "";
+    const busNumber =
+      assignments.find((a) => a.bus_id === busId)?.bus_number ?? "";
 
     setUiState((prev) => {
       const updatedAssignments = prev.assignments.map((a) => {
@@ -369,12 +442,17 @@ export default function Dashboard() {
         return { ...a, arrival_confirmed_at: nowTs };
       });
 
-      const updatedNotifications: TerminalNotification[] = prev.notifications.map((n) => {
-        if (n.bus_id !== busId) return n;
-        if (n.event_type !== "arrival_reported") return n;
-        if (n.status !== "pending_confirmation") return n;
-        return { ...n, status: "confirmed" as const, confirmation_time: nowTs };
-      });
+      const updatedNotifications: TerminalNotification[] =
+        prev.notifications.map((n) => {
+          if (n.bus_id !== busId) return n;
+          if (n.event_type !== "arrival_reported") return n;
+          if (n.status !== "pending_confirmation") return n;
+          return {
+            ...n,
+            status: "confirmed" as const,
+            confirmation_time: nowTs,
+          };
+        });
 
       const bus = prev.assignments.find((a) => a.bus_id === busId);
       if (bus) {
@@ -404,7 +482,8 @@ export default function Dashboard() {
 
   const confirmDeparture = (busId: string) => {
     const nowTs = new Date().toISOString();
-    const busNumber = assignments.find((a) => a.bus_id === busId)?.bus_number ?? "";
+    const busNumber =
+      assignments.find((a) => a.bus_id === busId)?.bus_number ?? "";
 
     setUiState((prev) => {
       const updatedAssignments = prev.assignments.map((a) => {
@@ -413,12 +492,17 @@ export default function Dashboard() {
         return { ...a, departure_confirmed_at: nowTs };
       });
 
-      const updatedNotifications: TerminalNotification[] = prev.notifications.map((n) => {
-        if (n.bus_id !== busId) return n;
-        if (n.event_type !== "departure_reported") return n;
-        if (n.status !== "pending_confirmation") return n;
-        return { ...n, status: "confirmed" as const, confirmation_time: nowTs };
-      });
+      const updatedNotifications: TerminalNotification[] =
+        prev.notifications.map((n) => {
+          if (n.bus_id !== busId) return n;
+          if (n.event_type !== "departure_reported") return n;
+          if (n.status !== "pending_confirmation") return n;
+          return {
+            ...n,
+            status: "confirmed" as const,
+            confirmation_time: nowTs,
+          };
+        });
 
       const bus = prev.assignments.find((a) => a.bus_id === busId);
       if (bus) {
@@ -503,7 +587,9 @@ export default function Dashboard() {
     <div className="space-y-6 pb-6 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Terminal Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Terminal Dashboard
+          </h1>
           <p className="text-sm text-base-content/70">
             {terminalName} • {nowIso ? formatDate(nowIso) : "—"} • Live view
           </p>
@@ -518,7 +604,7 @@ export default function Dashboard() {
       </div>
 
       {toast ? (
-        <div className="alert alert-info">
+        <div className="alert bg-blue-900 text-base text-white">
           <span>{toast}</span>
         </div>
       ) : null}
@@ -526,49 +612,72 @@ export default function Dashboard() {
       {/* Summary stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Total buses scheduled to arrive today</div>
-          <div className="mt-2 text-3xl font-bold">{scheduledToday.length}</div>
-          <div className="mt-1 text-sm text-base-content/60">All scheduled ETAs</div>
+          <div className="text-sm text-base-content/70">
+            Total buses scheduled to arrive today
+          </div>
+          <div className="mt-2 text-3xl font-bold">
+            {terminalSummary?.total_scheduled_arrivals_today}
+          </div>
+          <div className="mt-1 text-sm text-base-content/60">
+            All scheduled ETAs
+          </div>
         </div>
 
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Buses currently present at the terminal</div>
-          <div className="mt-2 text-3xl font-bold">{presentBuses.length}</div>
-          <div className="mt-1 text-sm text-base-content/60">Arrived, not departed</div>
+          <div className="text-sm text-base-content/70">
+            Buses currently present at the terminal
+          </div>
+          <div className="mt-2 text-3xl font-bold">
+            {terminalSummary?.buses_present}
+          </div>
+          <div className="mt-1 text-sm text-base-content/60">
+            Arrived, not departed
+          </div>
         </div>
 
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Buses that have departed</div>
-          <div className="mt-2 text-3xl font-bold">{departedBuses.length}</div>
-          <div className="mt-1 text-sm text-base-content/60">Departure confirmed</div>
+          <div className="text-sm text-base-content/70">
+            Buses that have departed
+          </div>
+          <div className="mt-2 text-3xl font-bold">
+            {terminalSummary?.buses_departed_today}
+          </div>
+          <div className="mt-1 text-sm text-base-content/60">
+            Departure confirmed
+          </div>
         </div>
 
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Pending confirmations</div>
-          <div className="mt-2 text-3xl font-bold">{pendingTotal}</div>
-          <div className="mt-1 text-sm text-base-content/60">Arrivals + departures waiting</div>
+          <div className="text-sm text-base-content/70">
+            Pending confirmations
+          </div>
+          <div className="mt-2 text-3xl font-bold">
+            {terminalSummary?.pending_confirmations}
+          </div>
+          <div className="mt-1 text-sm text-base-content/60">
+            Arrivals + departures waiting
+          </div>
         </div>
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <TerminalSnapshot
-          presentCount={presentBuses.length}
-          departedCount={departedBuses.length}
-          mounted={mounted}
+          presentCount={terminalSummary?.buses_present}
+          departedCount={terminalSummary?.buses_departed_today}
+          mounted={true}
         />
 
         <ConfirmationBacklog
-          pendingTotal={pendingTotal}
-          pendingArrivalCount={pendingArrivalBuses.length}
-          pendingDepartureCount={pendingDepartureBuses.length}
-          mounted={mounted}
+          pendingTotal={terminalSummary?.pending_confirmations}
+          pendingArrivalCount={terminalSummary?.pending_arrivals}
+          pendingDepartureCount={terminalSummary?.pending_departures}
+          mounted={true}
         />
 
         <TerminalEventFlow
-          mounted={mounted}
-          notifications={notifications}
-          terminalId={terminalId}
+          notificationCounts={notificationCounts}
+          mounted={true}
         />
       </div>
 
@@ -597,15 +706,23 @@ export default function Dashboard() {
         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="rounded-lg border border-base-200 p-4">
             <div className="text-sm text-base-content/70">Arrival pending</div>
-            <div className="text-3xl font-bold mt-1">{pendingArrivalBuses.length}</div>
+            <div className="text-3xl font-bold mt-1">
+              {terminalSummary?.pending_arrivals}
+            </div>
           </div>
           <div className="rounded-lg border border-base-200 p-4">
-            <div className="text-sm text-base-content/70">Departure pending</div>
-            <div className="text-3xl font-bold mt-1">{pendingDepartureBuses.length}</div>
+            <div className="text-sm text-base-content/70">
+              Departure pending
+            </div>
+            <div className="text-3xl font-bold mt-1">
+              {terminalSummary?.pending_departures}
+            </div>
           </div>
           <div className="rounded-lg border border-base-200 p-4">
             <div className="text-sm text-base-content/70">Total pending</div>
-            <div className="text-3xl font-bold mt-1">{pendingTotal}</div>
+            <div className="text-3xl font-bold mt-1">
+              {terminalSummary?.pending_confirmations}
+            </div>
           </div>
         </div>
       </div>

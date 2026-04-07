@@ -1,36 +1,46 @@
 "use client";
 
-import { useForm } from "react-hook-form";
-import { yupResolver } from "@hookform/resolvers/yup";
-import * as yup from "yup";
-
-const loginSchema = yup.object({
-  email: yup
-    .string()
-    .required("Email is required")
-    .email("Please enter a valid email"),
-  password: yup
-    .string()
-    .required("Password is required")
-    .min(6, "Password must be at least 6 characters"),
-});
-
-type LoginFormData = yup.InferType<typeof loginSchema>;
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { LuEye, LuEyeOff } from "react-icons/lu";
+import logoName from "@/public/LogoName.jpg";
+import { useLogin } from "@/app/login/_hooks/useLogin";
+import axios from "axios";
 
 export default function Login() {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginFormData>({
-    resolver: yupResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
-  });
+  const router = useRouter();
+  const { register, errors, isSubmitting, serverError, submitForm } =
+    useLogin();
+  const [showPassword, setShowPassword] = useState(false);
 
-  function onSubmit(data: LoginFormData) {
-    // TODO: wire to your auth API
-    console.log(data);
-  }
+  const checkToken = async () => {
+    const token = localStorage.getItem("terminal_admin_auth_token");
+    if (!token) return;
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+    try {
+      const { data: response } = await axios.get(
+        `${baseUrl}/api/users/auth/check`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      router.push("/admin/dashboard");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        localStorage.removeItem("terminal_admin_auth_token");
+        router.push("/login");
+      }
+    }
+  };
+
+  useEffect(() => {
+    checkToken();
+  }, []);
 
   const inputBase =
     "w-full px-4 py-3 rounded-xl border bg-white/80 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200";
@@ -53,31 +63,28 @@ export default function Login() {
         <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl rounded-3xl shadow-2xl shadow-slate-200/50 dark:shadow-slate-950/50 border border-slate-200/60 dark:border-slate-700/60 p-8 md:p-10">
           {/* Logo / Brand */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-linear-to-br from-[#0062CA] to-[#004a99] dark:from-[#0062CA] dark:to-[#004a99] text-white shadow-lg shadow-[#0062CA]/25 mb-4">
-              <svg
-                className="w-7 h-7"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
+            <div className="flex justify-center mb-4">
+              <Image
+                src={logoName}
+                alt="Logo"
+                className="h-32 w-auto max-w-full object-contain"
+                priority
+              />
             </div>
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-              Welcome back admin
-            </h1>
             <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">
               Sign in to Terminal Admin
             </p>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          <form onSubmit={submitForm} className="space-y-5">
+            {serverError && (
+              <p
+                role="alert"
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+              >
+                {serverError}
+              </p>
+            )}
             <div>
               <label
                 htmlFor="email"
@@ -107,13 +114,27 @@ export default function Login() {
               >
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                {...register("password")}
-                className={`${inputBase} ${errors.password ? inputError : inputNormal}`}
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  {...register("password")}
+                  className={`${inputBase} pr-12 ${errors.password ? inputError : inputNormal}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0062CA]/40"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <LuEyeOff className="w-5 h-5" aria-hidden />
+                  ) : (
+                    <LuEye className="w-5 h-5" aria-hidden />
+                  )}
+                </button>
+              </div>
               {errors.password && (
                 <p className="mt-1.5 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                   <span aria-hidden>•</span>

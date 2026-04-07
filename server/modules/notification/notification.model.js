@@ -8,20 +8,31 @@ const notificationSchema = new mongoose.Schema(
     terminal_id: { type: String, ref: "Terminal", default: null },
     title: { type: String, required: true },
     message: { type: String, required: true },
-    notification_type: { 
-      type: String, 
-      enum: ["delay", "full", "skipped_stop", "info"],
-      required: true 
+    notification_type: {
+      type: String,
+      enum: [
+        "arrival_reported",
+        "arrival_confirmed",
+        "departure_reported",
+        "departure_confirmed",
+        "delay",
+        "full",
+        "skipped_stop",
+        "info",
+        "other",
+        "custom",
+      ],
+      required: true,
     },
-    priority: { 
-      type: String, 
+    priority: {
+      type: String,
       enum: ["high", "medium", "low"],
-      default: "medium" 
+      default: "medium",
     },
-    scope: { 
-      type: String, 
+    scope: {
+      type: String,
       enum: ["bus", "route", "terminal", "system"],
-      required: true 
+      required: true,
     },
   },
   { timestamps: true },
