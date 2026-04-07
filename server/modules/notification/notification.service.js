@@ -1,4 +1,5 @@
 import Notification from "./notification.model.js";
+import Terminal from "../terminal/terminal.model.js";
 
 const TERMINAL_OPERATION_NOTIFICATION_TYPES = [
   "arrival_reported",
@@ -44,15 +45,16 @@ export const NotificationService = {
 
   // GET TODAY'S NOTIFICATIONS BY TERMINAL =================================
   async getTodaysNotificationsByTerminalId(terminalId) {
+    const terminal = await Terminal.findById(terminalId);
+    if (!terminal) {
+      throw new Error("Terminal not found");
+    }
+
     const { start, end } = getTodayRange();
-    const query = await Notification.find({
+    const query = Notification.find({
       terminal_id: terminalId,
       createdAt: { $gte: start, $lt: end },
     }).sort({ createdAt: -1 });
-
-    if (query.length === 0) {
-      throw new Error("No notifications found");
-    }
 
     const [notifications, countsAgg] = await Promise.all([
       populateNotificationRefs(query),
