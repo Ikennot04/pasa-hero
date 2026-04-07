@@ -1,22 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
-
-type TerminalNotification = {
-  id: string;
-  terminal_id: string;
-  bus_id: string;
-  bus_number: string;
-  event_type:
-    | "arrival_reported"
-    | "arrival_confirmed"
-    | "departure_reported"
-    | "departure_confirmed";
-  status: "pending_confirmation" | "confirmed" | "rejected";
-  event_time: string;
-  confirmation_time: string | null;
-  auto_detected: boolean;
-  remarks?: string | null;
+type TerminalNotificationType = {
+  _id: string;
+  message: string;
+  notification_type: string;
+  priority: string;
+  route_id: {
+    route_code: string;
+  } | null;
+  terminal_id: {
+    terminal_name: string;
+  } | null;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 function formatTime(iso: string) {
@@ -30,12 +27,14 @@ function formatDate(iso: string) {
 }
 
 type Props = {
-  notifications: TerminalNotification[];
+  notifications: TerminalNotificationType[];
 };
 
-function eventTypeBadgeClass(eventType: TerminalNotification["event_type"]) {
+function eventTypeBadgeClass(
+  notificationType: TerminalNotificationType["notification_type"],
+) {
   // Keep these as DaisyUI classes so they match the theme.
-  switch (eventType) {
+  switch (notificationType) {
     case "arrival_reported":
       return "badge badge-info badge-sm font-semibold text-[0.8rem]";
     case "arrival_confirmed":
@@ -50,47 +49,41 @@ function eventTypeBadgeClass(eventType: TerminalNotification["event_type"]) {
 }
 
 export default function Notifications({ notifications }: Props) {
-  const sorted = useMemo(() => {
-    return [...notifications].sort(
-      (a, b) =>
-        new Date(b.event_time).getTime() - new Date(a.event_time).getTime(),
-    );
-  }, [notifications]);
-
   return (
-    <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
+    <div className="max-h-180 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Recent notifications</h2>
         <span className="badge badge-sm badge-outline">
-          Last {sorted.length}
+          Last {notifications.length}
         </span>
       </div>
 
       <div className="mt-3 space-y-3">
-        {sorted.length ? (
-          sorted.map((n) => (
+        {notifications.length ? (
+          notifications.map((n) => (
             <div
-              key={n.id}
+              key={n._id}
               className="rounded-lg border border-base-200 p-3 bg-base-100 flex items-start justify-between gap-4"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold">{n.bus_number}</span>
-                  <span className={eventTypeBadgeClass(n.event_type)}>
-                    {n.event_type.replaceAll("_", " ")}
+                  <span className="font-semibold">
+                    {n.route_id?.route_code ?? "00A"}
+                  </span>
+                  <span className={eventTypeBadgeClass(n.notification_type)}>
+                    {n.notification_type.replaceAll("_", " ")}
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-base-content/70 truncate">
-                  {n.remarks ??
-                    (n.auto_detected ? "Auto-detected" : "Manual update")}
+                  {n.title}
                 </p>
               </div>
               <div className="text-right shrink-0">
                 <div className="text-sm font-semibold">
-                  {formatTime(n.event_time)}
+                  {formatTime(n.createdAt)}
                 </div>
                 <div className="text-xs text-base-content/60">
-                  {formatDate(n.event_time)}
+                  {formatDate(n.createdAt)}
                 </div>
               </div>
             </div>

@@ -70,6 +70,22 @@ type TerminalNotification = {
   remarks?: string | null;
 };
 
+type TerminalNotificationType = {
+  _id: string;
+  message: string;
+  notification_type: string;
+  priority: string;
+  route_id: {
+    route_code: string;
+  } | null;
+  terminal_id: {
+    terminal_name: string;
+  } | null;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function sameLocalDay(a: Date, b: Date) {
   return a.toDateString() === b.toDateString();
 }
@@ -304,7 +320,7 @@ export default function Dashboard() {
 
   // Notifications States
   const [fetchedNotifications, setFetchedNotifications] = useState<
-    TerminalNotification[]
+    TerminalNotificationType[]
   >([]);
   const [notificationCounts, setNotificationCounts] = useState({
     arrival_confirmed: 0,
@@ -420,15 +436,6 @@ export default function Dashboard() {
   const pendingTotal =
     pendingArrivalBuses.length + pendingDepartureBuses.length;
 
-  const recentNotifications = useMemo(() => {
-    return [...notifications]
-      .sort(
-        (a, b) =>
-          new Date(b.event_time).getTime() - new Date(a.event_time).getTime(),
-      )
-      .filter((n) => n.terminal_id === terminalId)
-      .slice(0, 8);
-  }, [notifications, terminalId]);
 
   const confirmArrival = (busId: string) => {
     const nowTs = new Date().toISOString();
@@ -692,7 +699,7 @@ export default function Dashboard() {
           onConfirmDeparture={confirmDeparture}
         />
 
-        <Notifications notifications={recentNotifications} />
+        <Notifications notifications={fetchedNotifications} />
       </div>
 
       {/* Present + departed buses */}
