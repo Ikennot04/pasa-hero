@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 import { LiaBarsSolid } from "react-icons/lia";
 import { FaBell, FaChartLine, FaSignOutAlt } from "react-icons/fa";
@@ -47,8 +47,13 @@ const routes = [
 export default function Drawer({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [fName] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("f_name") ?? "" : "",
+  const fName = useSyncExternalStore(
+    (onStoreChange) => {
+      window.addEventListener("storage", onStoreChange);
+      return () => window.removeEventListener("storage", onStoreChange);
+    },
+    () => localStorage.getItem("f_name") ?? "",
+    () => "",
   );
 
   // Use effect to check if the token is expired
