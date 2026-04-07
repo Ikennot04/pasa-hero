@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import type { ChartOptions } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
@@ -13,83 +13,85 @@ const terminalEventsBarOptions: ChartOptions<"bar"> = {
   },
 };
 
-type TerminalEventLike = {
-  terminal_id: string;
-  event_type:
-    | "arrival_reported"
-    | "arrival_confirmed"
-    | "departure_reported"
-    | "departure_confirmed";
+type NotificationCounts = {
+  arrival_confirmed: number;
+  arrival_reported: number;
+  departure_confirmed: number;
+  departure_reported: number;
 };
 
 type TerminalEventFlowProps = {
   mounted: boolean;
-  notifications: TerminalEventLike[];
-  terminalId: string;
+  notificationCounts: NotificationCounts;
 };
 
-export default function TerminalEventFlow({
-  mounted,
-  notifications,
-  terminalId,
-}: TerminalEventFlowProps) {
-  const terminalEventsChartData = useMemo(() => {
-    const terminalNotifications = notifications.filter((n) => n.terminal_id === terminalId);
-    const eventCounts = {
-      arrival_reported: 0,
-      arrival_confirmed: 0,
-      departure_reported: 0,
-      departure_confirmed: 0,
-    };
+const EVENT_LABELS = [
+  "Arrival reported",
+  "Arrival confirmed",
+  "Departure reported",
+  "Departure confirmed",
+];
 
-    for (const n of terminalNotifications) {
-      eventCounts[n.event_type] += 1;
-    }
+const EVENT_BACKGROUND_COLORS = [
+  "rgb(130, 128, 255, 0.50)",
+  "rgb(128, 0, 0, 0.50)",
+  "rgb(0, 119, 128, 0.50)",
+  "rgb(57, 128, 0, 0.50)",
+];
 
-    return {
-      labels: [
-        "Arrival reported",
-        "Arrival confirmed",
-        "Departure reported",
-        "Departure confirmed",
-      ],
+const EVENT_BORDER_COLORS = [
+  "rgb(130, 128, 255)",
+  "rgb(128, 0, 0)",
+  "rgb(0, 119, 128)",
+  "rgb(57, 128, 0)",
+];
+
+function areNotificationCountsEqual(
+  prevCounts: NotificationCounts,
+  nextCounts: NotificationCounts,
+) {
+  return (
+    prevCounts.arrival_reported === nextCounts.arrival_reported &&
+    prevCounts.arrival_confirmed === nextCounts.arrival_confirmed &&
+    prevCounts.departure_reported === nextCounts.departure_reported &&
+    prevCounts.departure_confirmed === nextCounts.departure_confirmed
+  );
+}
+
+function TerminalEventFlow({ notificationCounts, mounted }: TerminalEventFlowProps) {
+  const chartData = useMemo(
+    () => ({
+      labels: EVENT_LABELS,
       datasets: [
         {
           label: "Events",
           data: [
-            eventCounts.arrival_reported,
-            eventCounts.arrival_confirmed,
-            eventCounts.departure_reported,
-            eventCounts.departure_confirmed,
+            notificationCounts.arrival_reported,
+            notificationCounts.arrival_confirmed,
+            notificationCounts.departure_reported,
+            notificationCounts.departure_confirmed,
           ],
-          backgroundColor: [
-            "rgb(130, 128, 255, 0.50)",
-            "rgb(128, 0, 0, 0.50)",
-            "rgb(0, 119, 128, 0.50)",
-            "rgb(57, 128, 0, 0.50)",
-          ],
-          borderColor: [
-            "rgb(130, 128, 255)",
-            "rgb(128, 0, 0)",
-            "rgb(0, 119, 128)",
-            "rgb(57, 128, 0)",
-          ],
+          backgroundColor: EVENT_BACKGROUND_COLORS,
+          borderColor: EVENT_BORDER_COLORS,
           borderWidth: 1.5,
           borderRadius: 6,
         },
       ],
-    };
-  }, [notifications, terminalId]);
+    }),
+    [notificationCounts],
+  );
 
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm lg:col-span-1">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Terminal event flow</h2>
-        <span className="badge badge-sm badge-outline">Arrival vs departure events</span>
+        <span className="badge badge-sm badge-outline">
+          Arrival vs departure events
+        </span>
       </div>
       <div className="mt-3 h-64">
         {mounted ? (
-          <Bar data={terminalEventsChartData} options={terminalEventsBarOptions} />
+          <Bar data={chartData} options={terminalEventsBarOptions} />
         ) : (
           <div className="h-full w-full flex items-center justify-center text-sm text-base-content/60">
             Loading chart...
@@ -99,3 +101,15 @@ export default function TerminalEventFlow({
     </div>
   );
 }
+
+function arePropsEqual(prevProps: TerminalEventFlowProps, nextProps: TerminalEventFlowProps) {
+  return (
+    prevProps.mounted === nextProps.mounted &&
+    areNotificationCountsEqual(
+      prevProps.notificationCounts,
+      nextProps.notificationCounts,
+    )
+  );
+}
+
+export default memo(TerminalEventFlow, arePropsEqual);

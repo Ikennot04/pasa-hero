@@ -25,6 +25,7 @@ import BusDeparted from "./_components/BusDeparted";
 
 // Hooks imports
 import { useGetTerminalSummary } from "./_components/_hooks/useGetTerminalSummary";
+import { useGetNotifications } from "./_components/_hooks/useGetNotifications";
 
 ChartJS.register(
   CategoryScale,
@@ -61,12 +62,8 @@ type TerminalNotification = {
   terminal_id: string;
   bus_id: string;
   bus_number: string;
-  event_type:
-    | "arrival_reported"
-    | "arrival_confirmed"
-    | "departure_reported"
-    | "departure_confirmed";
-  status: "pending_confirmation" | "confirmed" | "rejected";
+  event_type: string;
+  status: string;
   event_time: string;
   confirmation_time: string | null;
   auto_detected: boolean;
@@ -274,8 +271,9 @@ export default function Dashboard() {
   const terminalId = DEFAULT_TERMINAL_ID;
   const terminalName = DEFAULT_TERMINAL_NAME;
 
-  // Hooks
-  const { getTerminalSummary, error } = useGetTerminalSummary();
+  // Imported Hooks
+  const { getTerminalSummary } = useGetTerminalSummary();
+  const { getNotifications } = useGetNotifications();
 
   // Hydration-safe: server renders a stable placeholder; real "now" + mock data are set after mount.
   const [uiState, setUiState] = useState<{
@@ -294,6 +292,7 @@ export default function Dashboard() {
   const nowIso = uiState.nowIso;
   const mounted = uiState.nowIso !== null;
 
+  // Terminal Summary States
   const [terminalSummary, setTerminalSummary] = useState({
     total_scheduled_arrivals_today: 0,
     buses_present: 0,
@@ -302,14 +301,41 @@ export default function Dashboard() {
     pending_arrivals: 0,
     pending_departures: 0,
   });
+
+  // Notifications States
+  const [fetchedNotifications, setFetchedNotifications] = useState<
+    TerminalNotification[]
+  >([]);
+  const [notificationCounts, setNotificationCounts] = useState({
+    arrival_confirmed: 0,
+    arrival_reported: 0,
+    departure_confirmed: 0,
+    departure_reported: 0,
+  });
+
   // Hooks UseEffect
   useEffect(() => {
+    // Terminal Summary
     const fetchTerminalSummary = async () => {
       const data = await getTerminalSummary();
-      console.log(data.data);
       setTerminalSummary(data.data);
     };
     fetchTerminalSummary();
+
+    // Operational Notification Counts
+    const fetchNotifications = async () => {
+      const data = await getNotifications();
+
+      if (data.success) {
+        setFetchedNotifications(data.data.notifications);
+        setNotificationCounts(data.data.counts);
+
+      } else {
+        setToast(data.message);
+        setTimeout(() => setToast(null), 3500);
+      }
+    };
+    fetchNotifications();
   }, []);
 
   useEffect(() => {
@@ -342,7 +368,7 @@ export default function Dashboard() {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, []);
 
   const now = useMemo(
     () => (nowIso ? new Date(nowIso) : new Date(0)),
@@ -578,7 +604,7 @@ export default function Dashboard() {
       </div>
 
       {toast ? (
-        <div className="alert alert-info">
+        <div className="alert bg-blue-900 text-base text-white">
           <span>{toast}</span>
         </div>
       ) : null}
@@ -650,9 +676,8 @@ export default function Dashboard() {
         />
 
         <TerminalEventFlow
-          mounted={mounted}
-          notifications={notifications}
-          terminalId={terminalId}
+          notificationCounts={notificationCounts}
+          mounted={true}
         />
       </div>
 
