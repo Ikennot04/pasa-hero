@@ -3,26 +3,26 @@
 import axios, { AxiosError } from "axios";
 import { useState } from "react";
 
-export const useGetTerminalSummary = () => {
+export const useGetNotifications = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getTerminalSummary = async () => {
+  const getNotifications = async () => {
     try {
       const assignedTerminal = localStorage?.getItem("assigned_terminal");
 
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/terminals/${assignedTerminal}/operational-summary`,
+      const { data: response } = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/notifications/today/${assignedTerminal}`,
       );
 
-      return response.data;
+      return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        setError(error.response?.data.error);
+        setError(error.response?.data.message);
+        return error.response?.data;
       } else {
         setError("Unexpected error");
       }
     }
   };
-
-  return { getTerminalSummary, error };
+  return { getNotifications, error };
 };
