@@ -45,10 +45,14 @@ export const NotificationService = {
   // GET TODAY'S NOTIFICATIONS BY TERMINAL =================================
   async getTodaysNotificationsByTerminalId(terminalId) {
     const { start, end } = getTodayRange();
-    const query = Notification.find({
+    const query = await Notification.find({
       terminal_id: terminalId,
       createdAt: { $gte: start, $lt: end },
     }).sort({ createdAt: -1 });
+
+    if (query.length === 0) {
+      throw new Error("No notifications found");
+    }
 
     const [notifications, countsAgg] = await Promise.all([
       populateNotificationRefs(query),
