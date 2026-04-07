@@ -200,4 +200,64 @@ export const TerminalService = {
       pending_departures: pendingDepartures,
     };
   },
+
+  /**
+   * Get pending arrival and departure confirmations for a terminal.
+   * @param {string} terminalId
+   */
+  async getPendingConfirmationsByTerminalId(terminalId) {
+    if (!mongoose.Types.ObjectId.isValid(terminalId)) {
+      const err = new Error("Invalid terminal id.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const terminal = await Terminal.findById(terminalId).select("_id");
+    if (!terminal) {
+      const err = new Error("Terminal not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const pendingLogs = await TerminalLog.find({
+      terminal_id: terminalId,
+      status: "pending",
+      event_type: { $in: ["arrival", "departure"] },
+    })
+      .populate({ path: "bus_id", select: "bus_number plate_number" })
+      .populate({
+        path: "bus_assignment_id",
+        select: "_id route_id",
+        populate: { path: "route_id", select: "route_name route_code" },
+      })
+      .sort({ event_time: -1 });
+
+    const pending_arrivals = [];
+    const pending_departures = [];
+
+    for (const log of pendingLogs) {
+      const payload = {
+        terminal_log_id: log._id,
+        bus_assignment_id: log.bus_assignment_id?._id || null,
+        bus_id: log.bus_id?._id || null,
+        bus_number: log.bus_id?.bus_number || null,
+        plate_number: log.bus_id?.plate_number || null,
+        route_id: log.bus_assignment_id?.route_id?._id || null,
+        route_name: log.bus_assignment_id?.route_id?.route_name || null,
+        route_code: log.bus_assignment_id?.route_id?.route_code || null,
+        event_time: log.event_time,
+        created_at: log.createdAt,
+      };
+
+      if (log.event_type === "arrival") pending_arrivals.push(payload);
+      if (log.event_type === "departure") pending_departures.push(payload);
+    }
+
+    return {
+      terminal_id: terminal._id,
+      pending_confirmations: pending_arrivals.length + pending_departures.length,
+      pending_arrivals,
+      pending_departures,
+    };
+  },
 };

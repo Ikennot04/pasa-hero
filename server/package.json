@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "seed": "node seeders/allSchema.seeder.js",
+    "seed:notifications": "node seeders/notification.seeder.js",
     "seed:operational-summary": "node seeders/terminalOperationalSummary.seeder.js",
     "dev": "nodemon index.js"
   },
