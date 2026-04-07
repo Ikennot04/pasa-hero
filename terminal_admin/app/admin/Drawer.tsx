@@ -43,13 +43,15 @@ const routes = [
   },
 ];
 
-const PROFILE_NAME = "Terminal Admin";
-
 export default function Drawer({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const f_name = localStorage.getItem("f_name");
 
   const logout = useCallback(() => {
+    localStorage.removeItem("terminal_admin_auth_token");
+    localStorage.removeItem("f_name");
+    localStorage.removeItem("assigned_terminal");
     router.push("/login");
   }, [router]);
 
@@ -71,8 +73,8 @@ export default function Drawer({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-            <span className="max-w-48 truncate text-base font-semibold text-base-content/90 sm:max-w-none sm:text-lg">
-              {PROFILE_NAME}
+            <span className="max-w-48 truncate text-base font-semibold text-[#0062CA] sm:max-w-none sm:text-lg">
+              Admin {f_name}
             </span>
             <button
               type="button"
