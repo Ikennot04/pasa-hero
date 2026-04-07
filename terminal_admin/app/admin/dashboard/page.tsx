@@ -343,7 +343,6 @@ export default function Dashboard() {
       const data = await getNotifications();
 
       if (data.success) {
-        console.log(data.data.notifications);
         setFetchedNotifications(data.data.notifications);
         setNotificationCounts(data.data.counts);
 

@@ -23,7 +23,7 @@ export default function PendingConfirmation({
   onConfirmDeparture,
 }: PendingConfirmationProps) {
   return (
-    <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
+    <div className="max-h-180 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Pending confirmations</h2>
         <span className="badge badge-sm badge-warning">
