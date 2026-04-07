@@ -2,6 +2,8 @@
 import "dotenv/config";
 import mongoose from "mongoose";
 import { fileURLToPath } from "url";
+ 
+// Schema Models
 import User from "../modules/user/user.model.js";
 import Bus from "../modules/bus/bus.model.js";
 import Route from "../modules/route/route.model.js";
@@ -13,6 +15,9 @@ import Notification from "../modules/notification/notification.model.js";
 import UserNotification from "../modules/user_notification/user_notification.model.js";
 import UserSubscription from "../modules/user_subscription/user_subscription.model.js";
 import SystemLog from "../modules/system_log/system_log.model.js";
+
+// Seeder Functions
+import { buildNotificationSeedDocuments } from "./notification.seeder.js";
 
 const seedData = async () => {
   try {
@@ -944,199 +949,43 @@ const seedData = async () => {
     // ==========================================
     const now = new Date();
 
-    const notifications = await Notification.insertMany([
-      // 1. System-wide announcement
-      {
-        sender_id: superAdmin._id,
-        bus_id: null,
-        route_id: null,
-        terminal_id: null,
-        title: "System Maintenance Notice",
-        message:
-          "The bus tracking system will undergo maintenance on March 31, 2026 from 2:00 AM to 4:00 AM. Real-time tracking may be temporarily unavailable.",
-        notification_type: "info",
-        priority: "high",
-        scope: "system",
-        createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1000), // 2 hours ago
-      },
-
-      // 2. Bus delay notification (for bus CEB-001)
-      {
-        sender_id: operator1._id,
-        bus_id: bus1._id,
-        route_id: route01A._id,
-        terminal_id: null,
-        title: "Bus CEB-001 Delayed",
-        message:
-          "Bus CEB-001 on Route 01A (SM to Ayala) is running 6 minutes behind schedule due to heavy traffic on Mango Avenue.",
-        notification_type: "delay",
-        priority: "medium",
-        scope: "bus",
-        createdAt: new Date(now.getTime() - 30 * 60 * 1000), // 30 minutes ago
-      },
-
-      // 3. Bus full notification
-      {
-        sender_id: operator1._id,
-        bus_id: bus1._id,
-        route_id: route01A._id,
-        terminal_id: null,
-        title: "Bus CEB-001 at Full Capacity",
-        message:
-          "Bus CEB-001 is currently at full capacity (50/50 passengers). Please wait for the next bus or consider alternative routes.",
-        notification_type: "full",
-        priority: "medium",
-        scope: "bus",
-        createdAt: new Date(now.getTime() - 15 * 60 * 1000), // 15 minutes ago
-      },
-
-      // 4. Route-wide notification
-      {
-        sender_id: operator2._id,
-        bus_id: null,
-        route_id: route02B._id,
-        terminal_id: null,
-        title: "Route 02B Service Update",
-        message:
-          "Additional buses have been deployed on Route 02B (Carbon to Mandaue) due to high demand during rush hour.",
-        notification_type: "info",
-        priority: "low",
-        scope: "route",
-        createdAt: new Date(now.getTime() - 1 * 60 * 60 * 1000), // 1 hour ago
-      },
-
-      // 5. Skipped stop notification
-      {
-        sender_id: operator1._id,
-        bus_id: bus1._id,
-        route_id: route01A._id,
-        terminal_id: null,
-        title: "Stop Skipped - Mango Square",
-        message:
-          "Bus CEB-001 has skipped Mango Square stop due to road construction. The bus will resume normal stops at Capitol Site.",
-        notification_type: "skipped_stop",
-        priority: "high",
-        scope: "bus",
-        createdAt: new Date(now.getTime() - 45 * 60 * 1000), // 45 minutes ago
-      },
-
-      // 6. Terminal notification
-      {
-        sender_id: terminalAdmin1._id,
-        bus_id: null,
-        route_id: null,
-        terminal_id: smTerminal._id,
-        title: "SM Terminal Parking Update",
-        message:
-          "Bay 3 and Bay 4 at SM Terminal are temporarily closed for repairs. Buses will use alternative bays.",
-        notification_type: "info",
-        priority: "medium",
-        scope: "terminal",
-        createdAt: new Date(now.getTime() - 3 * 60 * 60 * 1000), // 3 hours ago
-      },
-
-      // 7. Another bus delay (for subscribed users)
-      {
-        sender_id: operator2._id,
-        bus_id: bus3._id,
-        route_id: route03C._id,
-        terminal_id: null,
-        title: "Bus CEB-003 Minor Delay",
-        message:
-          "Bus CEB-003 on Route 03C (IT Park to SM) experienced a 2-minute delay but has now completed its trip.",
-        notification_type: "delay",
-        priority: "low",
-        scope: "bus",
-        createdAt: new Date(now.getTime() - 4 * 60 * 60 * 1000), // 4 hours ago
-      },
-
-      // 8. Route maintenance
-      {
-        sender_id: superAdmin._id,
-        bus_id: null,
-        route_id: route05E._id,
-        terminal_id: null,
-        title: "Route 05E Schedule Change",
-        message:
-          "Starting April 1, 2026, Route 05E will have updated departure times. First bus at 6:00 AM, last bus at 10:00 PM.",
-        notification_type: "info",
-        priority: "high",
-        scope: "route",
-        createdAt: new Date(now.getTime() - 24 * 60 * 60 * 1000), // 1 day ago
-      },
-
-      // 9. Bus back in service
-      {
-        sender_id: operator1._id,
-        bus_id: bus5._id,
-        route_id: null,
-        terminal_id: null,
-        title: "Bus CEB-005 Maintenance Complete",
-        message:
-          "Bus CEB-005 has completed scheduled maintenance and will resume service tomorrow morning.",
-        notification_type: "info",
-        priority: "low",
-        scope: "bus",
-        createdAt: new Date(now.getTime() - 6 * 60 * 60 * 1000), // 6 hours ago
-      },
-
-      // 10. Terminal congestion
-      {
-        sender_id: terminalAdmin2._id,
-        bus_id: null,
-        route_id: null,
-        terminal_id: ayalaTerminal._id,
-        title: "Ayala Terminal High Traffic",
-        message:
-          "Ayala Terminal is experiencing higher than usual foot traffic. Please allow extra time for boarding.",
-        notification_type: "info",
-        priority: "medium",
-        scope: "terminal",
-        createdAt: new Date(now.getTime() - 20 * 60 * 1000), // 20 minutes ago
-      },
-
-      {
-        sender_id: superAdmin._id,
-        bus_id: null,
-        route_id: null,
-        terminal_id: null,
-        title: "Peak Season Travel Advisory",
-        message:
-          "Expect heavier passenger volume on provincial and mall-linked routes this weekend. Arrive at terminals at least 15 minutes before departure.",
-        notification_type: "info",
-        priority: "medium",
-        scope: "system",
-        createdAt: new Date(now.getTime() - 5 * 60 * 60 * 1000),
-      },
-
-      {
-        sender_id: operator1._id,
-        bus_id: null,
-        route_id: route06F._id,
-        terminal_id: null,
-        title: "Route 06F Extra Morning Trip",
-        message:
-          "An additional southbound trip on Route 06F (South Bus to SM) departs at 5:45 AM on weekdays until further notice.",
-        notification_type: "info",
-        priority: "medium",
-        scope: "route",
-        createdAt: new Date(now.getTime() - 90 * 60 * 1000),
-      },
-
-      {
-        sender_id: operator1._id,
-        bus_id: bus9._id,
-        route_id: route02B._id,
-        terminal_id: null,
-        title: "Bus CEB-009 On Schedule",
-        message:
-          "Bus CEB-009 on Route 02B is on time for tomorrow's 2:00 PM departure from Carbon Market Terminal.",
-        notification_type: "info",
-        priority: "low",
-        scope: "bus",
-        createdAt: new Date(now.getTime() - 10 * 60 * 1000),
-      },
-    ]);
+    const notifications = await Notification.insertMany(
+      buildNotificationSeedDocuments({
+        now,
+        superAdmin,
+        operator1,
+        operator2,
+        terminalAdmin1,
+        terminalAdmin2,
+        bus1,
+        bus2,
+        bus3,
+        bus4,
+        bus5,
+        bus6,
+        bus7,
+        bus8,
+        bus9,
+        bus10,
+        bus11,
+        bus12,
+        bus13,
+        route01A,
+        route02B,
+        route03C,
+        route04D,
+        route05E,
+        route06F,
+        route07G,
+        smTerminal,
+        ayalaTerminal,
+        carbonTerminal,
+        itParkTerminal,
+        mandaueTerminal,
+        southBusTerminal,
+        waterfrontTerminal,
+      }),
+    );
 
     console.log(`✅ Created ${notifications.length} notifications`);
 
