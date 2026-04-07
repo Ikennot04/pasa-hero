@@ -18,10 +18,17 @@ export default function Home() {
 
     void (async () => {
       try {
-        await axios.get(`${baseUrl}/api/users/auth/check`, {
+        const { data: response } = await axios.get(`${baseUrl}/api/users/auth/check`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        router.replace("/admin/dashboard");
+        if(response.success && response.data.user.role === "terminal admin") {
+          localStorage.setItem("f_name", response.data.user.f_name);
+          localStorage.setItem("assigned_terminal", response.data.user.assigned_terminal);
+          router.replace("/admin/dashboard");
+        } else {
+          localStorage.removeItem("terminal_admin_auth_token");
+          router.replace("/login");
+        }
       } catch (error) {
         if (axios.isAxiosError(error)) {
           localStorage.removeItem("terminal_admin_auth_token");

@@ -29,7 +29,17 @@ export default function Login() {
         },
       );
 
-      router.push("/admin/dashboard");
+      console.log(response);
+
+      if(response.success && response.data.user.role === "terminal admin") {
+        localStorage.setItem("f_name", response.data.user.f_name);
+        localStorage.setItem("assigned_terminal", response.data.user.assigned_terminal);
+        router.push("/admin/dashboard");
+      } else {
+        localStorage.removeItem("terminal_admin_auth_token");
+        router.push("/login");
+      }
+
     } catch (error) {
       if (axios.isAxiosError(error)) {
         localStorage.removeItem("terminal_admin_auth_token");

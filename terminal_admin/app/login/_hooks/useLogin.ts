@@ -11,7 +11,7 @@ type SignInResponse = {
   success?: boolean;
   token?: string;
   message?: string;
-  data?: { role?: string, assigned_terminal?: string };
+  data?: { role?: string, assigned_terminal?: string, f_name?: string };
 };
 
 export const loginSchema = yup.object({
@@ -61,8 +61,10 @@ export function useLogin() {
             );
             return;
           }
+
           localStorage.setItem("terminal_admin_auth_token", res.token);
           localStorage.setItem("assigned_terminal", res.data?.assigned_terminal ?? "");
+          localStorage.setItem("f_name", res.data?.f_name ?? "");
           router.push("/admin/dashboard");
           return;
         }
