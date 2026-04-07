@@ -20,14 +20,12 @@ export const listNotifications = async (req, res) => {
   }
 };
 
-export const getOperationNotificationCountsByTerminal = async (req, res) => {
+export const listTodaysNotificationsByTerminal = async (req, res) => {
   try {
     const { terminalId } = req.params;
-    const data =
-      await NotificationService.getOperationNotificationCountsByTerminal(
-        terminalId,
-      );
-    res.status(200).json({ success: true, data });
+    const result =
+      await NotificationService.getTodaysNotificationsByTerminalId(terminalId);
+    res.status(200).json({ success: true, data: result });
   } catch (error) {
     const statusCode = error.statusCode || 400;
     res.status(statusCode).json({ success: false, message: error.message });

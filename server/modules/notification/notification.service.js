@@ -7,6 +7,16 @@ const TERMINAL_OPERATION_NOTIFICATION_TYPES = [
   "departure_confirmed",
 ];
 
+function getTodayRange() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  return { start, end };
+}
+
 function populateNotificationRefs(query) {
   return query
     .populate({ path: "sender_id", select: "f_name l_name" })
@@ -32,30 +42,37 @@ export const NotificationService = {
     return populatedQuery;
   },
 
-  // GET OPERATION NOTIFICATION COUNTS BY TERMINAL =========================
-  async getOperationNotificationCountsByTerminal(terminalId) {
-    if (!terminalId || String(terminalId).trim() === "") {
-      const err = new Error("terminal_id is required");
-      err.statusCode = 400;
-      throw err;
-    }
-    const rows = await Notification.aggregate([
-      {
-        $match: {
-          terminal_id: String(terminalId),
-          notification_type: { $in: TERMINAL_OPERATION_NOTIFICATION_TYPES },
+  // GET TODAY'S NOTIFICATIONS BY TERMINAL =================================
+  async getTodaysNotificationsByTerminalId(terminalId) {
+    const { start, end } = getTodayRange();
+    const query = Notification.find({
+      terminal_id: terminalId,
+      createdAt: { $gte: start, $lt: end },
+    }).sort({ createdAt: -1 });
+
+    const [notifications, countsAgg] = await Promise.all([
+      populateNotificationRefs(query),
+      Notification.aggregate([
+        {
+          $match: {
+            terminal_id: terminalId,
+            createdAt: { $gte: start, $lt: end },
+            notification_type: { $in: TERMINAL_OPERATION_NOTIFICATION_TYPES },
+          },
         },
-      },
-      { $group: { _id: "$notification_type", count: { $sum: 1 } } },
+        { $group: { _id: "$notification_type", count: { $sum: 1 } } },
+      ]),
     ]);
-    const counts = Object.fromEntries(
-      TERMINAL_OPERATION_NOTIFICATION_TYPES.map((t) => [t, 0]),
-    );
-    for (const row of rows) {
-      if (row._id && Object.prototype.hasOwnProperty.call(counts, row._id)) {
-        counts[row._id] = row.count;
-      }
+
+    const counts = TERMINAL_OPERATION_NOTIFICATION_TYPES.reduce((acc, type) => {
+      acc[type] = 0;
+      return acc;
+    }, {});
+
+    for (const row of countsAgg) {
+      counts[row._id] = row.count;
     }
-    return counts;
+
+    return { notifications, counts };
   },
 };

@@ -1,17 +1,14 @@
 import express from "express";
 import {
   addNotification,
-  getOperationNotificationCountsByTerminal,
   listNotifications,
+  listTodaysNotificationsByTerminal,
 } from "./notification.controller.js";
 
 const router = express.Router();
 
-router.get(
-  "/terminal/:terminalId/operation-counts",
-  getOperationNotificationCountsByTerminal,
-);
 router.get("/", listNotifications);
+router.get("/today/:terminalId", listTodaysNotificationsByTerminal);
 router.post("/", addNotification);
 
 export default router;
