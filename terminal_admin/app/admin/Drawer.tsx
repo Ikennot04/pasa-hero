@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { LiaBarsSolid } from "react-icons/lia";
 import { FaBell, FaChartLine, FaSignOutAlt } from "react-icons/fa";
 import { MdAltRoute, MdBusAlert } from "react-icons/md";
 import { TbBusStop } from "react-icons/tb";
 import { LuLogs } from "react-icons/lu";
+import useAuthToken from "../_public_hooks/useAuthToken";
 
 const routes = [
   {
@@ -46,7 +47,12 @@ const routes = [
 export default function Drawer({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const f_name = localStorage.getItem("f_name");
+  const [fName] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("f_name") ?? "" : "",
+  );
+
+  // Use effect to check if the token is expired
+  useAuthToken();
 
   const logout = useCallback(() => {
     localStorage.removeItem("terminal_admin_auth_token");
@@ -74,7 +80,7 @@ export default function Drawer({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex shrink-0 items-center gap-3 sm:gap-4">
             <span className="max-w-48 truncate text-base font-semibold text-[#0062CA] sm:max-w-none sm:text-lg">
-              Admin {f_name}
+              Admin {fName}
             </span>
             <button
               type="button"
