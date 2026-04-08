@@ -101,7 +101,7 @@ export default function Dashboard() {
   const fetchPendingRef = useRef(getPendingConfirmation);
   const fetchBusesPresentRef = useRef(getOperationalList);
 
-  // UseEffect Hooks
+  // Ref Hooks UseEffect
   useEffect(() => {
     fetchSummaryRef.current = getTerminalSummary;
     fetchNotificationsRef.current = getNotifications;
@@ -125,7 +125,7 @@ export default function Dashboard() {
   });
 
   // Notifications States
-  const [fetchedNotifications, setFetchedNotifications] = useState<
+  const [notifications, setNotifications] = useState<
     TerminalNotificationType[]
   >([]);
   const [notificationCounts, setNotificationCounts] = useState({
@@ -142,7 +142,7 @@ export default function Dashboard() {
   const [pendingDepartures, setPendingDepartures] = useState<
     PendingConfirmationType[]
   >([]);
-  const [fetchedPendingCount, setFetchedPendingCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
 
   // Buses Present States
   const [busesPresent, setBusesPresent] = useState<BusPresentType[]>([]);
@@ -162,7 +162,7 @@ export default function Dashboard() {
       const data = await fetchNotificationsRef.current();
 
       if (data.success) {
-        setFetchedNotifications(data.data.notifications);
+        setNotifications(data.data.notifications);
         setNotificationCounts(data.data.counts);
       } else {
         setToast(data.message);
@@ -177,7 +177,7 @@ export default function Dashboard() {
       if (data.success) {
         setPendingArrivals(data.data.pending_arrivals);
         setPendingDepartures(data.data.pending_departures);
-        setFetchedPendingCount(data.data.pending_confirmations);
+        setPendingCount(data.data.pending_confirmations);
       } else {
         setToast(data.message);
         setTimeout(() => setToast(null), 3500);
@@ -199,6 +199,7 @@ export default function Dashboard() {
     fetchBusesPresent();
   }, []);
 
+  // Auto Update NowIso Effects
   useEffect(() => {
     const tick = () => setNowIso(new Date().toISOString());
     const initTimer = setTimeout(tick, 0);
@@ -212,6 +213,7 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Auto HideToast Effects
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3500);
@@ -319,12 +321,12 @@ export default function Dashboard() {
       {/* Pending confirmations + Notifications */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <PendingConfirmation
-          pendingTotal={fetchedPendingCount}
+          pendingTotal={pendingCount}
           pendingArrival={pendingArrivals}
           pendingDeparture={pendingDepartures}
         />
 
-        <Notifications notifications={fetchedNotifications} />
+        <Notifications notifications={notifications} />
       </div>
 
       {/* Present + departed buses */}
