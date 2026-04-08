@@ -27,6 +27,7 @@ import BusDeparted from "./_components/BusDeparted";
 import { useGetTerminalSummary } from "./_components/_hooks/useGetTerminalSummary";
 import { useGetNotifications } from "./_components/_hooks/useGetNotifications";
 import { useGetPendingConfirmation } from "./_components/_hooks/useGetPendingConfirmation";
+import { useGetOperationalList } from "./_components/_hooks/useGetOperationalList";
 
 ChartJS.register(
   CategoryScale,
@@ -91,6 +92,20 @@ type PendingConfirmationType = {
   bus_number: string;
   route_name: string;
   event_time: string;
+};
+
+type BusPresentType = {
+  id: string;
+  bus_number: string;
+  route_name: string;
+  confirmed_at: string | null;
+};
+
+type BusDepartedType = {
+  id: string;
+  bus_number: string;
+  route_name: string;
+  created_at: string;
 };
 
 function formatTime(iso: string) {
@@ -293,6 +308,7 @@ export default function Dashboard() {
   const { getTerminalSummary } = useGetTerminalSummary();
   const { getNotifications } = useGetNotifications();
   const { getPendingConfirmation } = useGetPendingConfirmation();
+  const { getOperationalList } = useGetOperationalList();
 
   // Hydration-safe: server renders a stable placeholder; real "now" + mock data are set after mount.
   const [uiState, setUiState] = useState<{
@@ -307,15 +323,25 @@ export default function Dashboard() {
 
   const assignments = uiState.assignments;
   const mounted = nowIso !== null;
+
+  // Ref Hooks
   const fetchSummaryRef = useRef(getTerminalSummary);
   const fetchNotificationsRef = useRef(getNotifications);
   const fetchPendingRef = useRef(getPendingConfirmation);
+  const fetchBusesPresentRef = useRef(getOperationalList);
 
+  // UseEffect Hooks
   useEffect(() => {
     fetchSummaryRef.current = getTerminalSummary;
     fetchNotificationsRef.current = getNotifications;
     fetchPendingRef.current = getPendingConfirmation;
-  }, [getTerminalSummary, getNotifications, getPendingConfirmation]);
+    fetchBusesPresentRef.current = getOperationalList;
+  }, [
+    getTerminalSummary,
+    getNotifications,
+    getPendingConfirmation,
+    getOperationalList,
+  ]);
 
   // Terminal Summary States
   const [terminalSummary, setTerminalSummary] = useState({
@@ -347,6 +373,10 @@ export default function Dashboard() {
   >([]);
   const [fetchedPendingCount, setFetchedPendingCount] = useState(0);
 
+  // Buses Present States
+  const [busesPresent, setBusesPresent] = useState<BusPresentType[]>([]);
+  const [busesDeparted, setBusesDeparted] = useState<BusDepartedType[]>([]);
+
   // Hooks UseEffect
   useEffect(() => {
     // Terminal Summary
@@ -373,8 +403,6 @@ export default function Dashboard() {
     // Pending Confirmations
     const fetchPendingConfirmations = async () => {
       const data = await fetchPendingRef.current();
-      console.log(data.data.pending_arrivals);
-      console.log(data.data.pending_departures);
       if (data.success) {
         setPendingArrivals(data.data.pending_arrivals);
         setPendingDepartures(data.data.pending_departures);
@@ -385,6 +413,19 @@ export default function Dashboard() {
       }
     };
     fetchPendingConfirmations();
+
+    // Buses Present
+    const fetchBusesPresent = async () => {
+      const data = await fetchBusesPresentRef.current();
+      if (data.success) {
+        setBusesPresent(data.data.buses_present);
+        setBusesDeparted(data.data.not_confirmed_departed_buses);
+      } else {
+        setToast(data.message);
+        setTimeout(() => setToast(null), 3500);
+      }
+    };
+    fetchBusesPresent();
   }, []);
 
   useEffect(() => {
@@ -584,7 +625,7 @@ export default function Dashboard() {
 
       {/* Present + departed buses */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <BusPresent presentRows={presentRows} formatTime={formatTime} />
+        <BusPresent presentBuses={busesPresent} />
         <BusDeparted departedRows={departedRows} formatTime={formatTime} />
       </div>
 

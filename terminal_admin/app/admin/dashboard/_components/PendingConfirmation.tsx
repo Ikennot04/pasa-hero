@@ -1,14 +1,14 @@
-type PendingConfirmationProps = {
-  pendingTotal: number;
-  pendingArrival: PendingConfirmationType[];
-  pendingDeparture: PendingConfirmationType[];
-};
-
 type PendingConfirmationType = {
   terminal_log_id: string;
   bus_number: string;
   route_name: string;
   event_time: string;
+};
+
+type PendingConfirmationProps = {
+  pendingTotal: number;
+  pendingArrival: PendingConfirmationType[];
+  pendingDeparture: PendingConfirmationType[];
 };
 
 const formatTime = (time: string) => {

@@ -1,24 +1,28 @@
 "use client";
 
-type PresentRow = {
+type BusPresentType = {
   id: string;
-  busNumber: string;
-  routeName: string;
-  arrivedAt: string | null;
-  departureState: string;
+  bus_number: string;
+  route_name: string;
+  confirmed_at: string | null;
 };
 
 type BusPresentProps = {
-  presentRows: PresentRow[];
-  formatTime: (iso: string) => string;
+  presentBuses: BusPresentType[];
 };
 
-export default function BusPresent({ presentRows, formatTime }: BusPresentProps) {
+const formatTime = (time: string) => {
+  return new Date(time).toLocaleTimeString();
+};
+
+export default function BusPresent({ presentBuses }: BusPresentProps) {
   return (
-    <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
+    <div className="max-h-96 min-h-48 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Buses currently present</h2>
-        <span className="badge badge-sm badge-success">{presentRows.length}</span>
+        <span className="badge badge-sm badge-success">
+          {presentBuses.length}
+        </span>
       </div>
 
       <div className="mt-3 overflow-x-auto">
@@ -32,20 +36,27 @@ export default function BusPresent({ presentRows, formatTime }: BusPresentProps)
             </tr>
           </thead>
           <tbody>
-            {presentRows.length ? (
-              presentRows.map((row) => (
-                <tr key={row.id}>
-                  <td className="font-semibold">{row.busNumber}</td>
-                  <td>{row.routeName}</td>
-                  <td>{row.arrivedAt ? formatTime(row.arrivedAt) : "-"}</td>
-                  <td>
-                    <span className="badge badge-outline badge-success">{row.departureState}</span>
-                  </td>
-                </tr>
-              ))
+            {presentBuses.length ? (
+              presentBuses.map((row, i) => {
+                return (
+                  <tr key={i}>
+                    <td className="font-semibold">{row.bus_number}</td>
+                    <td>{row.route_name}</td>
+                    <td>{row.confirmed_at ? formatTime(row.confirmed_at) : "-"}</td>
+                    <td>
+                      <span className="badge badge-outline badge-success">
+                        {row.confirmed_at ? "Present" : "Waiting"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })
             ) : (
               <tr>
-                <td colSpan={4} className="text-center text-sm text-base-content/60">
+                <td
+                  colSpan={4}
+                  className="text-center text-sm text-base-content/60"
+                >
                   No buses are currently at the terminal.
                 </td>
               </tr>
