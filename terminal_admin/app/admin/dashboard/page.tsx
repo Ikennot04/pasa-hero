@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -26,6 +26,7 @@ import BusDeparted from "./_components/BusDeparted";
 // Hooks imports
 import { useGetTerminalSummary } from "./_components/_hooks/useGetTerminalSummary";
 import { useGetNotifications } from "./_components/_hooks/useGetNotifications";
+import { useGetPendingConfirmation } from "./_components/_hooks/useGetPendingConfirmation";
 
 ChartJS.register(
   CategoryScale,
@@ -38,7 +39,6 @@ ChartJS.register(
   Legend,
 );
 
-const DEFAULT_TERMINAL_ID = "terminal-pitx";
 const DEFAULT_TERMINAL_NAME = "PITX";
 
 type BusAssignmentLike = {
@@ -86,9 +86,12 @@ type TerminalNotificationType = {
   updatedAt: string;
 };
 
-function sameLocalDay(a: Date, b: Date) {
-  return a.toDateString() === b.toDateString();
-}
+type PendingConfirmationType = {
+  terminal_log_id: string;
+  bus_number: string;
+  route_name: string;
+  event_time: string;
+};
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -284,29 +287,35 @@ function buildInitialMockData() {
 }
 
 export default function Dashboard() {
-  const terminalId = DEFAULT_TERMINAL_ID;
   const terminalName = DEFAULT_TERMINAL_NAME;
 
   // Imported Hooks
   const { getTerminalSummary } = useGetTerminalSummary();
   const { getNotifications } = useGetNotifications();
+  const { getPendingConfirmation } = useGetPendingConfirmation();
 
   // Hydration-safe: server renders a stable placeholder; real "now" + mock data are set after mount.
   const [uiState, setUiState] = useState<{
     assignments: BusAssignmentLike[];
     notifications: TerminalNotification[];
-    nowIso: string | null;
   }>({
     assignments: [],
     notifications: [],
-    nowIso: null,
   });
+  const [nowIso, setNowIso] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const assignments = uiState.assignments;
-  const notifications = uiState.notifications;
-  const nowIso = uiState.nowIso;
-  const mounted = uiState.nowIso !== null;
+  const mounted = nowIso !== null;
+  const fetchSummaryRef = useRef(getTerminalSummary);
+  const fetchNotificationsRef = useRef(getNotifications);
+  const fetchPendingRef = useRef(getPendingConfirmation);
+
+  useEffect(() => {
+    fetchSummaryRef.current = getTerminalSummary;
+    fetchNotificationsRef.current = getNotifications;
+    fetchPendingRef.current = getPendingConfirmation;
+  }, [getTerminalSummary, getNotifications, getPendingConfirmation]);
 
   // Terminal Summary States
   const [terminalSummary, setTerminalSummary] = useState({
@@ -329,29 +338,53 @@ export default function Dashboard() {
     departure_reported: 0,
   });
 
+  // Pending Confirmations States
+  const [pendingArrivals, setPendingArrivals] = useState<
+    PendingConfirmationType[]
+  >([]);
+  const [pendingDepartures, setPendingDepartures] = useState<
+    PendingConfirmationType[]
+  >([]);
+  const [fetchedPendingCount, setFetchedPendingCount] = useState(0);
+
   // Hooks UseEffect
   useEffect(() => {
     // Terminal Summary
     const fetchTerminalSummary = async () => {
-      const data = await getTerminalSummary();
+      const data = await fetchSummaryRef.current();
       setTerminalSummary(data.data);
     };
     fetchTerminalSummary();
 
     // Operational Notification Counts
     const fetchNotifications = async () => {
-      const data = await getNotifications();
+      const data = await fetchNotificationsRef.current();
 
       if (data.success) {
         setFetchedNotifications(data.data.notifications);
         setNotificationCounts(data.data.counts);
-
       } else {
         setToast(data.message);
         setTimeout(() => setToast(null), 3500);
       }
     };
     fetchNotifications();
+
+    // Pending Confirmations
+    const fetchPendingConfirmations = async () => {
+      const data = await fetchPendingRef.current();
+      console.log(data.data.pending_arrivals);
+      console.log(data.data.pending_departures);
+      if (data.success) {
+        setPendingArrivals(data.data.pending_arrivals);
+        setPendingDepartures(data.data.pending_departures);
+        setFetchedPendingCount(data.data.pending_confirmations);
+      } else {
+        setToast(data.message);
+        setTimeout(() => setToast(null), 3500);
+      }
+    };
+    fetchPendingConfirmations();
   }, []);
 
   useEffect(() => {
@@ -361,16 +394,12 @@ export default function Dashboard() {
       setUiState({
         assignments: data.initialAssignments,
         notifications: data.initialNotifications,
-        nowIso: new Date().toISOString(),
       });
+      setNowIso(new Date().toISOString());
 
       intervalId = setInterval(
-        () =>
-          setUiState((prev) => ({
-            ...prev,
-            nowIso: new Date().toISOString(),
-          })),
-        1000,
+        () => setNowIso(new Date().toISOString()),
+        30000,
       );
     }, 0);
 
@@ -384,19 +413,11 @@ export default function Dashboard() {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
-  }, []);
+  }, [toast]);
 
   const now = useMemo(
     () => (nowIso ? new Date(nowIso) : new Date(0)),
     [nowIso],
-  );
-
-  const scheduledToday = useMemo(
-    () =>
-      assignments.filter((a) =>
-        sameLocalDay(new Date(a.scheduled_arrival_at), now),
-      ),
-    [assignments, now],
   );
 
   const presentBuses = useMemo(() => {
@@ -416,144 +437,6 @@ export default function Dashboard() {
       return new Date(a.departure_confirmed_at) <= now;
     });
   }, [assignments, now]);
-
-  const pendingArrivalBuses = useMemo(() => {
-    return assignments.filter((a) => {
-      if (!a.arrival_reported_at) return false;
-      if (a.arrival_confirmed_at) return false;
-      return new Date(a.arrival_reported_at) <= now;
-    });
-  }, [assignments, now]);
-
-  const pendingDepartureBuses = useMemo(() => {
-    return assignments.filter((a) => {
-      if (!a.departure_reported_at) return false;
-      if (a.departure_confirmed_at) return false;
-      return new Date(a.departure_reported_at) <= now;
-    });
-  }, [assignments, now]);
-
-  const pendingTotal =
-    pendingArrivalBuses.length + pendingDepartureBuses.length;
-
-
-  const confirmArrival = (busId: string) => {
-    const nowTs = new Date().toISOString();
-    const busNumber =
-      assignments.find((a) => a.bus_id === busId)?.bus_number ?? "";
-
-    setUiState((prev) => {
-      const updatedAssignments = prev.assignments.map((a) => {
-        if (a.bus_id !== busId) return a;
-        if (!a.arrival_reported_at || a.arrival_confirmed_at) return a;
-        return { ...a, arrival_confirmed_at: nowTs };
-      });
-
-      const updatedNotifications: TerminalNotification[] =
-        prev.notifications.map((n) => {
-          if (n.bus_id !== busId) return n;
-          if (n.event_type !== "arrival_reported") return n;
-          if (n.status !== "pending_confirmation") return n;
-          return {
-            ...n,
-            status: "confirmed" as const,
-            confirmation_time: nowTs,
-          };
-        });
-
-      const bus = prev.assignments.find((a) => a.bus_id === busId);
-      if (bus) {
-        updatedNotifications.push({
-          id: `log-${busId}-arrival_confirmed-${nowTs}`,
-          terminal_id: terminalId,
-          bus_id: busId,
-          bus_number: bus.bus_number,
-          event_type: "arrival_confirmed",
-          status: "confirmed" as const,
-          event_time: nowTs,
-          confirmation_time: nowTs,
-          auto_detected: false,
-          remarks: "Arrival confirmed",
-        });
-      }
-
-      return {
-        ...prev,
-        assignments: updatedAssignments,
-        notifications: updatedNotifications,
-      };
-    });
-
-    setToast(`Arrival confirmed for bus ${busNumber}`);
-  };
-
-  const confirmDeparture = (busId: string) => {
-    const nowTs = new Date().toISOString();
-    const busNumber =
-      assignments.find((a) => a.bus_id === busId)?.bus_number ?? "";
-
-    setUiState((prev) => {
-      const updatedAssignments = prev.assignments.map((a) => {
-        if (a.bus_id !== busId) return a;
-        if (!a.departure_reported_at || a.departure_confirmed_at) return a;
-        return { ...a, departure_confirmed_at: nowTs };
-      });
-
-      const updatedNotifications: TerminalNotification[] =
-        prev.notifications.map((n) => {
-          if (n.bus_id !== busId) return n;
-          if (n.event_type !== "departure_reported") return n;
-          if (n.status !== "pending_confirmation") return n;
-          return {
-            ...n,
-            status: "confirmed" as const,
-            confirmation_time: nowTs,
-          };
-        });
-
-      const bus = prev.assignments.find((a) => a.bus_id === busId);
-      if (bus) {
-        updatedNotifications.push({
-          id: `log-${busId}-departure_confirmed-${nowTs}`,
-          terminal_id: terminalId,
-          bus_id: busId,
-          bus_number: bus.bus_number,
-          event_type: "departure_confirmed",
-          status: "confirmed" as const,
-          event_time: nowTs,
-          confirmation_time: nowTs,
-          auto_detected: false,
-          remarks: "Departure confirmed",
-        });
-      }
-
-      return {
-        ...prev,
-        assignments: updatedAssignments,
-        notifications: updatedNotifications,
-      };
-    });
-
-    setToast(`Departure confirmed for bus ${busNumber}`);
-  };
-
-  const pendingArrivalRows = useMemo(() => {
-    return pendingArrivalBuses.map((b) => ({
-      busId: b.bus_id,
-      busNumber: b.bus_number,
-      routeName: b.route_name,
-      time: b.arrival_reported_at,
-    }));
-  }, [pendingArrivalBuses]);
-
-  const pendingDepartureRows = useMemo(() => {
-    return pendingDepartureBuses.map((b) => ({
-      busId: b.bus_id,
-      busNumber: b.bus_number,
-      routeName: b.route_name,
-      time: b.departure_reported_at,
-    }));
-  }, [pendingDepartureBuses]);
 
   const presentRows = useMemo(() => {
     return [...presentBuses]
@@ -672,31 +555,28 @@ export default function Dashboard() {
         <TerminalSnapshot
           presentCount={terminalSummary?.buses_present}
           departedCount={terminalSummary?.buses_departed_today}
-          mounted={true}
+          mounted={mounted}
         />
 
         <ConfirmationBacklog
           pendingTotal={terminalSummary?.pending_confirmations}
           pendingArrivalCount={terminalSummary?.pending_arrivals}
           pendingDepartureCount={terminalSummary?.pending_departures}
-          mounted={true}
+          mounted={mounted}
         />
 
         <TerminalEventFlow
           notificationCounts={notificationCounts}
-          mounted={true}
+          mounted={mounted}
         />
       </div>
 
       {/* Pending confirmations + Notifications */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <PendingConfirmation
-          pendingTotal={pendingTotal}
-          pendingArrivalRows={pendingArrivalRows}
-          pendingDepartureRows={pendingDepartureRows}
-          formatTime={formatTime}
-          onConfirmArrival={confirmArrival}
-          onConfirmDeparture={confirmDeparture}
+          pendingTotal={fetchedPendingCount}
+          pendingArrival={pendingArrivals}
+          pendingDeparture={pendingDepartures}
         />
 
         <Notifications notifications={fetchedNotifications} />
