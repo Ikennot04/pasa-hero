@@ -24,7 +24,7 @@ export default function PendingConfirmation({
     <div className="max-h-180 min-h-80 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Pending confirmations</h2>
-        <span className="badge badge-sm badge-warning">
+        <span className="badge badge-sm badge-warning text-[0.85rem]">
           {pendingTotal} waiting
         </span>
       </div>

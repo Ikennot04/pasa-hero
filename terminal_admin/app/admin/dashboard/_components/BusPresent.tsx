@@ -1,7 +1,6 @@
 "use client";
 
 type BusPresentType = {
-  id: string;
   bus_number: string;
   route_name: string;
   confirmed_at: string | null;
@@ -20,7 +19,7 @@ export default function BusPresent({ presentBuses }: BusPresentProps) {
     <div className="max-h-96 min-h-48 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Buses currently present</h2>
-        <span className="badge badge-sm badge-success">
+        <span className="badge badge-sm badge-success text-[0.85rem]">
           {presentBuses.length}
         </span>
       </div>

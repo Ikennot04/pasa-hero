@@ -95,14 +95,12 @@ type PendingConfirmationType = {
 };
 
 type BusPresentType = {
-  id: string;
   bus_number: string;
   route_name: string;
   confirmed_at: string | null;
 };
 
 type BusDepartedType = {
-  id: string;
   bus_number: string;
   route_name: string;
   created_at: string;
@@ -626,7 +624,7 @@ export default function Dashboard() {
       {/* Present + departed buses */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <BusPresent presentBuses={busesPresent} />
-        <BusDeparted departedRows={departedRows} formatTime={formatTime} />
+        <BusDeparted departedBuses={busesDeparted} />
       </div>
 
       <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
