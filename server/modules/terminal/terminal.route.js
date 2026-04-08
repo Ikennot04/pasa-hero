@@ -6,6 +6,7 @@ import {
   updateTerminalById,
   getTerminalOperationalSummary,
   getPendingConfirmationsByTerminalId,
+  getTerminalBusOperationalListByTerminalId,
 } from "./terminal.controller.js";
 
 const router = express.Router();
@@ -14,6 +15,7 @@ router.get('/', getAllTerminals);
 router.post('/', createTerminal);
 router.get('/:id/operational-summary', getTerminalOperationalSummary);
 router.get('/:id/pending-confirmations', getPendingConfirmationsByTerminalId);
+router.get('/:id/buses-present', getTerminalBusOperationalListByTerminalId);
 router.get('/:id', getTerminalById);
 router.patch('/:id', updateTerminalById);
 

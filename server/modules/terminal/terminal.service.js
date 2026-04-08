@@ -260,4 +260,93 @@ export const TerminalService = {
       pending_departures,
     };
   },
+
+  /**
+   * Get bus operational lists for a terminal.
+   * - buses_present: latest confirmed event for an assignment is arrival
+   * - not_confirmed_departed_buses: pending departure exists after confirmed arrival, without confirmed departure yet
+   * @param {string} terminalId
+   */
+  async getTerminalBusOperationalListByTerminalId(terminalId) {
+    if (!mongoose.Types.ObjectId.isValid(terminalId)) {
+      const err = new Error("Invalid terminal id.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const terminal = await Terminal.findById(terminalId).select("_id");
+    if (!terminal) {
+      const err = new Error("Terminal not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const logs = await TerminalLog.find({
+      terminal_id: terminalId,
+      event_type: { $in: ["arrival", "departure"] },
+    })
+      .populate({ path: "bus_id", select: "bus_number plate_number" })
+      .populate({
+        path: "bus_assignment_id",
+        select: "_id route_id",
+        populate: { path: "route_id", select: "route_name route_code" },
+      })
+      .lean();
+
+    const byAssignment = new Map();
+    for (const log of logs) {
+      const assignmentId = log.bus_assignment_id?._id || log.bus_assignment_id;
+      if (!assignmentId) continue;
+      const key = String(assignmentId);
+      if (!byAssignment.has(key)) byAssignment.set(key, []);
+      byAssignment.get(key).push(log);
+    }
+
+    const buses_present = [];
+    const not_confirmed_departed_buses = [];
+    for (const [, assignmentLogs] of byAssignment) {
+      const flags = deriveFlagsFromLogs(assignmentLogs);
+      const latestConfirmedArrival = assignmentLogs
+        .filter((l) => l.event_type === "arrival" && l.status === "confirmed")
+        .sort((a, b) => logConfirmOrEventTime(b) - logConfirmOrEventTime(a))[0];
+
+      if (flags.present) {
+        const ref = latestConfirmedArrival || assignmentLogs[0];
+        buses_present.push({
+          bus_number: ref?.bus_id?.bus_number || null,
+          route_name: ref?.bus_assignment_id?.route_id?.route_name || null,
+          arrival_time: latestConfirmedArrival?.event_time || null,
+          confirmed_at: latestConfirmedArrival?.confirmation_time || null,
+        });
+      }
+
+      if (flags.pendingDeparture) {
+        const latestPendingDeparture = assignmentLogs
+          .filter((l) => l.event_type === "departure" && l.status === "pending")
+          .sort((a, b) => new Date(b.event_time) - new Date(a.event_time))[0];
+
+        const ref = latestPendingDeparture || latestConfirmedArrival || assignmentLogs[0];
+        not_confirmed_departed_buses.push({
+          bus_number: ref?.bus_id?.bus_number || null,
+          route_name: ref?.bus_assignment_id?.route_id?.route_name || null,
+          arrival_time: latestConfirmedArrival?.event_time || null,
+          created_at: latestPendingDeparture?.createdAt || null,
+        });
+      }
+    }
+
+    buses_present.sort((a, b) => {
+      const at = a.confirmed_at || a.arrival_time || 0;
+      const bt = b.confirmed_at || b.arrival_time || 0;
+      return new Date(bt).getTime() - new Date(at).getTime();
+    });
+
+    return {
+      terminal_id: terminal._id,
+      buses_present_count: buses_present.length,
+      buses_present,
+      not_confirmed_departed_buses_count: not_confirmed_departed_buses.length,
+      not_confirmed_departed_buses,
+    };
+  },
 };
