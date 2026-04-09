@@ -318,8 +318,8 @@ export default function Management() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Total active assignments</div>
-          <div className="mt-2 text-3xl font-bold">{rows.length}</div>
+          <div className="text-sm text-base-content/70">Scheduled buses for today</div>
+          <div className="mt-2 text-3xl font-bold">{todayRows.length}</div>
         </div>
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="text-sm text-base-content/70">Pending arrival confirmations</div>
