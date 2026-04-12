@@ -1,6 +1,6 @@
 "use client";
 
-import axios, { AxiosError } from "axios";
+import axios from "axios";
 import { useState } from "react";
 
 export const useGetPendingConfirmation = () => {
