@@ -8,6 +8,7 @@ import ScheduledBusesForToday, {
   type BusDayStatus,
   type ScheduledBusRow,
 } from "./_components/ScheduledBusesForToday";
+import type { ConfirmationHistoryEntry } from "./_components/ConfirmationHistory";
 
 import { useGetTerminalManagement } from "./_hooks/useGetTerminalManagement";
 
@@ -38,6 +39,15 @@ type TerminalManagementApiPayload = {
     route_name: string | null;
     created_at: string;
   }[];
+  confirmation_history?: {
+    terminal_log_id: string;
+    bus_number: string | null;
+    route_name: string | null;
+    kind: string;
+    action: string;
+    at: string;
+    by: string;
+  }[];
 };
 
 type PendingArrivalUi = {
@@ -59,6 +69,25 @@ function normalizeBusDayStatus(raw: string): BusDayStatus {
     return raw;
   }
   return "scheduled";
+}
+
+function mapConfirmationHistory(
+  rows: NonNullable<TerminalManagementApiPayload["confirmation_history"]>,
+): ConfirmationHistoryEntry[] {
+  return rows
+    .map((row) => {
+      const kind =
+        row.kind === "arrival" || row.kind === "departure" ? row.kind : null;
+      if (!kind || !row.at) return null;
+      return {
+        id: String(row.terminal_log_id),
+        busNumber: row.bus_number ?? "",
+        routeName: row.route_name ?? "",
+        kind,
+        at: new Date(row.at).toISOString(),
+      };
+    })
+    .filter((e): e is ConfirmationHistoryEntry => e !== null);
 }
 
 function mapPayloadToState(payload: TerminalManagementApiPayload) {
@@ -117,6 +146,9 @@ export default function Management() {
   const [pendingDepartureRows, setPendingDepartureRows] = useState<PendingDepartureUi[]>(
     [],
   );
+  const [confirmationHistoryEntries, setConfirmationHistoryEntries] = useState<
+    ConfirmationHistoryEntry[]
+  >([]);
 
   const [statusFilter, setStatusFilter] = useState<BusDayStatus | "all">("all");
 
@@ -134,6 +166,9 @@ export default function Management() {
     setScheduledRows(mapped.scheduledRows);
     setPendingArrivalRows(mapped.pendingArrivals);
     setPendingDepartureRows(mapped.pendingDepartures);
+    setConfirmationHistoryEntries(
+      mapConfirmationHistory(data.confirmation_history ?? []),
+    );
   }, []);
 
   useEffect(() => {
@@ -215,7 +250,7 @@ export default function Management() {
         />
       </div>
 
-      <ConfirmationHistory entries={[]} />
+      <ConfirmationHistory entries={confirmationHistoryEntries} />
     </div>
   );
 }
