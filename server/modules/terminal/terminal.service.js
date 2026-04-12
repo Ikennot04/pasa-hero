@@ -50,6 +50,19 @@ function deriveFlagsFromLogs(logs) {
   return { present, pendingArrival, pendingDeparture };
 }
 
+/**
+ * Lifecycle label for a scheduled assignment at this terminal (from its terminal logs).
+ */
+function scheduledAssignmentStatus(assignmentLogs) {
+  if (!assignmentLogs?.length) return "scheduled";
+  const hasDepConf = assignmentLogs.some((l) => l.event_type === "departure" && l.status === "confirmed");
+  if (hasDepConf) return "departed";
+  const flags = deriveFlagsFromLogs(assignmentLogs);
+  if (flags.present) return "present";
+  if (flags.pendingArrival) return "arriving";
+  return "scheduled";
+}
+
 export const TerminalService = {
   // GET ALL TERMINALS ===================================================================
   async getAllTerminals() {
@@ -386,42 +399,30 @@ export const TerminalService = {
       .lean();
     const routeIds = routesEndingHere.map((r) => r._id);
 
-    const scheduledQuery =
+    const fullName = (doc) =>
+      doc && typeof doc === "object" && (doc.f_name != null || doc.l_name != null)
+        ? `${doc.f_name || ""} ${doc.l_name || ""}`.trim() || null
+        : null;
+
+    const scheduledAssignmentsQuery =
       routeIds.length === 0
-        ? []
-        : await BusAssignment.find({
+        ? Promise.resolve([])
+        : BusAssignment.find({
             route_id: { $in: routeIds },
             scheduled_arrival_at: { $gte: start, $lt: endExclusive },
           })
-            .populate({ path: "bus_id", select: "bus_number plate_number" })
-            .populate({ path: "route_id", select: "route_name route_code" })
+            .populate({ path: "bus_id", select: "bus_number" })
+            .populate({ path: "route_id", select: "route_name" })
             .populate({ path: "driver_id", select: "f_name l_name" })
+            .populate({ path: "operator_user_id", select: "f_name l_name" })
             .sort({ scheduled_arrival_at: 1 })
             .lean();
 
-    const scheduled_buses_today = scheduledQuery.map((a) => ({
-      bus_assignment_id: a._id,
-      bus_id: a.bus_id?._id ?? null,
-      bus_number: a.bus_id?.bus_number ?? null,
-      plate_number: a.bus_id?.plate_number ?? null,
-      route_id: a.route_id?._id ?? null,
-      route_name: a.route_id?.route_name ?? null,
-      route_code: a.route_id?.route_code ?? null,
-      driver_id: a.driver_id?._id ?? null,
-      driver_name: a.driver_id
-        ? `${a.driver_id.f_name || ""} ${a.driver_id.l_name || ""}`.trim() || null
-        : null,
-      scheduled_arrival_at: a.scheduled_arrival_at,
-    }));
-
-    const logs = await TerminalLog.find({ terminal_id: terminalObjectId })
-      .populate({ path: "bus_id", select: "bus_number plate_number" })
-      .populate({
-        path: "bus_assignment_id",
-        select: "_id route_id scheduled_arrival_at",
-        populate: { path: "route_id", select: "route_name route_code" },
-      })
+    const terminalLogsQuery = TerminalLog.find({ terminal_id: terminalObjectId })
+      .populate({ path: "bus_id", select: "bus_number" })
       .lean();
+
+    const [scheduledQuery, logs] = await Promise.all([scheduledAssignmentsQuery, terminalLogsQuery]);
 
     const byAssignment = new Map();
     for (const log of logs) {
@@ -432,21 +433,25 @@ export const TerminalService = {
       byAssignment.get(key).push(log);
     }
 
+    const scheduled_buses_today = scheduledQuery.map((a) => {
+      const assignmentLogs = byAssignment.get(String(a._id)) || [];
+      return {
+        bus_number: a.bus_id?.bus_number ?? null,
+        route_name: a.route_id?.route_name ?? null,
+        driver: fullName(a.driver_id),
+        conductor: fullName(a.operator_user_id),
+        scheduled_arrival_at: a.scheduled_arrival_at,
+        status: scheduledAssignmentStatus(assignmentLogs),
+      };
+    });
+
     const pending_arrival_confirmations = [];
     const pending_departure_confirmations = [];
     let currently_present_at_terminal = 0;
 
     const logToPendingRow = (log) => ({
       terminal_log_id: log._id,
-      bus_assignment_id: log.bus_assignment_id?._id || null,
-      bus_id: log.bus_id?._id || null,
-      bus_number: log.bus_id?.bus_number || null,
-      plate_number: log.bus_id?.plate_number || null,
-      route_id: log.bus_assignment_id?.route_id?._id || null,
-      route_name: log.bus_assignment_id?.route_id?.route_name || null,
-      route_code: log.bus_assignment_id?.route_id?.route_code || null,
-      scheduled_arrival_at: log.bus_assignment_id?.scheduled_arrival_at || null,
-      event_time: log.event_time,
+      bus_number: log.bus_id?.bus_number ?? null,
       created_at: log.createdAt,
     });
 
@@ -472,10 +477,10 @@ export const TerminalService = {
     }
 
     pending_arrival_confirmations.sort(
-      (a, b) => new Date(a.event_time).getTime() - new Date(b.event_time).getTime(),
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
     pending_departure_confirmations.sort(
-      (a, b) => new Date(a.event_time).getTime() - new Date(b.event_time).getTime(),
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
 
     return {
