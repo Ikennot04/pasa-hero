@@ -24,10 +24,10 @@ import BusPresent from "./_components/BusPresent";
 import BusDeparted from "./_components/BusDeparted";
 
 // Hooks imports
-import { useGetTerminalSummary } from "./_components/_hooks/useGetTerminalSummary";
-import { useGetNotifications } from "./_components/_hooks/useGetNotifications";
-import { useGetPendingConfirmation } from "./_components/_hooks/useGetPendingConfirmation";
-import { useGetOperationalList } from "./_components/_hooks/useGetOperationalList";
+import { useGetTerminalSummary } from "./_hooks/useGetTerminalSummary";
+import { useGetNotifications } from "./_hooks/useGetNotifications";
+import { useGetPendingConfirmation } from "./_hooks/useGetPendingConfirmation";
+import { useGetOperationalList } from "./_hooks/useGetOperationalList";
 
 ChartJS.register(
   CategoryScale,
