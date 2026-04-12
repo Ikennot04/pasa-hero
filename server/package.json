@@ -5,6 +5,18 @@
   "main": "index.js",
   "scripts": {
     "seed": "node seeders/allSchema.seeder.js",
+    "seed:users": "node seeders/runSchemaSeeder.js users",
+    "seed:terminals": "node seeders/runSchemaSeeder.js terminals",
+    "seed:routes": "node seeders/runSchemaSeeder.js routes",
+    "seed:route-stops": "node seeders/runSchemaSeeder.js routeStops",
+    "seed:buses": "node seeders/runSchemaSeeder.js buses",
+    "seed:drivers": "node seeders/runSchemaSeeder.js drivers",
+    "seed:user-subscriptions": "node seeders/runSchemaSeeder.js userSubscriptions",
+    "seed:bus-assignments": "node seeders/runSchemaSeeder.js busAssignments",
+    "seed:notifications-all": "node seeders/runSchemaSeeder.js notificationsAll",
+    "seed:user-notifications": "node seeders/runSchemaSeeder.js userNotifications",
+    "seed:system-logs": "node seeders/runSchemaSeeder.js systemLogs",
+    "seed:notifications": "node seeders/notification.seeder.js",
     "seed:operational-summary": "node seeders/terminalOperationalSummary.seeder.js",
     "dev": "nodemon index.js"
   },

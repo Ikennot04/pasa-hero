@@ -50,10 +50,10 @@ function eventTypeBadgeClass(
 
 export default function Notifications({ notifications }: Props) {
   return (
-    <div className="max-h-180 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
+    <div className="max-h-180 min-h-80 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Recent notifications</h2>
-        <span className="badge badge-sm badge-outline">
+        <span className="badge badge-sm badge-outline text-[0.85rem]">
           Last {notifications.length}
         </span>
       </div>

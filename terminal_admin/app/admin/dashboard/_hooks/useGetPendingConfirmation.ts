@@ -1,17 +1,18 @@
 "use client";
 
-import axios, { AxiosError } from "axios";
+import axios from "axios";
 import { useState } from "react";
 
-export const useGetNotifications = () => {
+export const useGetPendingConfirmation = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getNotifications = async () => {
+  const getPendingConfirmation = async () => {
     try {
       const assignedTerminal = localStorage?.getItem("assigned_terminal");
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
 
       const { data: response } = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/notifications/today/${assignedTerminal}`,
+        `${baseUrl}/api/terminals/${assignedTerminal}/pending-confirmations`,
       );
 
       return response;
@@ -24,5 +25,6 @@ export const useGetNotifications = () => {
       }
     }
   };
-  return { getNotifications, error };
+
+  return { getPendingConfirmation, error };
 };

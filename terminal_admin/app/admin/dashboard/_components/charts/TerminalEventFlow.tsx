@@ -85,7 +85,7 @@ function TerminalEventFlow({ notificationCounts, mounted }: TerminalEventFlowPro
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm lg:col-span-1">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Terminal event flow</h2>
-        <span className="badge badge-sm badge-outline">
+        <span className="badge badge-sm badge-outline text-[0.85rem]">
           Arrival vs departure events
         </span>
       </div>

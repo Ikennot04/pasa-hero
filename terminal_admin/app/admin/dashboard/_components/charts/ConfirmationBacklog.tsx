@@ -30,9 +30,9 @@ export default function ConfirmationBacklog({
           data: [pendingArrivalCount, pendingDepartureCount],
           backgroundColor: [
             "rgb(1, 127, 125, 0.50)",
-            "rgb(255, 209, 128, 0.50)",
+            "rgb(3, 174, 210, 0.50)",
           ],
-          borderColor: ["rgb(1, 127, 125)", "rgb(255, 209, 128)"],
+          borderColor: ["rgb(1, 127, 125)", "rgb(3, 174, 210)"],
           borderWidth: 1.5,
         },
       ],
@@ -44,7 +44,7 @@ export default function ConfirmationBacklog({
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm lg:col-span-1">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Confirmation backlog</h2>
-        <span className="badge badge-sm badge-warning">
+        <span className="text-[0.85rem] font-semibold">
           {pendingTotal} pending
         </span>
       </div>
@@ -59,11 +59,11 @@ export default function ConfirmationBacklog({
         )}
       </div>
 
-      <div className="mt-3 flex items-center gap-4 flex-wrap">
+      <div className="mt-3 flex items-center gap-4 flex-wrap text-[0.85rem]">
         <span className="badge border-[#017f7d] text-[#017f7d]">
           Arrivals: {pendingArrivalCount}
         </span>
-        <span className="badge border-[#ffd180] text-[#ffd180]">
+        <span className="badge border-[#03AED2] text-[#03AED2]">
           Departures: {pendingDepartureCount}
         </span>
       </div>

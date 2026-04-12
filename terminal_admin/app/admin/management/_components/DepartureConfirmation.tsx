@@ -33,7 +33,7 @@ export default function DepartureConfirmation({
         <h2 className="text-lg font-semibold">Pending departure confirmations</h2>
         <span className="badge bg-[#0062CA] text-white">{pendingDepartures.length}</span>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto min-h-40 max-h-80">
         <table className="table table-zebra w-full">
           <thead>
             <tr>

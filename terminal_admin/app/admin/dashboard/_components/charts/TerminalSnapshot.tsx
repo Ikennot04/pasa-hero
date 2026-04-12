@@ -5,7 +5,7 @@ import { Bar } from "react-chartjs-2";
 const barChartOptions: ChartOptions<"bar"> = {
   responsive: true,
   maintainAspectRatio: false,
-  plugins: { legend: { position: "top" } },
+  plugins: { legend: { display: false } },
   scales: {
     y: { beginAtZero: true, ticks: { precision: 0 } },
   },

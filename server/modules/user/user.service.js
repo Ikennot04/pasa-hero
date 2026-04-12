@@ -101,7 +101,6 @@ export const UserService = {
     if (!token || typeof token !== "string") {
       throw new Error("No token provided");
     }
-    console.log(token);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.userId;
 
@@ -109,7 +108,7 @@ export const UserService = {
       throw new Error("Invalid token payload");
     }
     const user = await User.findById(userId).select(
-      "f_name l_name assigned_terminal",
+      "f_name l_name role assigned_terminal",
     );
     if (!user) {
       throw new Error("User not found");

@@ -1,32 +1,30 @@
-type PendingRow = {
-  busId: string;
-  busNumber: string;
-  routeName: string;
-  time: string | null;
+type PendingConfirmationType = {
+  terminal_log_id: string;
+  bus_number: string;
+  route_name: string;
+  event_time: string;
 };
 
 type PendingConfirmationProps = {
   pendingTotal: number;
-  pendingArrivalRows: PendingRow[];
-  pendingDepartureRows: PendingRow[];
-  formatTime: (iso: string) => string;
-  onConfirmArrival: (busId: string) => void;
-  onConfirmDeparture: (busId: string) => void;
+  pendingArrival: PendingConfirmationType[];
+  pendingDeparture: PendingConfirmationType[];
+};
+
+const formatTime = (time: string) => {
+  return new Date(time).toLocaleTimeString();
 };
 
 export default function PendingConfirmation({
   pendingTotal,
-  pendingArrivalRows,
-  pendingDepartureRows,
-  formatTime,
-  onConfirmArrival,
-  onConfirmDeparture,
+  pendingArrival,
+  pendingDeparture,
 }: PendingConfirmationProps) {
   return (
-    <div className="max-h-180 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
+    <div className="max-h-180 min-h-80 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Pending confirmations</h2>
-        <span className="badge badge-sm badge-warning">
+        <span className="badge badge-sm badge-warning text-[0.85rem]">
           {pendingTotal} waiting
         </span>
       </div>
@@ -45,16 +43,16 @@ export default function PendingConfirmation({
                 </tr>
               </thead>
               <tbody>
-                {pendingArrivalRows.length ? (
-                  pendingArrivalRows.map((r) => (
-                    <tr key={r.busId}>
-                      <td className="font-semibold">{r.busNumber}</td>
-                      <td>{r.routeName}</td>
-                      <td>{r.time ? formatTime(r.time) : "-"}</td>
+                {pendingArrival.length ? (
+                  pendingArrival.map((r, i) => (
+                    <tr key={i}>
+                      <td className="font-semibold">{r.bus_number}</td>
+                      <td>{r.route_name}</td>
+                      <td>{r.event_time ? formatTime(r.event_time) : "-"}</td>
                       <td className="text-right">
                         <button
                           className="btn btn-sm bg-[#0062CA] text-white"
-                          onClick={() => onConfirmArrival(r.busId)}
+
                         >
                           Confirm
                         </button>
@@ -89,16 +87,15 @@ export default function PendingConfirmation({
                 </tr>
               </thead>
               <tbody>
-                {pendingDepartureRows.length ? (
-                  pendingDepartureRows.map((r) => (
-                    <tr key={r.busId}>
-                      <td className="font-semibold">{r.busNumber}</td>
-                      <td>{r.routeName}</td>
-                      <td>{r.time ? formatTime(r.time) : "-"}</td>
+                {pendingDeparture.length ? (
+                  pendingDeparture.map((r, i) => (
+                    <tr key={i}>
+                      <td className="font-semibold">{r.bus_number}</td>
+                      <td>{r.route_name}</td>
+                      <td>{r.event_time ? formatTime(r.event_time) : "-"}</td>
                       <td className="text-right">
                         <button
                           className="btn btn-sm bg-[#0062CA] text-white"
-                          onClick={() => onConfirmDeparture(r.busId)}
                         >
                           Confirm
                         </button>
