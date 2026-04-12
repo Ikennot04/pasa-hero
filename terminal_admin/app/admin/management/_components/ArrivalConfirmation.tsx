@@ -33,7 +33,7 @@ export default function ArrivalConfirmation({
         <h2 className="text-lg font-semibold">Pending arrival confirmations</h2>
         <span className="badge bg-[#408A71] text-white">{pendingArrivals.length}</span>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto min-h-40 max-h-80">
         <table className="table table-zebra w-full">
           <thead>
             <tr>

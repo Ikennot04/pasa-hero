@@ -81,8 +81,7 @@ export default function ScheduledBusesForToday({
           </button>
         ))}
       </div>
-
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto min-h-40 max-h-112">
         <table className="table table-zebra w-full min-w-[720px]">
           <thead>
             <tr>
