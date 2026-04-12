@@ -349,4 +349,147 @@ export const TerminalService = {
       not_confirmed_departed_buses,
     };
   },
+
+  /**
+   * Terminal management: today's scheduled arrivals for this terminal (by route end_terminal_id),
+   * pending confirmations (one row per bus assignment, aligned with operational flags),
+   * and aggregate counts.
+   * @param {string} terminalId
+   * @param {{ date?: string }} [options] date as YYYY-MM-DD (UTC); defaults to current UTC day
+   */
+  async getTerminalManagement(terminalId, options = {}) {
+    if (!mongoose.Types.ObjectId.isValid(terminalId)) {
+      const err = new Error("Invalid terminal id.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const terminal = await Terminal.findById(terminalId);
+    if (!terminal) {
+      const err = new Error("Terminal not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const { start, endExclusive } = parseUtcDayBounds(options.date);
+    const terminalKey = String(terminalId);
+    const terminalObjectId = new mongoose.Types.ObjectId(terminalId);
+
+    const routesEndingHere = await Route.find({
+      $or: [
+        { end_terminal_id: terminalKey },
+        { end_terminal_id: terminalId },
+        { end_terminal_id: terminalObjectId },
+      ],
+    })
+      .select("_id")
+      .lean();
+    const routeIds = routesEndingHere.map((r) => r._id);
+
+    const scheduledQuery =
+      routeIds.length === 0
+        ? []
+        : await BusAssignment.find({
+            route_id: { $in: routeIds },
+            scheduled_arrival_at: { $gte: start, $lt: endExclusive },
+          })
+            .populate({ path: "bus_id", select: "bus_number plate_number" })
+            .populate({ path: "route_id", select: "route_name route_code" })
+            .populate({ path: "driver_id", select: "f_name l_name" })
+            .sort({ scheduled_arrival_at: 1 })
+            .lean();
+
+    const scheduled_buses_today = scheduledQuery.map((a) => ({
+      bus_assignment_id: a._id,
+      bus_id: a.bus_id?._id ?? null,
+      bus_number: a.bus_id?.bus_number ?? null,
+      plate_number: a.bus_id?.plate_number ?? null,
+      route_id: a.route_id?._id ?? null,
+      route_name: a.route_id?.route_name ?? null,
+      route_code: a.route_id?.route_code ?? null,
+      driver_id: a.driver_id?._id ?? null,
+      driver_name: a.driver_id
+        ? `${a.driver_id.f_name || ""} ${a.driver_id.l_name || ""}`.trim() || null
+        : null,
+      scheduled_arrival_at: a.scheduled_arrival_at,
+    }));
+
+    const logs = await TerminalLog.find({ terminal_id: terminalObjectId })
+      .populate({ path: "bus_id", select: "bus_number plate_number" })
+      .populate({
+        path: "bus_assignment_id",
+        select: "_id route_id scheduled_arrival_at",
+        populate: { path: "route_id", select: "route_name route_code" },
+      })
+      .lean();
+
+    const byAssignment = new Map();
+    for (const log of logs) {
+      const assignmentId = log.bus_assignment_id?._id || log.bus_assignment_id;
+      if (!assignmentId) continue;
+      const key = String(assignmentId);
+      if (!byAssignment.has(key)) byAssignment.set(key, []);
+      byAssignment.get(key).push(log);
+    }
+
+    const pending_arrival_confirmations = [];
+    const pending_departure_confirmations = [];
+    let currently_present_at_terminal = 0;
+
+    const logToPendingRow = (log) => ({
+      terminal_log_id: log._id,
+      bus_assignment_id: log.bus_assignment_id?._id || null,
+      bus_id: log.bus_id?._id || null,
+      bus_number: log.bus_id?.bus_number || null,
+      plate_number: log.bus_id?.plate_number || null,
+      route_id: log.bus_assignment_id?.route_id?._id || null,
+      route_name: log.bus_assignment_id?.route_id?.route_name || null,
+      route_code: log.bus_assignment_id?.route_id?.route_code || null,
+      scheduled_arrival_at: log.bus_assignment_id?.scheduled_arrival_at || null,
+      event_time: log.event_time,
+      created_at: log.createdAt,
+    });
+
+    for (const [, assignmentLogs] of byAssignment) {
+      const flags = deriveFlagsFromLogs(assignmentLogs);
+      if (flags.present) currently_present_at_terminal += 1;
+
+      if (flags.pendingArrival) {
+        const arrivals = assignmentLogs
+          .filter((l) => l.event_type === "arrival")
+          .sort((a, b) => new Date(b.event_time) - new Date(a.event_time));
+        const lastArr = arrivals[0];
+        if (lastArr) pending_arrival_confirmations.push(logToPendingRow(lastArr));
+      }
+
+      if (flags.pendingDeparture) {
+        const deps = assignmentLogs
+          .filter((l) => l.event_type === "departure")
+          .sort((a, b) => new Date(b.event_time) - new Date(a.event_time));
+        const lastDep = deps[0];
+        if (lastDep) pending_departure_confirmations.push(logToPendingRow(lastDep));
+      }
+    }
+
+    pending_arrival_confirmations.sort(
+      (a, b) => new Date(a.event_time).getTime() - new Date(b.event_time).getTime(),
+    );
+    pending_departure_confirmations.sort(
+      (a, b) => new Date(a.event_time).getTime() - new Date(b.event_time).getTime(),
+    );
+
+    return {
+      terminal_id: terminal._id,
+      date_utc: start.toISOString().slice(0, 10),
+      counts: {
+        scheduled_buses_today: scheduled_buses_today.length,
+        pending_arrival_confirmations: pending_arrival_confirmations.length,
+        pending_departure_confirmations: pending_departure_confirmations.length,
+        currently_present_at_terminal: currently_present_at_terminal,
+      },
+      scheduled_buses_today,
+      pending_arrival_confirmations,
+      pending_departure_confirmations,
+    };
+  },
 };
