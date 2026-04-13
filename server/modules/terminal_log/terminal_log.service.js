@@ -17,6 +17,17 @@ export const TerminalLogService = {
           select: "bus_number plate_number capacity status",
         })
         .populate({
+          path: "bus_assignment_id",
+          select: "scheduled_arrival_at route_id operator_user_id",
+          populate: [
+            { path: "route_id", select: "route_name route_code status" },
+            {
+              path: "operator_user_id",
+              select: "f_name l_name email role status",
+            },
+          ],
+        })
+        .populate({
           path: "reported_by",
           select: "f_name l_name email role status",
         })
@@ -60,6 +71,17 @@ export const TerminalLogService = {
         select: "bus_number plate_number capacity status",
       })
       .populate({
+        path: "bus_assignment_id",
+        select: "scheduled_arrival_at route_id operator_user_id",
+        populate: [
+          { path: "route_id", select: "route_name route_code status" },
+          {
+            path: "operator_user_id",
+            select: "f_name l_name email role status",
+          },
+        ],
+      })
+      .populate({
         path: "reported_by",
         select: "f_name l_name email role status",
       })
@@ -97,6 +119,17 @@ export const TerminalLogService = {
         .populate({
           path: "bus_id",
           select: "bus_number plate_number capacity status",
+        })
+        .populate({
+          path: "bus_assignment_id",
+          select: "scheduled_arrival_at route_id operator_user_id",
+          populate: [
+            { path: "route_id", select: "route_name route_code status" },
+            {
+              path: "operator_user_id",
+              select: "f_name l_name email role status",
+            },
+          ],
         })
         .populate({
           path: "reported_by",
