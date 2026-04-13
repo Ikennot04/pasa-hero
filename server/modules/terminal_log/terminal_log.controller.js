@@ -2,8 +2,20 @@ import { TerminalLogService } from "./terminal_log.service.js";
 
 export const getAllTerminalLogs = async (req, res) => {
   try {
-    const terminalLogs = await TerminalLogService.getAllTerminalLogs();
-    res.status(200).json({ success: true, data: terminalLogs });
+    const { terminalLogs, counts } = await TerminalLogService.getAllTerminalLogs();
+    res.status(200).json({ success: true, data: terminalLogs, counts });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+export const getTerminalLogsByTerminalId = async (req, res) => {
+  try {
+    const { terminalId } = req.params;
+    const { terminalLogs, counts } =
+      await TerminalLogService.getTerminalLogsByTerminalId(terminalId);
+    res.status(200).json({ success: true, data: terminalLogs, counts });
   } catch (error) {
     const statusCode = error.statusCode || 400;
     res.status(statusCode).json({ success: false, message: error.message });

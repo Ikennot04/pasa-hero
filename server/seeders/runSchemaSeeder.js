@@ -6,6 +6,7 @@ const schemaToSeederPath = {
   routes: "./routes.seeder.js",
   routeStops: "./routeStops.seeder.js",
   buses: "./buses.seeder.js",
+  busStatuses: "./busStatuses.seeder.js",
   drivers: "./drivers.seeder.js",
   userSubscriptions: "./userSubscriptions.seeder.js",
   busAssignments: "./busAssignments.seeder.js",

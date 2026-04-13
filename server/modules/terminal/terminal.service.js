@@ -420,6 +420,12 @@ export const TerminalService = {
 
     const terminalLogsQuery = TerminalLog.find({ terminal_id: terminalObjectId })
       .populate({ path: "bus_id", select: "bus_number" })
+      .populate({
+        path: "bus_assignment_id",
+        select: "_id route_id",
+        populate: { path: "route_id", select: "route_name" },
+      })
+      .populate({ path: "confirmed_by", select: "f_name l_name email" })
       .lean();
 
     const [scheduledQuery, logs] = await Promise.all([scheduledAssignmentsQuery, terminalLogsQuery]);
@@ -449,11 +455,17 @@ export const TerminalService = {
     const pending_departure_confirmations = [];
     let currently_present_at_terminal = 0;
 
-    const logToPendingRow = (log) => ({
-      terminal_log_id: log._id,
-      bus_number: log.bus_id?.bus_number ?? null,
-      created_at: log.createdAt,
-    });
+    const logToPendingRow = (log) => {
+      const ba = log.bus_assignment_id;
+      const routeName =
+        ba && typeof ba === "object" ? ba.route_id?.route_name ?? null : null;
+      return {
+        terminal_log_id: log._id,
+        bus_number: log.bus_id?.bus_number ?? null,
+        route_name: routeName,
+        created_at: log.createdAt,
+      };
+    };
 
     for (const [, assignmentLogs] of byAssignment) {
       const flags = deriveFlagsFromLogs(assignmentLogs);
@@ -483,6 +495,35 @@ export const TerminalService = {
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
 
+    const confirmationHistory = logs
+      .filter((l) => {
+        if (l.status !== "confirmed" && l.status !== "rejected") return false;
+        const t = l.confirmation_time;
+        if (!t) return false;
+        const ms = new Date(t).getTime();
+        return ms >= start.getTime() && ms < endExclusive.getTime();
+      })
+      .map((l) => {
+        const ba = l.bus_assignment_id;
+        const routeName =
+          ba && typeof ba === "object" ? ba.route_id?.route_name ?? null : null;
+        const confUser = l.confirmed_by;
+        const byName =
+          confUser && typeof confUser === "object"
+            ? fullName(confUser) || confUser.email || null
+            : null;
+        return {
+          terminal_log_id: l._id,
+          bus_number: l.bus_id?.bus_number ?? null,
+          route_name: routeName,
+          kind: l.event_type,
+          action: l.status === "confirmed" ? "confirm" : "reject",
+          at: l.confirmation_time,
+          by: byName ?? "—",
+        };
+      })
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
     return {
       terminal_id: terminal._id,
       date_utc: start.toISOString().slice(0, 10),
@@ -495,6 +536,7 @@ export const TerminalService = {
       scheduled_buses_today,
       pending_arrival_confirmations,
       pending_departure_confirmations,
+      confirmation_history: confirmationHistory,
     };
   },
 };

@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { fileURLToPath } from "url";
 import User from "../modules/user/user.model.js";
 import Bus from "../modules/bus/bus.model.js";
+import BusStatus from "../modules/bus_status/bus_status.model.js";
 import Route from "../modules/route/route.model.js";
 import Terminal from "../modules/terminal/terminal.model.js";
 import Driver from "../modules/driver/driver.model.js";
@@ -13,19 +14,799 @@ import Notification from "../modules/notification/notification.model.js";
 import UserNotification from "../modules/user_notification/user_notification.model.js";
 import UserSubscription from "../modules/user_subscription/user_subscription.model.js";
 import SystemLog from "../modules/system_log/system_log.model.js";
+import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
 
-// Seeder imports
-import seedNotifications from "../seeders/notification.seeder.js";
-import seedTerminalOperationalSummary from "./terminalOperationalSummary.seeder.js";
+async function ensureDbConnected() {
+  if (mongoose.connection.readyState === 1) return;
+  if (!process.env.MONGO_DB_URI) {
+    throw new Error(
+      "Missing MONGO_DB_URI. Ensure server/.env exists and is loaded.",
+    );
+  }
+  await mongoose.connect(process.env.MONGO_DB_URI);
+  console.log("📦 Connected to MongoDB");
+}
+
+// Anchor near end-of-day (local time) so minutesAgo offsets stay within the same calendar day.
+const NOTIFICATION_SEED_REFERENCE = new Date();
+NOTIFICATION_SEED_REFERENCE.setHours(23, 59, 0, 0);
+
+function minutesAgo(minutes) {
+  return new Date(
+    NOTIFICATION_SEED_REFERENCE.getTime() - minutes * 60 * 1000,
+  );
+}
+
+function getOccupancyStatus(occupancyCount, capacity) {
+  const ratio = capacity > 0 ? occupancyCount / capacity : 0;
+  if (ratio >= 1) return "full";
+  if (ratio >= 0.7) return "standing room";
+  if (ratio >= 0.3) return "few seats";
+  return "empty";
+}
+
+/** April 12, 2026 — UTC (matches ?date=2026-04-12 on the API). */
+function utc2026_04_12(hour, minute = 0) {
+  return new Date(Date.UTC(2026, 3, 12, hour, minute, 0));
+}
+
+/** Extra SM assignments use these buses (not the main-seed CEB-003 / CEB-011 pair we keep for logs). */
+const DEMO_EXTRA_BUS_NUMBERS = [
+  "CEB-001",
+  "CEB-002",
+  "CEB-004",
+  "CEB-005",
+  "CEB-006",
+  "CEB-007",
+  "CEB-008",
+  "CEB-009",
+  "CEB-012",
+];
+
+const DRIVER_LICENSES = [
+  "D01-12-345678",
+  "D01-12-345679",
+  "D01-12-345680",
+  "D01-12-345681",
+  "D01-12-345682",
+  "D01-12-345683",
+  "D01-12-345684",
+  "D01-12-345685",
+  "D01-12-345686",
+];
+
+export async function seedOperationalSummaryDemo() {
+  const smTerminal = await Terminal.findOne({
+    terminal_name: "SM City Cebu Terminal",
+  });
+  if (!smTerminal) {
+    throw new Error(
+      'Terminal "SM City Cebu Terminal" not found. Run `npm run seed` first.',
+    );
+  }
+
+  const route03C = await Route.findOne({ route_code: "03C" });
+  const route06F = await Route.findOne({ route_code: "06F" });
+  if (!route03C || !route06F) {
+    throw new Error("Routes 03C / 06F not found. Run `npm run seed` first.");
+  }
+
+  const smRouteIds = [route03C._id, route06F._id];
+
+  const operator = await User.findOne({ role: "operator" });
+  if (!operator) {
+    throw new Error('No user with role "operator". Run `npm run seed` first.');
+  }
+
+  const admin = await User.findOne({ role: "super admin" });
+
+  const drivers = [];
+  for (const lic of DRIVER_LICENSES) {
+    const d = await Driver.findOne({ license_number: lic });
+    if (!d) throw new Error(`Driver ${lic} not found. Run \`npm run seed\` first.`);
+    drivers.push(d);
+  }
+
+  const demoBuses = [];
+  for (const num of DEMO_EXTRA_BUS_NUMBERS) {
+    const b = await Bus.findOne({ bus_number: num });
+    if (!b) throw new Error(`Bus ${num} not found. Run \`npm run seed\` first.`);
+    demoBuses.push(b);
+  }
+
+  const b3 = await Bus.findOne({ bus_number: "CEB-003" });
+  const b11 = await Bus.findOne({ bus_number: "CEB-011" });
+  if (!b3 || !b11) {
+    throw new Error("CEB-003 / CEB-011 not found. Run `npm run seed` first.");
+  }
+
+  await BusAssignment.deleteMany({
+    bus_id: { $in: demoBuses.map((b) => b._id) },
+    route_id: { $in: smRouteIds },
+  });
+
+  await TerminalLog.deleteMany({});
+
+  const smAssignments = await BusAssignment.find({
+    route_id: { $in: smRouteIds },
+  });
+
+  const staggerHours = [6, 7, 8, 9, 10, 11, 12];
+  for (let i = 0; i < smAssignments.length; i += 1) {
+    const h = staggerHours[i % staggerHours.length] + Math.floor(i / staggerHours.length);
+    await BusAssignment.updateOne(
+      { _id: smAssignments[i]._id },
+      {
+        $set: {
+          scheduled_arrival_at: utc2026_04_12(h, (i % 4) * 15),
+        },
+      },
+    );
+  }
+
+  // Extra assignments: [busIndex, route06F? , hour, minute]
+  const extraSpecs = [
+    [0, true, 6, 20],
+    [1, false, 6, 50],
+    [2, true, 7, 25],
+    [3, false, 8, 10],
+    [4, true, 12, 40],
+    [5, false, 13, 5],
+    [6, true, 14, 20],
+    [7, false, 15, 55],
+    [8, true, 17, 30],
+  ];
+
+  const extraPayload = extraSpecs.map(([busIdx, use06F, h, m]) => ({
+    bus_id: demoBuses[busIdx]._id,
+    driver_id: drivers[busIdx]._id,
+    operator_user_id: operator._id,
+    route_id: use06F ? route06F._id : route03C._id,
+    assignment_status: "active",
+    assignment_result: "pending",
+    scheduled_arrival_at: utc2026_04_12(h, m),
+  }));
+
+  await BusAssignment.insertMany(extraPayload);
+
+  const findAssign = (bus, route) =>
+    BusAssignment.findOne({ bus_id: bus._id, route_id: route._id });
+
+  const aBus3 = await findAssign(b3, route03C);
+  const aBus11 = await findAssign(b11, route06F);
+  const a1 = await findAssign(demoBuses[0], route06F);
+  const a2 = await findAssign(demoBuses[1], route03C);
+  const a4 = await findAssign(demoBuses[2], route06F);
+  const a5 = await findAssign(demoBuses[3], route03C);
+  const a6 = await findAssign(demoBuses[4], route06F);
+  const a7 = await findAssign(demoBuses[5], route03C);
+  const a8 = await findAssign(demoBuses[6], route06F);
+  const a9 = await findAssign(demoBuses[7], route03C);
+  const a12 = await findAssign(demoBuses[8], route06F);
+
+  const required = [
+    ["CEB-003/03C", aBus3],
+    ["CEB-011/06F", aBus11],
+    ["CEB-001/06F", a1],
+    ["CEB-002/03C", a2],
+    ["CEB-004/06F", a4],
+    ["CEB-005/03C", a5],
+    ["CEB-006/06F", a6],
+    ["CEB-007/03C", a7],
+    ["CEB-008/06F", a8],
+    ["CEB-009/03C", a9],
+    ["CEB-012/06F", a12],
+  ];
+  for (const [label, doc] of required) {
+    if (!doc) throw new Error(`Missing assignment: ${label}`);
+  }
+
+  const logs = await TerminalLog.insertMany([
+    // --- Departed today (3 buses) ---
+    {
+      bus_assignment_id: aBus3._id,
+      terminal_id: smTerminal._id,
+      bus_id: b3._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utc2026_04_12(8, 0),
+      confirmation_time: utc2026_04_12(8, 5),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: aBus3._id,
+      terminal_id: smTerminal._id,
+      bus_id: b3._id,
+      event_type: "departure",
+      status: "confirmed",
+      event_time: utc2026_04_12(12, 0),
+      confirmation_time: utc2026_04_12(12, 10),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a1._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[0]._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utc2026_04_12(6, 15),
+      confirmation_time: utc2026_04_12(6, 18),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a1._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[0]._id,
+      event_type: "departure",
+      status: "confirmed",
+      event_time: utc2026_04_12(7, 25),
+      confirmation_time: utc2026_04_12(7, 28),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a12._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[8]._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utc2026_04_12(16, 0),
+      confirmation_time: utc2026_04_12(16, 5),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a12._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[8]._id,
+      event_type: "departure",
+      status: "confirmed",
+      event_time: utc2026_04_12(16, 45),
+      confirmation_time: utc2026_04_12(16, 48),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    // --- Present at terminal (3 buses) ---
+    {
+      bus_assignment_id: aBus11._id,
+      terminal_id: smTerminal._id,
+      bus_id: b11._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utc2026_04_12(10, 0),
+      confirmation_time: utc2026_04_12(10, 3),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a2._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[1]._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utc2026_04_12(13, 10),
+      confirmation_time: utc2026_04_12(13, 14),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a9._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[7]._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utc2026_04_12(14, 50),
+      confirmation_time: utc2026_04_12(14, 55),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    // --- Pending arrival (2 buses) ---
+    {
+      bus_assignment_id: a5._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[3]._id,
+      event_type: "arrival",
+      status: "pending",
+      event_time: utc2026_04_12(9, 20),
+      confirmation_time: null,
+      reported_by: operator._id,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a4._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[2]._id,
+      event_type: "arrival",
+      status: "pending",
+      event_time: utc2026_04_12(8, 40),
+      confirmation_time: null,
+      reported_by: operator._id,
+      auto_detected: false,
+    },
+    // --- Pending departure (2 buses) ---
+    {
+      bus_assignment_id: a7._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[5]._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utc2026_04_12(11, 0),
+      confirmation_time: utc2026_04_12(11, 4),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a7._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[5]._id,
+      event_type: "departure",
+      status: "pending",
+      event_time: utc2026_04_12(11, 45),
+      confirmation_time: null,
+      reported_by: operator._id,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a6._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[4]._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utc2026_04_12(12, 5),
+      confirmation_time: utc2026_04_12(12, 8),
+      reported_by: admin?._id ?? null,
+      confirmed_by: admin?._id ?? null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: a6._id,
+      terminal_id: smTerminal._id,
+      bus_id: demoBuses[4]._id,
+      event_type: "departure",
+      status: "pending",
+      event_time: utc2026_04_12(12, 55),
+      confirmation_time: null,
+      reported_by: operator._id,
+      auto_detected: false,
+    },
+    // CEB-008 / a8: scheduled only — no logs
+  ]);
+
+  const totalSmAssignments = smAssignments.length + extraSpecs.length;
+
+  console.log("\n✅ Terminal operational summary demo (2026-04-12 UTC)");
+  console.log("   Terminal:", smTerminal.terminal_name, `(${smTerminal._id})`);
+  console.log("   Date: 04/08/2026 (UTC)");
+  console.log("   TerminalLog events:", logs.length);
+  console.log("   SM assignments (scheduled that day):", totalSmAssignments);
+  console.log("\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=2026-04-12");
+  console.log("   Expected ≈ scheduled: 11, present: 3, departed_today: 3, pending: 4 (2+2)\n");
+}
+
+
+
+export async function seedTerminalNotificationTimeline() {
+  const [superAdmin, operator1, operator2, terminalAdmin1] = await Promise.all([
+    User.findOne({ role: "super admin" }),
+    User.findOne({ email: "maria.santos@email.com" }),
+    User.findOne({ email: "rico.alvarez@email.com" }),
+    User.findOne({ email: "pedro.reyes@email.com" }),
+  ]);
+
+  if (!superAdmin || !operator1 || !operator2 || !terminalAdmin1) {
+    throw new Error("Missing users. Run `npm run seed` first so sender users exist.");
+  }
+
+  const [bus1, bus2, bus3, bus4, bus9, bus11] = await Promise.all([
+    Bus.findOne({ bus_number: "CEB-001" }),
+    Bus.findOne({ bus_number: "CEB-002" }),
+    Bus.findOne({ bus_number: "CEB-003" }),
+    Bus.findOne({ bus_number: "CEB-004" }),
+    Bus.findOne({ bus_number: "CEB-009" }),
+    Bus.findOne({ bus_number: "CEB-011" }),
+  ]);
+
+  const [route01A, route02B, route03C, route04D, route06F] = await Promise.all([
+    Route.findOne({ route_code: "01A" }),
+    Route.findOne({ route_code: "02B" }),
+    Route.findOne({ route_code: "03C" }),
+    Route.findOne({ route_code: "04D" }),
+    Route.findOne({ route_code: "06F" }),
+  ]);
+
+  const smTerminal = await Terminal.findOne({
+    terminal_name: "SM City Cebu Terminal",
+  });
+
+  const requiredEntities = [
+    ["bus CEB-001", bus1],
+    ["bus CEB-002", bus2],
+    ["bus CEB-003", bus3],
+    ["bus CEB-004", bus4],
+    ["bus CEB-009", bus9],
+    ["bus CEB-011", bus11],
+    ["route 01A", route01A],
+    ["route 02B", route02B],
+    ["route 03C", route03C],
+    ["route 04D", route04D],
+    ["route 06F", route06F],
+    ["SM terminal", smTerminal],
+  ];
+
+  for (const [label, doc] of requiredEntities) {
+    if (!doc) throw new Error(`Missing ${label}. Run \`npm run seed\` first.`);
+  }
+
+  await Notification.deleteMany({});
+  await UserNotification.deleteMany({});
+
+  const makeTerminalEvent = ({
+    sender,
+    bus,
+    route,
+    title,
+    message,
+    type,
+    minutes,
+    priority = "medium",
+  }) => ({
+    sender_id: String(sender._id),
+    bus_id: String(bus._id),
+    route_id: String(route._id),
+    terminal_id: String(smTerminal._id),
+    title,
+    message,
+    notification_type: type,
+    priority,
+    scope: "terminal",
+    createdAt: minutesAgo(minutes),
+  });
+
+  const notificationPayload = [
+    {
+      sender_id: String(superAdmin._id),
+      terminal_id: String(smTerminal._id),
+      title: "SM City Cebu Terminal Operations Open",
+      message: "Daily dispatch monitoring is active for all SM-bound routes.",
+      notification_type: "info",
+      priority: "medium",
+      scope: "terminal",
+      createdAt: minutesAgo(470),
+    },
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus3,
+      route: route03C,
+      title: "CEB-003 Arrival Reported at SM City Cebu",
+      message: "Operator reported CEB-003 entering Bay 6 approach lane.",
+      type: "arrival_reported",
+      minutes: 460,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus3,
+      route: route03C,
+      title: "CEB-003 Arrival Confirmed at SM City Cebu",
+      message: "Terminal admin confirmed CEB-003 docked at Bay 6.",
+      type: "arrival_confirmed",
+      minutes: 456,
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus3,
+      route: route03C,
+      title: "CEB-003 Departure Reported from SM City Cebu",
+      message: "Operator reported CEB-003 departed for the next loop.",
+      type: "departure_reported",
+      minutes: 448,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus3,
+      route: route03C,
+      title: "CEB-003 Departure Confirmed from SM City Cebu",
+      message: "Departure and gate release for CEB-003 were confirmed.",
+      type: "departure_confirmed",
+      minutes: 444,
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus11,
+      route: route06F,
+      title: "CEB-011 Arrival Reported at SM City Cebu",
+      message: "Operator reported CEB-011 at terminal entry queue.",
+      type: "arrival_reported",
+      minutes: 430,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus11,
+      route: route06F,
+      title: "CEB-011 Arrival Confirmed at SM City Cebu",
+      message: "CEB-011 was confirmed docked at Bay 5.",
+      type: "arrival_confirmed",
+      minutes: 426,
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus11,
+      route: route06F,
+      title: "CEB-011 Departure Reported from SM City Cebu",
+      message: "Operator reported CEB-011 beginning outbound movement.",
+      type: "departure_reported",
+      minutes: 418,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus11,
+      route: route06F,
+      title: "CEB-011 Departure Confirmed from SM City Cebu",
+      message: "Terminal operations confirmed CEB-011 departure.",
+      type: "departure_confirmed",
+      minutes: 414,
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus1,
+      route: route01A,
+      title: "CEB-001 Arrival Reported at SM City Cebu",
+      message: "Operator reported CEB-001 approaching Bay 2.",
+      type: "arrival_reported",
+      minutes: 395,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus1,
+      route: route01A,
+      title: "CEB-001 Arrival Confirmed at SM City Cebu",
+      message: "Bay marshal confirmed CEB-001 docking at Bay 2.",
+      type: "arrival_confirmed",
+      minutes: 391,
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus1,
+      route: route01A,
+      title: "CEB-001 Departure Reported from SM City Cebu",
+      message: "Operator reported CEB-001 leaving the loading bay.",
+      type: "departure_reported",
+      minutes: 383,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus1,
+      route: route01A,
+      title: "CEB-001 Departure Confirmed from SM City Cebu",
+      message: "CEB-001 departure was validated by terminal operations.",
+      type: "departure_confirmed",
+      minutes: 379,
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus2,
+      route: route03C,
+      title: "CEB-002 Arrival Reported at SM City Cebu",
+      message: "Operator reported CEB-002 entering Bay 4 lane.",
+      type: "arrival_reported",
+      minutes: 360,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus2,
+      route: route03C,
+      title: "CEB-002 Arrival Confirmed at SM City Cebu",
+      message: "Terminal team confirmed CEB-002 docked at Bay 4.",
+      type: "arrival_confirmed",
+      minutes: 356,
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus2,
+      route: route03C,
+      title: "CEB-002 Departure Reported from SM City Cebu",
+      message: "Operator reported CEB-002 departed to IT Park loop.",
+      type: "departure_reported",
+      minutes: 348,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus2,
+      route: route03C,
+      title: "CEB-002 Departure Confirmed from SM City Cebu",
+      message: "SM terminal confirmed gate release for CEB-002.",
+      type: "departure_confirmed",
+      minutes: 344,
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus4,
+      route: route04D,
+      title: "CEB-004 Arrival Reported at SM City Cebu",
+      message: "Operator reported CEB-004 entering passenger drop-off lane.",
+      type: "arrival_reported",
+      minutes: 322,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus4,
+      route: route04D,
+      title: "CEB-004 Arrival Confirmed at SM City Cebu",
+      message: "CEB-004 docking was confirmed by Bay 1 staff.",
+      type: "arrival_confirmed",
+      minutes: 318,
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus4,
+      route: route04D,
+      title: "CEB-004 Departure Reported from SM City Cebu",
+      message: "Operator reported CEB-004 pulled out from Bay 1.",
+      type: "departure_reported",
+      minutes: 309,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus4,
+      route: route04D,
+      title: "CEB-004 Departure Confirmed from SM City Cebu",
+      message: "Terminal control confirmed CEB-004 outbound departure.",
+      type: "departure_confirmed",
+      minutes: 305,
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus9,
+      route: route02B,
+      title: "CEB-009 Arrival Reported at SM City Cebu",
+      message: "Operator reported CEB-009 arriving at Bay 3 queue.",
+      type: "arrival_reported",
+      minutes: 284,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus9,
+      route: route02B,
+      title: "CEB-009 Arrival Confirmed at SM City Cebu",
+      message: "Terminal staff confirmed CEB-009 docking at Bay 3.",
+      type: "arrival_confirmed",
+      minutes: 280,
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus9,
+      route: route02B,
+      title: "CEB-009 Departure Reported from SM City Cebu",
+      message: "Operator reported CEB-009 left SM terminal for Route 02B.",
+      type: "departure_reported",
+      minutes: 272,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus9,
+      route: route02B,
+      title: "CEB-009 Departure Confirmed from SM City Cebu",
+      message: "Departure validation complete for CEB-009.",
+      type: "departure_confirmed",
+      minutes: 268,
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus11,
+      route: route06F,
+      title: "CEB-011 Arrival Reported at SM City Cebu (Second Trip)",
+      message: "Operator reported second turnaround arrival for CEB-011.",
+      type: "arrival_reported",
+      minutes: 170,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus11,
+      route: route06F,
+      title: "CEB-011 Arrival Confirmed at SM City Cebu (Second Trip)",
+      message: "CEB-011 second arrival confirmed at Bay 5.",
+      type: "arrival_confirmed",
+      minutes: 166,
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus11,
+      route: route06F,
+      title: "CEB-011 Departure Reported from SM City Cebu (Second Trip)",
+      message: "Operator reported CEB-011 departed after unloading.",
+      type: "departure_reported",
+      minutes: 158,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus11,
+      route: route06F,
+      title: "CEB-011 Departure Confirmed from SM City Cebu (Second Trip)",
+      message: "Terminal operations confirmed second departure for CEB-011.",
+      type: "departure_confirmed",
+      minutes: 154,
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus3,
+      route: route03C,
+      title: "CEB-003 Arrival Reported at SM City Cebu (Evening)",
+      message: "Operator reported evening arrival for CEB-003.",
+      type: "arrival_reported",
+      minutes: 95,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus3,
+      route: route03C,
+      title: "CEB-003 Arrival Confirmed at SM City Cebu (Evening)",
+      message: "Terminal confirmed CEB-003 evening docking at Bay 6.",
+      type: "arrival_confirmed",
+      minutes: 91,
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus1,
+      route: route01A,
+      title: "CEB-001 Departure Reported from SM City Cebu (Late)",
+      message: "Operator reported CEB-001 late-evening pullout.",
+      type: "departure_reported",
+      minutes: 55,
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus1,
+      route: route01A,
+      title: "CEB-001 Departure Confirmed from SM City Cebu (Late)",
+      message: "Terminal admin confirmed final late departure for CEB-001.",
+      type: "departure_confirmed",
+      minutes: 51,
+    }),
+    {
+      sender_id: String(superAdmin._id),
+      terminal_id: String(smTerminal._id),
+      title: "SM City Cebu Terminal Peak Monitoring",
+      message: "Terminal command confirms all monitored dispatch updates are synced.",
+      notification_type: "info",
+      priority: "low",
+      scope: "terminal",
+      createdAt: minutesAgo(20),
+    },
+  ];
+
+  const notifications = await Notification.insertMany(
+    notificationPayload.map((notification) => ({
+      ...notification,
+      updatedAt: notification.createdAt,
+    })),
+  );
+
+  console.log(`✅ Created ${notifications.length} notifications`);
+}
 
 const seedData = async () => {
   try {
+    await ensureDbConnected();
+
     // Clear existing data
     await User.deleteMany({});
     await Terminal.deleteMany({});
     await Route.deleteMany({});
     await RouteStop.deleteMany({});
     await Bus.deleteMany({});
+    await BusStatus.deleteMany({});
     await Driver.deleteMany({});
     await BusAssignment.deleteMany({});
     await Notification.deleteMany({});
@@ -642,6 +1423,23 @@ const seedData = async () => {
 
     console.log(`✅ Created ${buses.length} buses`);
 
+    const busStatuses = await BusStatus.insertMany(
+      buses.map((bus, index) => {
+        const occupancyCount = Math.min(
+          bus.capacity,
+          Math.floor((bus.capacity * ((index % 5) + 1)) / 5),
+        );
+
+        return {
+          bus_id: String(bus._id),
+          occupancy_count: occupancyCount,
+          occupancy_status: getOccupancyStatus(occupancyCount, bus.capacity),
+        };
+      }),
+    );
+
+    console.log(`✅ Created ${busStatuses.length} bus statuses`);
+
     const [
       bus1,
       bus2,
@@ -782,7 +1580,7 @@ const seedData = async () => {
     // ==========================================
     // 8. CREATE BUS ASSIGNMENTS
     // ==========================================
-    const today = new Date();
+    const today = new Date(2026, 3, 12);
     today.setHours(0, 0, 0, 0);
 
     const assignments = await BusAssignment.insertMany([
@@ -1447,28 +2245,33 @@ const seedData = async () => {
     console.log(`Routes: ${routes.length}`);
     console.log(`Route Stops: ${routeStops.length}`);
     console.log(`Buses: ${buses.length}`);
+    console.log(`Bus Statuses: ${busStatuses.length}`);
     console.log(`Drivers: ${drivers.length}`);
     console.log(`Bus Assignments: ${assignments.length}`);
-    console.log(`Notifications: ${notifications.length}`);
-    console.log(`  - Scope system: 2`);
-    console.log(`  - Type delay: 2, full: 1, skipped_stop: 1, info: 9`);
+    const notificationCount = await Notification.countDocuments();
+    const userNotificationCount = await UserNotification.countDocuments();
+    console.log(`Notifications (after timeline seed): ${notificationCount}`);
+    console.log(`User Notifications (after timeline seed): ${userNotificationCount}`);
     console.log(`User Subscriptions: ${subscriptions.length}`);
-    console.log(`User Notifications: ${userNotifications.length}`);
     console.log(`System Logs: ${systemLogs.length}`);
 
     // ==========================================
     // 12. RUN ADDITIONAL SEEDERS
     // ==========================================
-    await seedNotifications();
-    console.log("✅ Ran notification seeder");
+    await seedTerminalNotificationTimeline();
+    console.log("✅ Ran notification timeline seeder");
 
-    await seedTerminalOperationalSummary();
+    await seedOperationalSummaryDemo();
     console.log("✅ Ran terminal operational summary seeder");
 
     console.log("\n✅ Seed data created successfully!");
   } catch (error) {
     console.error("❌ Error seeding data:", error);
     throw error;
+  } finally {
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+    }
   }
 };
 

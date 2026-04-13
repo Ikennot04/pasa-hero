@@ -56,49 +56,46 @@ export function ArrivalDepartureLog({ events }: ArrivalDepartureLogProps) {
         <table className="table table-zebra w-full min-w-[960px]">
           <thead>
             <tr>
-              <th>Reported at</th>
-              <th>Type</th>
               <th>Bus</th>
               <th>Route</th>
               <th>Operator / plate</th>
-              <th>Report source</th>
               <th>Reported by</th>
+              <th>Type</th>
               <th>Status</th>
+              <th>Report source</th>
               <th>Confirmed by</th>
-              <th>Rejected by</th>
-              <th>Scheduled</th>
+              <th>Reported at</th>
             </tr>
           </thead>
           <tbody>
             {events.length === 0 ? (
               <tr>
-                <td colSpan={11} className="text-center text-base-content/60">
+                <td colSpan={9} className="text-center text-base-content/60">
                   No events match your filters.
                 </td>
               </tr>
             ) : (
               events.map((ev) => (
                 <tr key={ev.id}>
-                  <td className="whitespace-nowrap font-medium">{formatDateTime(ev.reportedAt)}</td>
-                  <td>
-                    <span className="badge badge-outline capitalize">{ev.eventType}</span>
-                  </td>
                   <td className="font-semibold">{ev.busNumber}</td>
                   <td>{ev.routeName}</td>
                   <td>
                     <div className="text-sm font-medium">{ev.operator}</div>
                     <div className="text-xs text-base-content/70">{ev.plateNumber}</div>
                   </td>
-                  <td>
-                    <span className={`badge badge-outline ${sourceBadgeClass(ev.reportSource)}`}>
-                      {ev.reportSource === "auto" ? "Auto-detected" : "Manual"}
-                    </span>
-                  </td>
                   <td className="max-w-[200px] text-sm">
                     <div className="whitespace-normal">{ev.reportedBy}</div>
                   </td>
                   <td>
+                    <span className="badge badge-outline capitalize">{ev.eventType}</span>
+                  </td>
+                  <td>
                     <span className={`badge badge-outline ${statusBadgeClass(ev.status)}`}>{ev.status}</span>
+                  </td>
+                  <td>
+                    <span className={`badge badge-outline ${sourceBadgeClass(ev.reportSource)}`}>
+                      {ev.reportSource === "auto" ? "Auto-detected" : "Manual"}
+                    </span>
                   </td>
                   <td className="max-w-[200px] text-sm">
                     {ev.confirmedAt && ev.confirmedBy ? (
@@ -110,19 +107,7 @@ export function ArrivalDepartureLog({ events }: ArrivalDepartureLogProps) {
                       <span className="text-base-content/50">—</span>
                     )}
                   </td>
-                  <td className="max-w-[200px] text-sm">
-                    {ev.rejectedAt && ev.rejectedBy ? (
-                      <>
-                        <div className="whitespace-normal font-medium">{ev.rejectedBy}</div>
-                        <div className="text-xs text-base-content/70">{formatDateTime(ev.rejectedAt)}</div>
-                      </>
-                    ) : (
-                      <span className="text-base-content/50">—</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap text-sm text-base-content/80">
-                    {ev.scheduledAt ? formatDateTime(ev.scheduledAt) : "—"}
-                  </td>
+                  <td className="whitespace-nowrap font-medium">{formatDateTime(ev.reportedAt)}</td>
                 </tr>
               ))
             )}
