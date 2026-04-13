@@ -25,13 +25,12 @@ export const getBusStatusById = async (req, res) => {
 export const getBusStatusesByTerminalId = async (req, res) => {
   try {
     const { terminalId } = req.params;
-    const { terminal, busStatuses } =
+    const { busStatuses, counts } =
       await BusStatusService.getBusStatusesByTerminalId(terminalId);
 
     res.status(200).json({
       success: true,
-      terminal,
-      count: busStatuses.length,
+      counts,
       data: busStatuses,
     });
   } catch (error) {
