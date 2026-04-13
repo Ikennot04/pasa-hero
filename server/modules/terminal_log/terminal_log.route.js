@@ -1,6 +1,7 @@
 import express from "express";
 import {
   getAllTerminalLogs,
+  getTerminalLogsByTerminalId,
   getTerminalLogById,
   createTerminalLog,
   deleteTerminalLogById,
@@ -9,6 +10,7 @@ import {
 const router = express.Router();
 
 router.get("/", getAllTerminalLogs);
+router.get("/terminal/:terminalId", getTerminalLogsByTerminalId);
 router.get("/:id", getTerminalLogById);
 router.post("/", createTerminalLog);
 router.delete("/:id", deleteTerminalLogById);
