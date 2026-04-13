@@ -1,5 +1,8 @@
 import BusStatus from "./bus_status.model.js";
 import Bus from "../bus/bus.model.js";
+import mongoose from "mongoose";
+import Terminal from "../terminal/terminal.model.js";
+import TerminalLog from "../terminal_log/terminal_log.model.js";
 
 export const BusStatusService = {
   // CREATE BUS STATUS ===================================================================
@@ -27,6 +30,39 @@ export const BusStatusService = {
       throw error;
     }
     return status;
+  },
+
+  // GET ALL BUS STATUSES BY TERMINAL ID ==========================================================
+  async getBusStatusesByTerminalId(terminalId) {
+    if (!mongoose.Types.ObjectId.isValid(terminalId)) {
+      const error = new Error("Invalid terminal id.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const terminal = await Terminal.findById(terminalId).select(
+      "_id terminal_name",
+    );
+    if (!terminal) {
+      const error = new Error("Terminal not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const busIds = await TerminalLog.distinct("bus_id", {
+      terminal_id: terminalId,
+    });
+
+    if (busIds.length === 0) {
+      return { terminal, busStatuses: [] };
+    }
+
+    const busStatuses = await BusStatus.find({
+      bus_id: { $in: busIds.map((id) => String(id)) },
+      is_deleted: false,
+    }).sort({ updatedAt: -1 });
+
+    return { terminal, busStatuses };
   },
 
   // UPDATE BUS STATUS BY ID =============================================================
