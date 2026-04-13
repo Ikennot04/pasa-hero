@@ -1,19 +1,28 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { TerminalBusAssignmentRow } from "../busMonitoringMock";
-
 export type OpsStatus = "scheduled" | "arriving" | "present" | "departed";
 
 export type StatusFilter = OpsStatus | "all";
 
-export function pendingArrival(row: TerminalBusAssignmentRow) {
-  return Boolean(row.arrival_reported_at && !row.arrival_confirmed_at);
-}
+type LastTerminalLog = {
+  event_type: "arrival" | "departure";
+  status: "pending" | "confirmed";
+  event_time: string;
+};
 
-export function pendingDeparture(row: TerminalBusAssignmentRow) {
-  return Boolean(row.departure_reported_at && !row.departure_confirmed_at);
-}
+export type BusStatusRow = {
+  id: string;
+  bus_number: string | null;
+  plate_number: string | null;
+  route_name: string | null;
+  route_code: string | null;
+  driver: string | null;
+  bus_status: string | null;
+  last_terminal_log: LastTerminalLog | null;
+  ops_status: OpsStatus;
+  occupancy_status: "empty" | "few seats" | "standing room" | "full" | null;
+};
 
 function formatTime(iso: string | null) {
   if (!iso) return "—";
@@ -29,21 +38,18 @@ function formatDateTime(iso: string) {
   });
 }
 
-function getLastTerminalLog(row: TerminalBusAssignmentRow) {
-  const events = [
-    { label: "Arrival reported", at: row.arrival_reported_at },
-    { label: "Arrival confirmed", at: row.arrival_confirmed_at },
-    { label: "Departure reported", at: row.departure_reported_at },
-    { label: "Departure confirmed", at: row.departure_confirmed_at },
-  ].filter((event): event is { label: string; at: string } => Boolean(event.at));
+function getLastTerminalLog(row: BusStatusRow) {
+  if (!row.last_terminal_log) return "—";
+  const label =
+    row.last_terminal_log.event_type === "arrival"
+      ? row.last_terminal_log.status === "confirmed"
+        ? "Arrival confirmed"
+        : "Arrival reported"
+      : row.last_terminal_log.status === "confirmed"
+        ? "Departure confirmed"
+        : "Departure reported";
 
-  if (events.length === 0) return "—";
-
-  const latest = events.reduce((acc, cur) =>
-    new Date(cur.at).getTime() > new Date(acc.at).getTime() ? cur : acc
-  );
-
-  return `${latest.label} ${formatDateTime(latest.at)}`;
+  return `${label} ${formatDateTime(row.last_terminal_log.event_time)}`;
 }
 
 function opsBadgeClass(s: OpsStatus) {
@@ -53,17 +59,11 @@ function opsBadgeClass(s: OpsStatus) {
   return "badge-ghost";
 }
 
-function fleetBadgeClass(s: TerminalBusAssignmentRow["bus_fleet_status"]) {
+function fleetBadgeClass(s: string | null) {
   if (s === "active") return "badge-success";
   if (s === "maintenance") return "badge-warning";
+  if (s === "out of service") return "badge-error";
   return "badge-error";
-}
-
-function getOccupancyStatus(ops: OpsStatus) {
-  if (ops === "present") return "full";
-  if (ops === "arriving") return "standing room";
-  if (ops === "scheduled") return "few seats";
-  return "empty";
 }
 
 function occupancyBadgeClass(status: string) {
@@ -73,27 +73,30 @@ function occupancyBadgeClass(status: string) {
   return "badge-success";
 }
 
-export type EnrichedAssignment = { row: TerminalBusAssignmentRow; ops: OpsStatus };
-
 type BusRoutesProps = {
-  enriched: EnrichedAssignment[];
-  counts: { scheduled: number; arriving: number; present: number; departed: number };
+  rows: BusStatusRow[];
   now: Date | null;
 };
 
-export default function BusRoutes({ enriched, counts, now }: BusRoutesProps) {
+export default function BusRoutes({ rows, now }: BusRoutesProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [routeQuery, setRouteQuery] = useState("");
 
+  const counts = useMemo(() => {
+    const summary = { scheduled: 0, arriving: 0, present: 0, departed: 0 };
+    for (const row of rows) summary[row.ops_status] += 1;
+    return summary;
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const q = routeQuery.trim().toLowerCase();
-    return enriched.filter(({ row, ops }) => {
-      if (statusFilter !== "all" && ops !== statusFilter) return false;
+    return rows.filter((row) => {
+      if (statusFilter !== "all" && row.ops_status !== statusFilter) return false;
       if (!q) return true;
-      const hay = `${row.route_name} ${row.route_code}`.toLowerCase();
+      const hay = `${row.route_name ?? ""} ${row.route_code ?? ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [enriched, statusFilter, routeQuery]);
+  }, [rows, statusFilter, routeQuery]);
 
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
@@ -156,32 +159,36 @@ export default function BusRoutes({ enriched, counts, now }: BusRoutesProps) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center text-sm text-base-content/60">
+                <td colSpan={8} className="text-center text-sm text-base-content/60">
                   No buses match the current filters.
                 </td>
               </tr>
             ) : (
-              filtered.map(({ row, ops }) => (
+              filtered.map((row) => (
                 <tr key={row.id}>
-                  <td className="font-semibold whitespace-nowrap">{row.bus_number}</td>
-                  <td className="whitespace-nowrap">{row.plate_number}</td>
+                  <td className="font-semibold whitespace-nowrap">{row.bus_number ?? "—"}</td>
+                  <td className="whitespace-nowrap">{row.plate_number ?? "—"}</td>
                   <td>
-                    <div className="font-medium">{row.route_name}</div>
-                    <div className="text-sm text-base-content/60">{row.route_code}</div>
+                    <div className="font-medium">{row.route_name ?? "—"}</div>
+                    <div className="text-sm text-base-content/60">{row.route_code ?? "—"}</div>
                   </td>
-                  <td>{row.driver_name}</td>
+                  <td>{row.driver ?? "—"}</td>
                   <td>
-                    <span className={`badge badge-outline capitalize ${fleetBadgeClass(row.bus_fleet_status)}`}>
-                      {row.bus_fleet_status}
+                    <span className={`badge badge-outline capitalize ${fleetBadgeClass(row.bus_status)}`}>
+                      {row.bus_status ?? "unknown"}
                     </span>
                   </td>
                   <td className="text-sm whitespace-nowrap">{getLastTerminalLog(row)}</td>
                   <td>
-                    <span className={`badge badge-outline capitalize ${opsBadgeClass(ops)}`}>{ops}</span>
+                    <span className={`badge badge-outline capitalize ${opsBadgeClass(row.ops_status)}`}>
+                      {row.ops_status}
+                    </span>
                   </td>
                   <td>
-                    <span className={`badge badge-outline capitalize ${occupancyBadgeClass(getOccupancyStatus(ops))}`}>
-                      {getOccupancyStatus(ops)}
+                    <span
+                      className={`badge badge-outline capitalize ${occupancyBadgeClass(row.occupancy_status ?? "empty")}`}
+                    >
+                      {row.occupancy_status ?? "empty"}
                     </span>
                   </td>
                 </tr>
