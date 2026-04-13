@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildTerminalBusAssignments,
   type TerminalBusAssignmentRow,
@@ -10,6 +10,9 @@ import BusRoutes, {
   pendingDeparture,
   type OpsStatus,
 } from "./_components/BusRoutes";
+
+// Hooks imports
+import { useGetBusStatuses } from "./_hooks/useGetBusStatuses";
 
 const TERMINAL_NAME = "PITX";
 
@@ -25,6 +28,29 @@ function operationalStatus(row: TerminalBusAssignmentRow): OpsStatus {
 }
 
 export default function BusStatus() {
+  // Imported Hooks
+  const { getBusStatuses } = useGetBusStatuses();
+  const [busStatusCount, setBusStatusCount] = useState<number | null>(null);
+
+  // Ref Hooks
+  const fetchBusStatusesRef = useRef(getBusStatuses);
+
+  // Ref Hooks UseEffect
+  useEffect(() => {
+    fetchBusStatusesRef.current = getBusStatuses;
+  }, [getBusStatuses]);
+
+  // Hooks UseEffect
+  useEffect(() => {
+    const fetchBusStatuses = async () => {
+      const data = await fetchBusStatusesRef.current();
+      if (data.success) {
+        setBusStatusCount(typeof data.count === "number" ? data.count : 0);
+      }
+    };
+    fetchBusStatuses();
+  }, []);
+
   const [rows, setRows] = useState<TerminalBusAssignmentRow[]>([]);
   const [nowIso, setNowIso] = useState<string | null>(null);
   useEffect(() => {
@@ -90,9 +116,11 @@ export default function BusStatus() {
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">Routes today</p>
-              <p className="mt-1 text-2xl font-semibold">{uniqueRoutes}</p>
-              <p className="mt-1 text-xs text-base-content/60">{todayRows.length} scheduled trips</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">Active buses</p>
+              <p className="mt-1 text-2xl font-semibold">{busStatusCount ?? todayRows.length}</p>
+              <p className="mt-1 text-xs text-base-content/60">
+                Routes {uniqueRoutes} · Scheduled trips {todayRows.length}
+              </p>
             </div>
             <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">At terminal</p>
