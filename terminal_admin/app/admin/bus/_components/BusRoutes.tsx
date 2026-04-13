@@ -29,6 +29,23 @@ function formatDateTime(iso: string) {
   });
 }
 
+function getLastTerminalLog(row: TerminalBusAssignmentRow) {
+  const events = [
+    { label: "Arrival reported", at: row.arrival_reported_at },
+    { label: "Arrival confirmed", at: row.arrival_confirmed_at },
+    { label: "Departure reported", at: row.departure_reported_at },
+    { label: "Departure confirmed", at: row.departure_confirmed_at },
+  ].filter((event): event is { label: string; at: string } => Boolean(event.at));
+
+  if (events.length === 0) return "—";
+
+  const latest = events.reduce((acc, cur) =>
+    new Date(cur.at).getTime() > new Date(acc.at).getTime() ? cur : acc
+  );
+
+  return `${latest.label} ${formatDateTime(latest.at)}`;
+}
+
 function opsBadgeClass(s: OpsStatus) {
   if (s === "departed") return "badge-neutral";
   if (s === "present") return "badge-success";
@@ -40,6 +57,20 @@ function fleetBadgeClass(s: TerminalBusAssignmentRow["bus_fleet_status"]) {
   if (s === "active") return "badge-success";
   if (s === "maintenance") return "badge-warning";
   return "badge-error";
+}
+
+function getOccupancyStatus(ops: OpsStatus) {
+  if (ops === "present") return "full";
+  if (ops === "arriving") return "standing room";
+  if (ops === "scheduled") return "few seats";
+  return "empty";
+}
+
+function occupancyBadgeClass(status: string) {
+  if (status === "full") return "badge-error";
+  if (status === "standing room") return "badge-warning";
+  if (status === "few seats") return "badge-warning";
+  return "badge-success";
 }
 
 export type EnrichedAssignment = { row: TerminalBusAssignmentRow; ops: OpsStatus };
@@ -70,7 +101,7 @@ export default function BusRoutes({ enriched, counts, now }: BusRoutesProps) {
         <div>
           <h2 className="text-lg font-semibold">All buses on terminal routes</h2>
           <p className="text-sm text-base-content/70">
-            Fleet state, route, driver, ETA, and event timestamps for today.
+            Fleet state, route, driver, and latest terminal event log for today.
           </p>
         </div>
         <label className="form-control w-full max-w-xs">
@@ -117,17 +148,15 @@ export default function BusRoutes({ enriched, counts, now }: BusRoutesProps) {
               <th>Route</th>
               <th>Driver</th>
               <th>Fleet</th>
-              <th>ETA (scheduled)</th>
-              <th>Arrival</th>
-              <th>Departure</th>
+              <th>Last terminal log</th>
               <th>Ops status</th>
-              <th>Alerts</th>
+              <th>Occupancy status</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center text-sm text-base-content/60">
+                <td colSpan={9} className="text-center text-sm text-base-content/60">
                   No buses match the current filters.
                 </td>
               </tr>
@@ -146,26 +175,14 @@ export default function BusRoutes({ enriched, counts, now }: BusRoutesProps) {
                       {row.bus_fleet_status}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap">{formatDateTime(row.scheduled_arrival_at)}</td>
-                  <td className="text-sm">
-                    <div>Reported {formatTime(row.arrival_reported_at)}</div>
-                    <div className="text-base-content/70">OK {formatTime(row.arrival_confirmed_at)}</div>
-                  </td>
-                  <td className="text-sm">
-                    <div>Reported {formatTime(row.departure_reported_at)}</div>
-                    <div className="text-base-content/70">OK {formatTime(row.departure_confirmed_at)}</div>
-                  </td>
+                  <td className="text-sm whitespace-nowrap">{getLastTerminalLog(row)}</td>
                   <td>
                     <span className={`badge badge-outline capitalize ${opsBadgeClass(ops)}`}>{ops}</span>
                   </td>
                   <td>
-                    <div className="flex flex-wrap gap-1">
-                      {pendingArrival(row) ? <span className="badge badge-warning">Arrival confirm</span> : null}
-                      {pendingDeparture(row) ? <span className="badge badge-info">Departure confirm</span> : null}
-                      {!pendingArrival(row) && !pendingDeparture(row) ? (
-                        <span className="text-base-content/50">—</span>
-                      ) : null}
-                    </div>
+                    <span className={`badge badge-outline capitalize ${occupancyBadgeClass(getOccupancyStatus(ops))}`}>
+                      {getOccupancyStatus(ops)}
+                    </span>
                   </td>
                 </tr>
               ))
