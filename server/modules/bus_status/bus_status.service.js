@@ -184,9 +184,9 @@ export const BusStatusService = {
     return {
       busStatuses: normalizedStatuses,
       counts: {
-        activeBuses,
-        atTerminal,
-        enRouteOrQueue: Math.max(activeBuses - atTerminal, 0),
+        active_buses: activeBuses,
+        at_terminal:atTerminal,
+        en_route_or_queue: Math.max(activeBuses - atTerminal, 0),
         confirmations,
       },
     };
