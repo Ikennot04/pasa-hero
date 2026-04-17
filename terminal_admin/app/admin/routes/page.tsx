@@ -59,8 +59,7 @@ export default function RoutesPage() {
     const active = routes.filter((r) => r.status === "active").length;
     const paused = routes.filter((r) => r.status === "paused").length;
     const buses = routes.reduce((acc, r) => acc + r.activeBusCount, 0);
-    const trips = routes.reduce((acc, r) => acc + r.tripsToday, 0);
-    return { active, paused, buses, trips };
+    return { active, paused, buses };
   }, [routes]);
 
   return (
@@ -91,13 +90,13 @@ export default function RoutesPage() {
           <div className="mt-2 text-3xl font-bold text-success">{stats.active}</div>
         </div>
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Paused routes</div>
+          <div className="text-sm text-base-content/70">Inactive routes</div>
           <div className="mt-2 text-3xl font-bold text-warning">{stats.paused}</div>
         </div>
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Trips today</div>
-          <div className="mt-2 text-3xl font-bold">{stats.trips}</div>
-          <div className="text-xs text-base-content/60">{stats.buses} active buses across all routes</div>
+          <div className="text-sm text-base-content/70">Active buses</div>
+          <div className="mt-2 text-3xl font-bold text-info">{stats.buses}</div>
+          <div className="text-xs text-base-content/60">Across all routes</div>
         </div>
       </div>
 
