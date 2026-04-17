@@ -1,12 +1,29 @@
 import Route from "./route.model.js"; // Model
+import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
   async getAllRoutes() {
-    const routes = await Route.find()
-      .populate("start_terminal_id")
-      .populate("end_terminal_id");
-    return routes;
+    const [routes, totalRoutes, activeRoutes, inactiveRoutes, activeBusesAcrossRoutes] =
+      await Promise.all([
+        Route.find().populate("start_terminal_id").populate("end_terminal_id"),
+        Route.countDocuments(),
+        Route.countDocuments({ status: "active" }),
+        Route.countDocuments({ status: "inactive" }),
+        BusAssignment.distinct("bus_id", { assignment_status: "active" }).then(
+          (busIds) => busIds.length,
+        ),
+      ]);
+
+    return {
+      routes,
+      counts: {
+        total_routes: totalRoutes,
+        active_routes: activeRoutes,
+        inactive_routes: inactiveRoutes,
+        active_buses: activeBusesAcrossRoutes,
+      },
+    };
   },
   // CREATE ROUTE ===================================================================
   async createRoute(routeData) {
