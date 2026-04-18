@@ -4,19 +4,42 @@ import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
   async getAllRoutes() {
-    const [routes, totalRoutes, activeRoutes, inactiveRoutes, activeBusesAcrossRoutes] =
-      await Promise.all([
-        Route.find().populate("start_terminal_id").populate("end_terminal_id"),
-        Route.countDocuments(),
-        Route.countDocuments({ status: "active" }),
-        Route.countDocuments({ status: "inactive" }),
-        BusAssignment.distinct("bus_id", { assignment_status: "active" }).then(
-          (busIds) => busIds.length,
-        ),
-      ]);
+    const [
+      routes,
+      totalRoutes,
+      activeRoutes,
+      inactiveRoutes,
+      activeBusesAcrossRoutes,
+      activeBusesByRoute,
+    ] = await Promise.all([
+      Route.find().populate("start_terminal_id").populate("end_terminal_id"),
+      Route.countDocuments(),
+      Route.countDocuments({ status: "active" }),
+      Route.countDocuments({ status: "inactive" }),
+      BusAssignment.distinct("bus_id", { assignment_status: "active" }).then(
+        (busIds) => busIds.length,
+      ),
+      BusAssignment.aggregate([
+        { $match: { assignment_status: "active" } },
+        { $group: { _id: "$route_id", busIds: { $addToSet: "$bus_id" } } },
+        { $project: { active_buses_count: { $size: "$busIds" } } },
+      ]),
+    ]);
+
+    const activeBusesCountByRouteId = new Map(
+      activeBusesByRoute.map((row) => [String(row._id), row.active_buses_count]),
+    );
+
+    const routesWithActiveBuses = routes.map((route) => {
+      const plain = route.toObject();
+      return {
+        ...plain,
+        active_buses_count: activeBusesCountByRouteId.get(String(route._id)) ?? 0,
+      };
+    });
 
     return {
-      routes,
+      routes: routesWithActiveBuses,
       counts: {
         total_routes: totalRoutes,
         active_routes: activeRoutes,
