@@ -1,22 +1,36 @@
 "use client";
 
+import axios from "axios";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FaArrowLeft } from "react-icons/fa";
 import AddBusStop from "./_components/AddBusStop";
+import { useGetRoute } from "./_hooks/useGetRoute";
+import { useGetRouteStops } from "./_hooks/useGetRouteStops";
 
-type RouteStatus = "active" | "paused";
+type ApiTerminal = { terminal_name?: string } | string | null | undefined;
 
-type RouteRow = {
+type ApiRouteDoc = {
+  _id: string;
+  route_code: string;
+  route_name?: string;
+  start_terminal_id?: ApiTerminal;
+  end_terminal_id?: ApiTerminal;
+  estimated_duration?: number;
+  status?: string;
+  updatedAt?: string;
+  active_buses_count?: number;
+};
+
+type RouteDetail = {
   id: string;
   routeCode: string;
   startRoute: string;
   endRoute: string;
   estimatedDurationMinutes: number;
-  status: RouteStatus;
-  activeBusCount: number;
-  tripsToday: number;
+  status: string;
+  activeBusesCount: number;
   updatedAt: string;
 };
 
@@ -28,81 +42,45 @@ type RouteStopRow = {
   longitude: number;
 };
 
-const INITIAL_ROUTES: RouteRow[] = [
-  {
-    id: "r-1",
-    routeCode: "PITX-NED-01",
-    startRoute: "PITX",
-    endRoute: "NEDSA",
-    estimatedDurationMinutes: 46,
-    status: "active",
-    activeBusCount: 4,
-    tripsToday: 26,
-    updatedAt: new Date(Date.now() - 12 * 60_000).toISOString(),
-  },
-  {
-    id: "r-2",
-    routeCode: "PITX-SNE-02",
-    startRoute: "PITX",
-    endRoute: "SM North EDSA",
-    estimatedDurationMinutes: 52,
-    status: "active",
-    activeBusCount: 6,
-    tripsToday: 31,
-    updatedAt: new Date(Date.now() - 8 * 60_000).toISOString(),
-  },
-  {
-    id: "r-3",
-    routeCode: "PITX-FV-03",
-    startRoute: "PITX",
-    endRoute: "Fairview",
-    estimatedDurationMinutes: 69,
-    status: "active",
-    activeBusCount: 5,
-    tripsToday: 23,
-    updatedAt: new Date(Date.now() - 26 * 60_000).toISOString(),
-  },
-  {
-    id: "r-4",
-    routeCode: "PITX-MON-04",
-    startRoute: "PITX",
-    endRoute: "Monumento",
-    estimatedDurationMinutes: 58,
-    status: "paused",
-    activeBusCount: 0,
-    tripsToday: 7,
-    updatedAt: new Date(Date.now() - 50 * 60_000).toISOString(),
-  },
-];
-
-const LOCAL_STORAGE_KEY = "terminal_admin_route_stops_v1";
-
-const INITIAL_ROUTE_STOPS: Record<string, RouteStopRow[]> = {
-  "r-1": [
-    { id: "r1-s1", stopName: "PITX", stopOrder: 1, latitude: 14.5096, longitude: 120.9919 },
-    { id: "r1-s2", stopName: "Taft Avenue", stopOrder: 2, latitude: 14.5547, longitude: 120.9988 },
-    { id: "r1-s3", stopName: "Ayala", stopOrder: 3, latitude: 14.5513, longitude: 121.0244 },
-    { id: "r1-s4", stopName: "NEDSA", stopOrder: 4, latitude: 14.6461, longitude: 121.0537 },
-  ],
-  "r-2": [
-    { id: "r2-s1", stopName: "PITX", stopOrder: 1, latitude: 14.5096, longitude: 120.9919 },
-    { id: "r2-s2", stopName: "Magallanes", stopOrder: 2, latitude: 14.5418, longitude: 121.0177 },
-    { id: "r2-s3", stopName: "Cubao", stopOrder: 3, latitude: 14.6194, longitude: 121.0533 },
-    { id: "r2-s4", stopName: "SM North EDSA", stopOrder: 4, latitude: 14.6566, longitude: 121.0309 },
-  ],
-  "r-3": [
-    { id: "r3-s1", stopName: "PITX", stopOrder: 1, latitude: 14.5096, longitude: 120.9919 },
-    { id: "r3-s2", stopName: "Quiapo", stopOrder: 2, latitude: 14.5996, longitude: 120.9845 },
-    { id: "r3-s3", stopName: "Philcoa", stopOrder: 3, latitude: 14.6498, longitude: 121.0477 },
-    { id: "r3-s4", stopName: "Fairview", stopOrder: 4, latitude: 14.7348, longitude: 121.0616 },
-  ],
-  "r-4": [
-    { id: "r4-s1", stopName: "PITX", stopOrder: 1, latitude: 14.5096, longitude: 120.9919 },
-    { id: "r4-s2", stopName: "Buendia", stopOrder: 2, latitude: 14.554, longitude: 121.0148 },
-    { id: "r4-s3", stopName: "Recto", stopOrder: 3, latitude: 14.6048, longitude: 120.9828 },
-    { id: "r4-s4", stopName: "Monumento", stopOrder: 4, latitude: 14.6579, longitude: 120.9831 },
-  ],
+type ApiRouteStop = {
+  _id: string;
+  stop_name: string;
+  stop_order: number;
+  latitude: number;
+  longitude: number;
 };
+
+function terminalLabel(terminal: ApiTerminal): string {
+  if (terminal && typeof terminal === "object" && "terminal_name" in terminal) {
+    return String(terminal.terminal_name ?? "");
+  }
+  return typeof terminal === "string" ? terminal : "";
+}
+
+function mapApiRouteToDetail(route: ApiRouteDoc): RouteDetail {
+  const start = terminalLabel(route.start_terminal_id);
+  const end = terminalLabel(route.end_terminal_id);
+  return {
+    id: String(route._id),
+    routeCode: route.route_code,
+    startRoute: start || (route.route_name?.split("-")[0]?.trim() ?? "—"),
+    endRoute: end || (route.route_name?.split("-")[1]?.trim() ?? "—"),
+    estimatedDurationMinutes: route.estimated_duration ?? 0,
+    status: route.status ?? "inactive",
+    activeBusesCount: route.active_buses_count ?? 0,
+    updatedAt: route.updatedAt ?? new Date().toISOString(),
+  };
+}
+
+function mapApiStopToRow(s: ApiRouteStop): RouteStopRow {
+  return {
+    id: String(s._id),
+    stopName: s.stop_name,
+    stopOrder: s.stop_order,
+    latitude: s.latitude,
+    longitude: s.longitude,
+  };
+}
 
 function formatTimeAgo(iso: string) {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
@@ -124,42 +102,87 @@ function normalizeStopOrder(stops: RouteStopRow[]) {
 export default function RouteDetailsPage() {
   const searchParams = useSearchParams();
   const routeId = searchParams.get("routeId");
-  const [routeStopsByRouteId, setRouteStopsByRouteId] = useState<Record<string, RouteStopRow[]>>(
-    () => {
-      if (typeof window === "undefined") return INITIAL_ROUTE_STOPS;
-      try {
-        const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (!raw) return INITIAL_ROUTE_STOPS;
-        const parsed = JSON.parse(raw) as Record<string, RouteStopRow[]>;
-        return { ...INITIAL_ROUTE_STOPS, ...parsed };
-      } catch {
-        return INITIAL_ROUTE_STOPS;
-      }
-    },
-  );
-  const [savedRouteStopsByRouteId, setSavedRouteStopsByRouteId] =
-    useState<Record<string, RouteStopRow[]>>(() => routeStopsByRouteId);
+
+  const { getRoute } = useGetRoute();
+  const { getRouteStops } = useGetRouteStops();
+
+  const getRouteRef = useRef(getRoute);
+  const getRouteStopsRef = useRef(getRouteStops);
+  useEffect(() => {
+    getRouteRef.current = getRoute;
+  }, [getRoute]);
+  useEffect(() => {
+    getRouteStopsRef.current = getRouteStops;
+  }, [getRouteStops]);
+
+  const [route, setRoute] = useState<RouteDetail | null>(null);
+  const [stops, setStops] = useState<RouteStopRow[]>([]);
+  const [savedStops, setSavedStops] = useState<RouteStopRow[]>([]);
   const [draggingStopId, setDraggingStopId] = useState<string | null>(null);
   const [dragOverStopId, setDragOverStopId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-
-  const route = useMemo(
-    () => INITIAL_ROUTES.find((row) => row.id === routeId) ?? null,
-    [routeId],
+  const [loadState, setLoadState] = useState<"idle" | "loading" | "error">(() =>
+    routeId ? "loading" : "idle",
   );
-
-  const activeStops = route?.id ? normalizeStopOrder(routeStopsByRouteId[route.id] ?? []) : [];
-
-  const hasUnsavedOrder =
-    !!route?.id &&
-    JSON.stringify(normalizeStopOrder(routeStopsByRouteId[route.id] ?? [])) !==
-      JSON.stringify(normalizeStopOrder(savedRouteStopsByRouteId[route.id] ?? []));
 
   useEffect(() => {
     if (!toast) return;
     const timeoutId = setTimeout(() => setToast(null), 2600);
     return () => clearTimeout(timeoutId);
   }, [toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      if (!routeId) {
+        await Promise.resolve();
+        if (cancelled) return;
+        setRoute(null);
+        setStops([]);
+        setSavedStops([]);
+        setLoadState("idle");
+        return;
+      }
+
+      setLoadState("loading");
+      const [routeRes, stopsRes] = await Promise.all([
+        getRouteRef.current(routeId),
+        getRouteStopsRef.current(routeId),
+      ]);
+      if (cancelled) return;
+
+      if (!routeRes?.success || !routeRes.data) {
+        setLoadState("error");
+        setRoute(null);
+        setStops([]);
+        setSavedStops([]);
+        return;
+      }
+
+      setRoute(mapApiRouteToDetail(routeRes.data as ApiRouteDoc));
+
+      const rawStops =
+        stopsRes?.success && Array.isArray(stopsRes.data)
+          ? (stopsRes.data as ApiRouteStop[])
+          : [];
+      const normalized = normalizeStopOrder(rawStops.map(mapApiStopToRow));
+      setStops(normalized);
+      setSavedStops(normalized);
+      setLoadState("idle");
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [routeId]);
+
+  const activeStops = useMemo(() => normalizeStopOrder(stops), [stops]);
+
+  const hasUnsavedOrder =
+    !!routeId &&
+    JSON.stringify(normalizeStopOrder(stops)) !==
+      JSON.stringify(normalizeStopOrder(savedStops));
 
   function onDragStartStop(event: React.DragEvent<HTMLTableRowElement>, stopId: string) {
     setDraggingStopId(stopId);
@@ -170,9 +193,9 @@ export default function RouteDetailsPage() {
   function onDropStop(event: React.DragEvent<HTMLTableRowElement>, targetStopId: string) {
     event.preventDefault();
     const sourceStopId = event.dataTransfer.getData("text/plain") || draggingStopId;
-    if (!route?.id || !sourceStopId || sourceStopId === targetStopId) return;
-    setRouteStopsByRouteId((prev) => {
-      const list = normalizeStopOrder(prev[route.id] ?? []);
+    if (!routeId || !sourceStopId || sourceStopId === targetStopId) return;
+    setStops((prev) => {
+      const list = normalizeStopOrder(prev);
       const fromIndex = list.findIndex((s) => s.id === sourceStopId);
       const toIndex = list.findIndex((s) => s.id === targetStopId);
       if (fromIndex === -1 || toIndex === -1) return prev;
@@ -181,7 +204,7 @@ export default function RouteDetailsPage() {
       const [moved] = next.splice(fromIndex, 1);
       next.splice(toIndex, 0, moved);
 
-      return { ...prev, [route.id]: normalizeStopOrder(next) };
+      return normalizeStopOrder(next);
     });
     setDraggingStopId(null);
     setDragOverStopId(null);
@@ -192,39 +215,66 @@ export default function RouteDetailsPage() {
     setDragOverStopId(null);
   }
 
-  function onSaveStopOrder() {
-    if (!route?.id) return;
-    setSavedRouteStopsByRouteId((prev) => {
-      const next = { ...prev, [route.id]: normalizeStopOrder(routeStopsByRouteId[route.id] ?? []) };
-      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
-    setToast("Route stop order saved.");
+  async function onSaveStopOrder() {
+    if (!routeId) return;
+    const ordered = normalizeStopOrder(stops);
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+    try {
+      await Promise.all(
+        ordered.map((stop, index) =>
+          axios.patch(`${baseUrl}/api/route-stops/${stop.id}`, {
+            stop_order: index + 1,
+          }),
+        ),
+      );
+      setStops(ordered);
+      setSavedStops(ordered);
+      setToast("Route stop order saved.");
+    } catch {
+      setToast("Could not save stop order. Try again.");
+    }
   }
 
-  function onAddRouteStop(payload: { stopName: string; latitude: number; longitude: number }) {
-    if (!route?.id) return { ok: false, message: "Route not found." };
+  async function onAddRouteStop(payload: {
+    stopName: string;
+    latitude: number;
+    longitude: number;
+  }): Promise<{ ok: boolean; message: string }> {
+    if (!routeId) return { ok: false, message: "Route not found." };
     const stopName = payload.stopName.trim();
 
-    const current = normalizeStopOrder(routeStopsByRouteId[route.id] ?? []);
-    const duplicate = current.some((stop) => stop.stopName.toLowerCase() === stopName.toLowerCase());
+    const current = normalizeStopOrder(stops);
+    const duplicate = current.some(
+      (stop) => stop.stopName.toLowerCase() === stopName.toLowerCase(),
+    );
     if (duplicate) {
       return { ok: false, message: "This stop already exists for the route." };
     }
 
-    const nextStop: RouteStopRow = {
-      id: `stop-${crypto.randomUUID()}`,
-      stopName,
-      stopOrder: current.length + 1,
-      latitude: payload.latitude,
-      longitude: payload.longitude,
-    };
-
-    setRouteStopsByRouteId((prev) => ({
-      ...prev,
-      [route.id]: [...current, nextStop],
-    }));
-    return { ok: true, message: `Route stop "${stopName}" added.` };
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+    try {
+      const { data } = await axios.post(`${baseUrl}/api/route-stops`, {
+        route_id: routeId,
+        stop_name: stopName,
+        stop_order: current.length + 1,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+      });
+      if (!data?.success || !data.data) {
+        return { ok: false, message: data?.message ?? "Could not add route stop." };
+      }
+      const newRow = mapApiStopToRow(data.data as ApiRouteStop);
+      const next = normalizeStopOrder([...current, newRow]);
+      setStops(next);
+      setSavedStops(next);
+      return { ok: true, message: `Route stop "${stopName}" added.` };
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const msg = err.response?.data?.message;
+        return { ok: false, message: typeof msg === "string" ? msg : "Could not add route stop." };
+      }
+      return { ok: false, message: "Could not add route stop." };
+    }
   }
 
   return (
@@ -248,11 +298,19 @@ export default function RouteDetailsPage() {
         </div>
       ) : null}
 
-      {!route ? (
+      {!routeId ? (
+        <div className="rounded-xl border border-base-300 bg-base-100 p-6 text-sm text-base-content/70">
+          No route selected. Open this page from the routes list.
+        </div>
+      ) : loadState === "loading" ? (
+        <div className="rounded-xl border border-base-300 bg-base-100 p-6 text-sm text-base-content/70">
+          Loading route…
+        </div>
+      ) : loadState === "error" || !route ? (
         <div className="rounded-xl border border-base-300 bg-base-100 p-6 text-sm text-base-content/70">
           Route not found. Please go back and select a valid route.
         </div>
-      ) : (
+      ) : route ? (
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-base-300 bg-base-100 p-3">
@@ -283,13 +341,8 @@ export default function RouteDetailsPage() {
             </div>
             <div className="rounded-lg border border-base-300 bg-base-100 p-3">
               <p className="text-xs uppercase tracking-wide text-base-content/60">Active buses</p>
-              <p className="mt-1 text-base font-medium">{route.activeBusCount}</p>
+              <p className="mt-1 text-base font-medium">{route.activeBusesCount}</p>
             </div>
-          </div>
-
-          <div className="rounded-lg border border-base-300 bg-base-100 p-3">
-            <p className="text-xs uppercase tracking-wide text-base-content/60">Trips today</p>
-            <p className="mt-1 text-base font-medium">{route.tripsToday}</p>
           </div>
 
           <div className="rounded-lg border border-base-300 bg-base-100 p-3">
@@ -309,14 +362,14 @@ export default function RouteDetailsPage() {
                 type="button"
                 className="btn bg-[#0062CA] text-white disabled:opacity-40"
                 disabled={!hasUnsavedOrder}
-                onClick={onSaveStopOrder}
+                onClick={() => void onSaveStopOrder()}
               >
                 Save order
               </button>
             </div>
 
             <AddBusStop
-              routeId={route?.id}
+              routeId={route.id}
               activeStops={activeStops}
               onAddStop={onAddRouteStop}
               onToast={setToast}
@@ -333,38 +386,45 @@ export default function RouteDetailsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeStops.map((stop) => (
-                    <tr
-                      key={stop.id}
-                      draggable
-                      onDragStart={(e) => onDragStartStop(e, stop.id)}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        if (dragOverStopId !== stop.id) setDragOverStopId(stop.id);
-                      }}
-                      onDrop={(e) => onDropStop(e, stop.id)}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        if (dragOverStopId !== stop.id) setDragOverStopId(stop.id);
-                      }}
-                      onDragEnd={onDragEndStop}
-                      className={`cursor-move ${dragOverStopId === stop.id ? "bg-info/10" : ""}`}
-                    >
-                      <td className="font-semibold">{stop.stopOrder}</td>
-                      <td>{stop.stopName}</td>
-                      <td className="text-xs text-base-content/70">
-                        {stop.latitude.toFixed(4)}, {stop.longitude.toFixed(4)}
+                  {activeStops.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="text-center text-sm text-base-content/60">
+                        No route stops yet. Add a stop above.
                       </td>
-                      <td className="text-sm text-base-content/70">Drag to reorder</td>
                     </tr>
-                  ))}
+                  ) : (
+                    activeStops.map((stop) => (
+                      <tr
+                        key={stop.id}
+                        draggable
+                        onDragStart={(e) => onDragStartStop(e, stop.id)}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (dragOverStopId !== stop.id) setDragOverStopId(stop.id);
+                        }}
+                        onDrop={(e) => onDropStop(e, stop.id)}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          if (dragOverStopId !== stop.id) setDragOverStopId(stop.id);
+                        }}
+                        onDragEnd={onDragEndStop}
+                        className={`cursor-move ${dragOverStopId === stop.id ? "bg-info/10" : ""}`}
+                      >
+                        <td className="font-semibold">{stop.stopOrder}</td>
+                        <td>{stop.stopName}</td>
+                        <td className="text-xs text-base-content/70">
+                          {stop.latitude.toFixed(4)}, {stop.longitude.toFixed(4)}
+                        </td>
+                        <td className="text-sm text-base-content/70">Drag to reorder</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
-
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
