@@ -146,7 +146,14 @@ export const RouteService = {
       error.statusCode = 404;
       throw error;
     }
-    return route;
+    const busIds = await BusAssignment.distinct("bus_id", {
+      assignment_status: "active",
+      route_id: route._id,
+    });
+    return {
+      ...route.toObject(),
+      active_buses_count: busIds.length,
+    };
   },
   // UPDATE ROUTE BY ID ===================================================================
   async updateRouteById(id, updateData) {
