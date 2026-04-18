@@ -20,7 +20,7 @@ export const useGetRoutes = () => {
         setError("Unexpected error");
       }
     }
-
-    return { getRoutes, error };
   };
+  
+  return { getRoutes, error };
 };

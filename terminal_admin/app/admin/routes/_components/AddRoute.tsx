@@ -75,8 +75,7 @@ export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps)
       endRoute,
       estimatedDurationMinutes: Math.round(estimatedDurationMinutes),
       status: "active",
-      activeBusCount: 0,
-      tripsToday: 0,
+      active_buses_count: 0,
       updatedAt: new Date().toISOString(),
     };
 
