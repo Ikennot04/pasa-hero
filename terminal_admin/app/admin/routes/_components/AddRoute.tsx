@@ -5,9 +5,9 @@ import type { RouteRow } from "./Routes";
 
 type NewRouteForm = {
   routeCode: string;
+  routeName: string;
   startRoute: string;
   endRoute: string;
-  estimatedDurationMinutes: string;
 };
 
 type AddRouteProps = {
@@ -18,9 +18,9 @@ type AddRouteProps = {
 
 const EMPTY_FORM: NewRouteForm = {
   routeCode: "",
+  routeName: "",
   startRoute: "",
   endRoute: "",
-  estimatedDurationMinutes: "",
 };
 
 export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps) {
@@ -50,16 +50,12 @@ export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps)
   function onCreateRoute(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const routeCode = form.routeCode.trim().toUpperCase();
+    const routeName = form.routeName.trim();
     const startRoute = form.startRoute.trim();
     const endRoute = form.endRoute.trim();
-    const estimatedDurationMinutes = Number(form.estimatedDurationMinutes);
 
     if (!routeCode || !startRoute || !endRoute) {
       setToast("Please complete all required route details.");
-      return;
-    }
-    if (!Number.isFinite(estimatedDurationMinutes) || estimatedDurationMinutes <= 0) {
-      setToast("ETA must be a valid positive number.");
       return;
     }
     const exists = routes.some((r) => r.routeCode.toLowerCase() === routeCode.toLowerCase());
@@ -71,9 +67,9 @@ export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps)
     const next: RouteRow = {
       id: `route-${crypto.randomUUID()}`,
       routeCode,
+      routeName: routeName || `${startRoute} – ${endRoute}`,
       startRoute,
       endRoute,
-      estimatedDurationMinutes: Math.round(estimatedDurationMinutes),
       status: "active",
       active_buses_count: 0,
       updatedAt: new Date().toISOString(),
@@ -110,6 +106,15 @@ export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps)
                     onChange={(e) => onChange("routeCode", e.target.value)}
                   />
                 </label>
+                <label className="form-control w-full">
+                  <span className="label-text font-medium">Route name (optional)</span>
+                  <input
+                    className="input input-bordered w-full"
+                    placeholder="e.g. PITX — Fairview; leave blank to use start – end"
+                    value={form.routeName}
+                    onChange={(e) => onChange("routeName", e.target.value)}
+                  />
+                </label>
               </div>
             </div>
 
@@ -137,22 +142,6 @@ export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps)
                   </label>
                 </div>
               </label>
-            </div>
-
-            <div className="rounded-lg border border-base-300 p-3 sm:p-4">
-              <p className="mb-3 text-sm font-semibold text-base-content/80">Operations setup</p>
-              <div className="grid grid-cols-1 gap-3">
-                <label className="form-control w-full">
-                  <span className="label-text font-medium">ETA (minutes)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    className="input input-bordered w-full"
-                    value={form.estimatedDurationMinutes}
-                    onChange={(e) => onChange("estimatedDurationMinutes", e.target.value)}
-                  />
-                </label>
-              </div>
             </div>
 
             <div className="modal-action flex-wrap gap-2">

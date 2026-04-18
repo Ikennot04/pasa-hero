@@ -13,7 +13,6 @@ type ApiRouteDoc = {
   route_name?: string;
   start_terminal_id?: ApiTerminal;
   end_terminal_id?: ApiTerminal;
-  estimated_duration?: number;
   status?: string;
   updatedAt?: string;
   active_buses_count?: number;
@@ -36,9 +35,9 @@ function mapApiRouteToRow(route: ApiRouteDoc): RouteRow {
   return {
     id: String(route._id),
     routeCode: route.route_code,
+    routeName: route.route_name?.trim() ?? "",
     startRoute: start || (route.route_name?.split("-")[0]?.trim() ?? "—"),
     endRoute: end || (route.route_name?.split("-")[1]?.trim() ?? "—"),
-    estimatedDurationMinutes: route.estimated_duration ?? 0,
     status: mapApiStatusToRow(route.status),
     active_buses_count: route.active_buses_count ?? 0,
     updatedAt: route.updatedAt ?? new Date().toISOString(),
