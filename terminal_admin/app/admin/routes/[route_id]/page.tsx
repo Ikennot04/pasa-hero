@@ -1,25 +1,11 @@
 "use client";
 
-import axios from "axios";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { FaArrowLeft } from "react-icons/fa";
-import AddBusStop from "./_components/AddBusStop";
+import RouteStops from "./_components/RouteStops";
 import { useGetRoute } from "./_hooks/useGetRoute";
-import { useGetRouteStops } from "./_hooks/useGetRouteStops";
-
-type ApiRouteDoc = {
-  _id: string;
-  route_code: string;
-  route_name?: string;
-  start_terminal_id?: ApiTerminal;
-  end_terminal_id?: ApiTerminal;
-  status?: string;
-  updatedAt?: string;
-  active_buses_count?: number;
-  estimated_duration?: number | null;
-};
 
 type RouteDetailType = {
   _id: string;
@@ -31,22 +17,6 @@ type RouteDetailType = {
   end_terminal_id: { terminal_name: string };
   status: string;
   updatedAt: string;
-};
-
-type RouteStopRow = {
-  id: string;
-  stopName: string;
-  stopOrder: number;
-  latitude: number;
-  longitude: number;
-};
-
-type ApiRouteStop = {
-  _id: string;
-  stop_name: string;
-  stop_order: number;
-  latitude: number;
-  longitude: number;
 };
 
 function formatEtaMinutes(minutes: number | null | undefined) {
@@ -71,41 +41,19 @@ function formatTimeAgo(iso: string) {
   return `${days}d ago`;
 }
 
-function normalizeStopOrder(stops: RouteStopRow[]) {
-  return stops
-    .slice()
-    .sort((a, b) => a.stopOrder - b.stopOrder)
-    .map((stop, index) => ({ ...stop, stopOrder: index + 1 }));
-}
-
 export default function RouteDetailsPage() {
   const params = useParams();
   const routeId = params.route_id as string;
 
-  // Imported Hooks
   const { getRoute } = useGetRoute();
-  const { getRouteStops } = useGetRouteStops();
-
-  // Ref Hooks
   const getRouteRef = useRef(getRoute);
-  const getRouteStopsRef = useRef(getRouteStops);
 
-  // Ref Hooks UseEffect
+  const [route, setRoute] = useState<RouteDetailType>();
+  const [toast, setToast] = useState<string | null>(null);
+
   useEffect(() => {
     getRouteRef.current = getRoute;
-    getRouteStopsRef.current = getRouteStops;
-  }, [getRoute, getRouteStops]);
-
-  // Route Details States
-  const [route, setRoute] = useState<RouteDetailType>();
-
-  // Route Stops States
-  const [stops, setStops] = useState<RouteStopRow[]>([]);
-
-  const [savedStops, setSavedStops] = useState<RouteStopRow[]>([]);
-  const [draggingStopId, setDraggingStopId] = useState<string | null>(null);
-  const [dragOverStopId, setDragOverStopId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  }, [getRoute]);
 
   useEffect(() => {
     if (!toast) return;
@@ -113,12 +61,9 @@ export default function RouteDetailsPage() {
     return () => clearTimeout(timeoutId);
   }, [toast]);
 
-  // Hook UseEffect
   useEffect(() => {
-    // Route Details
     const fetchRouteDetails = async () => {
       const data = await getRouteRef.current(routeId);
-      console.log(data);
       if (data.success) {
         setRoute(data.data);
       } else {
@@ -127,87 +72,7 @@ export default function RouteDetailsPage() {
       }
     };
     fetchRouteDetails();
-
-    // Route Stops
-    const fetchRouteStops = async () => {
-      const data = await getRouteStopsRef.current(routeId);
-      // console.log(data);
-      if (data.success) {
-        setStops(data.data);
-      } else {
-        setToast(data.message);
-        setTimeout(() => setToast(null), 3500);
-      }
-    };
-    fetchRouteStops();
   }, [routeId]);
-
-  const activeStops = useMemo(() => normalizeStopOrder(stops), [stops]);
-
-  const hasUnsavedOrder =
-    !!routeId &&
-    JSON.stringify(normalizeStopOrder(stops)) !==
-      JSON.stringify(normalizeStopOrder(savedStops));
-
-  function onDragStartStop(
-    event: React.DragEvent<HTMLTableRowElement>,
-    stopId: string,
-  ) {
-    setDraggingStopId(stopId);
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", stopId);
-  }
-
-  function onDropStop(
-    event: React.DragEvent<HTMLTableRowElement>,
-    targetStopId: string,
-  ) {
-    event.preventDefault();
-    const sourceStopId =
-      event.dataTransfer.getData("text/plain") || draggingStopId;
-    if (!routeId || !sourceStopId || sourceStopId === targetStopId) return;
-    setStops((prev) => {
-      const list = normalizeStopOrder(prev);
-      const fromIndex = list.findIndex((s) => s.id === sourceStopId);
-      const toIndex = list.findIndex((s) => s.id === targetStopId);
-      if (fromIndex === -1 || toIndex === -1) return prev;
-
-      const next = list.slice();
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-
-      return normalizeStopOrder(next);
-    });
-    setDraggingStopId(null);
-    setDragOverStopId(null);
-  }
-
-  function onDragEndStop() {
-    setDraggingStopId(null);
-    setDragOverStopId(null);
-  }
-
-  async function onSaveStopOrder() {
-    if (!routeId) return;
-    const ordered = normalizeStopOrder(stops);
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-    try {
-      await Promise.all(
-        ordered.map((stop, index) =>
-          axios.patch(`${baseUrl}/api/route-stops/${stop.id}`, {
-            stop_order: index + 1,
-          }),
-        ),
-      );
-      setStops(ordered);
-      setSavedStops(ordered);
-      setToast("Route stop order saved.");
-    } catch {
-      setToast("Could not save stop order. Try again.");
-    }
-  }
-
-  async function onAddRouteStop() {}
 
   return (
     <div className="space-y-6 pb-6 pt-4">
@@ -306,86 +171,11 @@ export default function RouteDetailsPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-lg font-semibold">Route stops</h2>
-              <p className="text-sm text-base-content/70">
-                Drag rows to reorder stops, then save the new order.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="btn bg-[#0062CA] text-white disabled:opacity-40"
-              disabled={!hasUnsavedOrder}
-              onClick={() => void onSaveStopOrder()}
-            >
-              Save order
-            </button>
-          </div>
-
-          <AddBusStop
-            routeId={route?._id}
-            activeStops={activeStops}
-            onAddStop={onAddRouteStop}
-            onToast={setToast}
-          />
-
-          <div className="overflow-x-auto">
-            <table className="table table-zebra w-full">
-              <thead>
-                <tr>
-                  <th className="w-20">Order</th>
-                  <th>Stop name</th>
-                  <th className="w-36">Coordinates</th>
-                  <th className="w-40">Drag</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeStops.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="text-center text-sm text-base-content/60"
-                    >
-                      No route stops yet. Add a stop above.
-                    </td>
-                  </tr>
-                ) : (
-                  activeStops.map((stop) => (
-                    <tr
-                      key={stop.id}
-                      draggable
-                      onDragStart={(e) => onDragStartStop(e, stop.id)}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        if (dragOverStopId !== stop.id)
-                          setDragOverStopId(stop.id);
-                      }}
-                      onDrop={(e) => onDropStop(e, stop.id)}
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        if (dragOverStopId !== stop.id)
-                          setDragOverStopId(stop.id);
-                      }}
-                      onDragEnd={onDragEndStop}
-                      className={`cursor-move ${dragOverStopId === stop.id ? "bg-info/10" : ""}`}
-                    >
-                      <td className="font-semibold">{stop.stopOrder}</td>
-                      <td>{stop.stopName}</td>
-                      <td className="text-xs text-base-content/70">
-                        {stop.latitude.toFixed(4)}, {stop.longitude.toFixed(4)}
-                      </td>
-                      <td className="text-sm text-base-content/70">
-                        Drag to reorder
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <RouteStops
+          routeId={routeId}
+          routeMongoId={route?._id}
+          onToast={setToast}
+        />
       </div>
     </div>
   );
