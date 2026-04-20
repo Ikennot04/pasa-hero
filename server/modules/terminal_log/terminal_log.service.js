@@ -175,6 +175,56 @@ export const TerminalLogService = {
     return terminalLog;
   },
 
+  // CONFIRM TERMINAL LOG BY ID =========================================================
+  async confirmTerminalLogById(id, payload = {}) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      const err = new Error("Invalid terminal log id.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const terminalLog = await TerminalLog.findById(id);
+    if (!terminalLog) {
+      const err = new Error("Terminal log not found.");
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (terminalLog.status === "rejected") {
+      const err = new Error("Rejected terminal logs cannot be confirmed.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (terminalLog.status === "confirmed") {
+      const err = new Error("Terminal log already confirmed.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const updateData = {
+      status: "confirmed",
+      confirmation_time: new Date(),
+    };
+
+    if (payload.confirmed_by) {
+      if (!mongoose.Types.ObjectId.isValid(payload.confirmed_by)) {
+        const err = new Error("Invalid confirmed_by id.");
+        err.statusCode = 400;
+        throw err;
+      }
+      updateData.confirmed_by = payload.confirmed_by;
+    }
+
+    const updated = await TerminalLog.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    )
+
+    return updated;
+  },
+
   // DELETE TERMINAL LOG BY ID ==========================================================
   async deleteTerminalLogById(id) {
     const terminalLog = await TerminalLog.findByIdAndDelete(id);

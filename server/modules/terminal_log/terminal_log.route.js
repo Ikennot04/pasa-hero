@@ -4,6 +4,7 @@ import {
   getTerminalLogsByTerminalId,
   getTerminalLogById,
   createTerminalLog,
+  confirmTerminalLogById,
   deleteTerminalLogById,
 } from "./terminal_log.controller.js";
 
@@ -13,6 +14,7 @@ router.get("/", getAllTerminalLogs);
 router.get("/terminal/:terminalId", getTerminalLogsByTerminalId);
 router.get("/:id", getTerminalLogById);
 router.post("/", createTerminalLog);
+router.patch("/:id/confirm", confirmTerminalLogById);
 router.delete("/:id", deleteTerminalLogById);
 
 export default router;
