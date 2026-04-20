@@ -20,6 +20,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import AddBusStop from "./AddBusStop";
+import EditBusStop from "./EditBusStop";
 import { useGetRouteStops } from "../_hooks/useGetRouteStops";
 import { useReorderRouteStops } from "../_hooks/useReorderRouteStops";
 import { FaEdit, FaGripVertical, FaTrash } from "react-icons/fa";
@@ -42,9 +43,10 @@ function normalizeStopOrder(stops: RouteStopType[]) {
 type SortableStopRowProps = {
   stop: RouteStopType;
   savingOrder: boolean;
+  onEditStop: (stop: RouteStopType) => void;
 };
 
-function SortableStopRow({ stop, savingOrder }: SortableStopRowProps) {
+function SortableStopRow({ stop, savingOrder, onEditStop }: SortableStopRowProps) {
   const {
     attributes,
     listeners,
@@ -89,6 +91,9 @@ function SortableStopRow({ stop, savingOrder }: SortableStopRowProps) {
           <button
             type="button"
             className="btn bg-blue-400 text-white rounded-lg"
+            aria-label={`Edit ${stop.stop_name}`}
+            disabled={savingOrder}
+            onClick={() => onEditStop(stop)}
           >
             <FaEdit />
           </button>
@@ -121,6 +126,7 @@ export default function RouteStops({
   const [stops, setStops] = useState<RouteStopType[]>([]);
   const [baselineOrderIds, setBaselineOrderIds] = useState<string[]>([]);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [editingStop, setEditingStop] = useState<RouteStopType | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -225,6 +231,14 @@ export default function RouteStops({
     }
   }
 
+  function handleStopNameUpdated(updated: RouteStopType) {
+    setStops((prev) =>
+      normalizeStopOrder(
+        prev.map((s) => (s._id === updated._id ? { ...s, ...updated } : s)),
+      ),
+    );
+  }
+
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -254,6 +268,14 @@ export default function RouteStops({
         activeStops={addBusStopRows}
         onAddStop={onAddRouteStop}
         onToast={onToast}
+      />
+
+      <EditBusStop
+        key={editingStop?._id ?? "edit-stop-closed"}
+        stop={editingStop}
+        onClose={() => setEditingStop(null)}
+        onToast={onToast}
+        onUpdated={handleStopNameUpdated}
       />
 
       <DndContext
@@ -292,6 +314,7 @@ export default function RouteStops({
                       key={stop._id}
                       stop={stop}
                       savingOrder={savingOrder}
+                      onEditStop={setEditingStop}
                     />
                   ))}
                 </SortableContext>
