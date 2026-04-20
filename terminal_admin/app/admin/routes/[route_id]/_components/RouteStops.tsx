@@ -20,6 +20,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import AddBusStop from "./AddBusStop";
+import DeleteBusStop from "./DeleteBusStop";
 import EditBusStop from "./EditBusStop";
 import { useGetRouteStops } from "../_hooks/useGetRouteStops";
 import { useReorderRouteStops } from "../_hooks/useReorderRouteStops";
@@ -44,9 +45,15 @@ type SortableStopRowProps = {
   stop: RouteStopType;
   savingOrder: boolean;
   onEditStop: (stop: RouteStopType) => void;
+  onDeleteStop: (stop: RouteStopType) => void;
 };
 
-function SortableStopRow({ stop, savingOrder, onEditStop }: SortableStopRowProps) {
+function SortableStopRow({
+  stop,
+  savingOrder,
+  onEditStop,
+  onDeleteStop,
+}: SortableStopRowProps) {
   const {
     attributes,
     listeners,
@@ -100,6 +107,9 @@ function SortableStopRow({ stop, savingOrder, onEditStop }: SortableStopRowProps
           <button
             type="button"
             className="btn bg-red-400 text-white rounded-lg"
+            aria-label={`Delete ${stop.stop_name}`}
+            disabled={savingOrder}
+            onClick={() => onDeleteStop(stop)}
           >
             <FaTrash />
           </button>
@@ -127,6 +137,7 @@ export default function RouteStops({
   const [baselineOrderIds, setBaselineOrderIds] = useState<string[]>([]);
   const [savingOrder, setSavingOrder] = useState(false);
   const [editingStop, setEditingStop] = useState<RouteStopType | null>(null);
+  const [deletingStop, setDeletingStop] = useState<RouteStopType | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -239,6 +250,12 @@ export default function RouteStops({
     );
   }
 
+  function handleStopDeleted(stopId: string) {
+    setStops((prev) => normalizeStopOrder(prev.filter((s) => s._id !== stopId)));
+    setBaselineOrderIds((prev) => prev.filter((id) => id !== stopId));
+    setEditingStop((current) => (current?._id === stopId ? null : current));
+  }
+
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -278,6 +295,18 @@ export default function RouteStops({
         onUpdated={handleStopNameUpdated}
       />
 
+      <DeleteBusStop
+        key={deletingStop?._id ?? "delete-stop-closed"}
+        stop={
+          deletingStop
+            ? { _id: deletingStop._id, stop_name: deletingStop.stop_name }
+            : null
+        }
+        onClose={() => setDeletingStop(null)}
+        onToast={onToast}
+        onDeleted={handleStopDeleted}
+      />
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -315,6 +344,7 @@ export default function RouteStops({
                       stop={stop}
                       savingOrder={savingOrder}
                       onEditStop={setEditingStop}
+                      onDeleteStop={setDeletingStop}
                     />
                   ))}
                 </SortableContext>
