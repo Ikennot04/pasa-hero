@@ -15,6 +15,7 @@ import UserNotification from "../modules/user_notification/user_notification.mod
 import UserSubscription from "../modules/user_subscription/user_subscription.model.js";
 import SystemLog from "../modules/system_log/system_log.model.js";
 import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
+import seedHighPrioritySmTerminalNotifications from "./highPrioritySmTerminalNotifications.seeder.js";
 
 async function ensureDbConnected() {
   if (mongoose.connection.readyState === 1) return;
@@ -45,9 +46,9 @@ function getOccupancyStatus(occupancyCount, capacity) {
   return "empty";
 }
 
-/** April 12, 2026 — UTC (matches ?date=2026-04-12 on the API). */
+/** April 17, 2026 — UTC (matches ?date=2026-04-17 on the API). */
 function utc2026_04_12(hour, minute = 0) {
-  return new Date(Date.UTC(2026, 3, 12, hour, minute, 0));
+  return new Date(Date.UTC(2026, 3, 17, hour, minute, 0));
 }
 
 /** Extra SM assignments use these buses (not the main-seed CEB-003 / CEB-011 pair we keep for logs). */
@@ -387,12 +388,12 @@ export async function seedOperationalSummaryDemo() {
 
   const totalSmAssignments = smAssignments.length + extraSpecs.length;
 
-  console.log("\n✅ Terminal operational summary demo (2026-04-12 UTC)");
+  console.log("\n✅ Terminal operational summary demo (2026-04-17 UTC)");
   console.log("   Terminal:", smTerminal.terminal_name, `(${smTerminal._id})`);
-  console.log("   Date: 04/08/2026 (UTC)");
+  console.log("   Date: 04/17/2026 (UTC)");
   console.log("   TerminalLog events:", logs.length);
   console.log("   SM assignments (scheduled that day):", totalSmAssignments);
-  console.log("\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=2026-04-12");
+  console.log("\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=2026-04-17");
   console.log("   Expected ≈ scheduled: 11, present: 3, departed_today: 3, pending: 4 (2+2)\n");
 }
 
@@ -1030,6 +1031,23 @@ const seedData = async () => {
       waterfrontTerminal,
     ] = terminals;
 
+    await User.updateMany(
+      {
+        email: {
+          $in: [
+            "pedro.reyes@email.com",
+            "maria.santos@email.com",
+            "rico.alvarez@email.com",
+          ],
+        },
+      },
+      { $set: { assigned_terminal: smTerminal._id } },
+    );
+    await User.updateOne(
+      { email: "jenny.lim@email.com" },
+      { $set: { assigned_terminal: ayalaTerminal._id } },
+    );
+
     // ==========================================
     // 3. CREATE ROUTES
     // ==========================================
@@ -1580,7 +1598,7 @@ const seedData = async () => {
     // ==========================================
     // 8. CREATE BUS ASSIGNMENTS
     // ==========================================
-    const today = new Date(2026, 3, 12);
+    const today = new Date(2026, 3, 17);
     today.setHours(0, 0, 0, 0);
 
     const assignments = await BusAssignment.insertMany([
@@ -2260,6 +2278,9 @@ const seedData = async () => {
     // ==========================================
     await seedTerminalNotificationTimeline();
     console.log("✅ Ran notification timeline seeder");
+
+    await seedHighPrioritySmTerminalNotifications();
+    console.log("✅ Ran high-priority SM terminal notifications seeder");
 
     await seedOperationalSummaryDemo();
     console.log("✅ Ran terminal operational summary seeder");

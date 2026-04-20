@@ -51,6 +51,36 @@ export const createTerminalLog = async (req, res) => {
   }
 };
 
+export const confirmTerminalLogById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const terminalLog = await TerminalLogService.confirmTerminalLogById(id, req.body || {});
+    res.status(200).json({
+      success: true,
+      message: "Terminal log confirmed successfully",
+      // data: terminalLog,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
+export const rejectTerminalLogById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const terminalLog = await TerminalLogService.rejectTerminalLogById(id, req.body || {});
+    res.status(200).json({
+      success: true,
+      message: "Terminal log rejected successfully",
+      // data: terminalLog,
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 export const deleteTerminalLogById = async (req, res) => {
   try {
     const { id } = req.params;

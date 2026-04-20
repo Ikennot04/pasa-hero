@@ -31,3 +31,15 @@ export const listTodaysNotificationsByTerminal = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const listNotificationsByTerminal = async (req, res) => {
+  try {
+    const { terminalId } = req.params;
+    const result =
+      await NotificationService.getAllNotificationsByTerminalId(terminalId);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};

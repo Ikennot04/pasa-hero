@@ -1,75 +1,95 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AddRoute from "./_components/AddRoute";
-import Routes, { type RouteRow } from "./_components/Routes";
+import Routes, { type RouteRow, type RouteStatus } from "./_components/Routes";
+import { useGetRoutes } from "./_hooks/useGetRoutes";
 
-const INITIAL_ROUTES: RouteRow[] = [
-  {
-    id: "r-1",
-    routeCode: "PITX-NED-01",
-    startRoute: "PITX",
-    endRoute: "NEDSA",
-    estimatedDurationMinutes: 46,
-    status: "active",
-    activeBusCount: 4,
-    tripsToday: 26,
-    updatedAt: new Date(Date.now() - 12 * 60_000).toISOString(),
-  },
-  {
-    id: "r-2",
-    routeCode: "PITX-SNE-02",
-    startRoute: "PITX",
-    endRoute: "SM North EDSA",
-    estimatedDurationMinutes: 52,
-    status: "active",
-    activeBusCount: 6,
-    tripsToday: 31,
-    updatedAt: new Date(Date.now() - 8 * 60_000).toISOString(),
-  },
-  {
-    id: "r-3",
-    routeCode: "PITX-FV-03",
-    startRoute: "PITX",
-    endRoute: "Fairview",
-    estimatedDurationMinutes: 69,
-    status: "active",
-    activeBusCount: 5,
-    tripsToday: 23,
-    updatedAt: new Date(Date.now() - 26 * 60_000).toISOString(),
-  },
-  {
-    id: "r-4",
-    routeCode: "PITX-MON-04",
-    startRoute: "PITX",
-    endRoute: "Monumento",
-    estimatedDurationMinutes: 58,
-    status: "paused",
-    activeBusCount: 0,
-    tripsToday: 7,
-    updatedAt: new Date(Date.now() - 50 * 60_000).toISOString(),
-  },
-];
+type ApiTerminal = { terminal_name?: string } | string | null | undefined;
+
+type ApiRouteDoc = {
+  _id: string;
+  route_code: string;
+  route_name?: string;
+  start_terminal_id?: ApiTerminal;
+  end_terminal_id?: ApiTerminal;
+  status?: string;
+  updatedAt?: string;
+  active_buses_count?: number;
+};
+
+function terminalLabel(terminal: ApiTerminal): string {
+  if (terminal && typeof terminal === "object" && "terminal_name" in terminal) {
+    return String(terminal.terminal_name ?? "");
+  }
+  return typeof terminal === "string" ? terminal : "";
+}
+
+function mapApiStatusToRow(status: string | undefined): RouteStatus {
+  return status === "active" ? "active" : "paused";
+}
+
+function mapApiRouteToRow(route: ApiRouteDoc): RouteRow {
+  const start = terminalLabel(route.start_terminal_id);
+  const end = terminalLabel(route.end_terminal_id);
+  return {
+    id: String(route._id),
+    routeCode: route.route_code,
+    routeName: route.route_name?.trim() ?? "",
+    startRoute: start || (route.route_name?.split("-")[0]?.trim() ?? "—"),
+    endRoute: end || (route.route_name?.split("-")[1]?.trim() ?? "—"),
+    status: mapApiStatusToRow(route.status),
+    active_buses_count: route.active_buses_count ?? 0,
+    updatedAt: route.updatedAt ?? new Date().toISOString(),
+  };
+}
 
 export default function RoutesPage() {
-  const [routes, setRoutes] = useState<RouteRow[]>(INITIAL_ROUTES);
+  // Imported Hooks
+  const { getRoutes } = useGetRoutes();
+
+  // Ref Hooks
+  const fetchRoutesRef = useRef(getRoutes);
+
+  // Ref Hooks Effect
+  useEffect(() => {
+    fetchRoutesRef.current = getRoutes;
+  }, [getRoutes]);
+
+  // Route Summary Counts States
+  const [routeSummaryCounts, setRouteSummaryCounts] = useState({
+    total_routes: 0,
+    active_routes: 0,
+    inactive_routes: 0,
+    active_buses: 0,
+  });
+
+  const [routes, setRoutes] = useState<RouteRow[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
-  const stats = useMemo(() => {
-    const active = routes.filter((r) => r.status === "active").length;
-    const paused = routes.filter((r) => r.status === "paused").length;
-    const buses = routes.reduce((acc, r) => acc + r.activeBusCount, 0);
-    const trips = routes.reduce((acc, r) => acc + r.tripsToday, 0);
-    return { active, paused, buses, trips };
-  }, [routes]);
+  useEffect(() => {
+    const loadRoutes = async () => {
+      const data = await fetchRoutesRef.current();
+      if (data?.success && data.counts) {
+        setRouteSummaryCounts(data.counts);
+      }
+      if (data?.success && Array.isArray(data.data)) {
+        setRoutes((data.data as ApiRouteDoc[]).map(mapApiRouteToRow));
+      }
+    };
+    loadRoutes();
+  }, []);
 
   return (
     <div className="space-y-6 pb-6 pt-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Route Management</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Route Management
+          </h1>
           <p className="text-sm text-base-content/70">
-            Manage route records, monitor route status, and quickly add new routes for terminal operations.
+            Manage route records, monitor route status, and quickly add new
+            routes for terminal operations.
           </p>
         </div>
         <AddRoute routes={routes} setRoutes={setRoutes} setToast={setToast} />
@@ -84,20 +104,24 @@ export default function RoutesPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="text-sm text-base-content/70">Total routes</div>
-          <div className="mt-2 text-3xl font-bold">{routes.length}</div>
+          <div className="mt-2 text-3xl font-bold">{routeSummaryCounts.total_routes}</div>
         </div>
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="text-sm text-base-content/70">Active routes</div>
-          <div className="mt-2 text-3xl font-bold text-success">{stats.active}</div>
+          <div className="mt-2 text-3xl font-bold text-success">
+            {routeSummaryCounts.active_routes}
+          </div>
         </div>
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Paused routes</div>
-          <div className="mt-2 text-3xl font-bold text-warning">{stats.paused}</div>
+          <div className="text-sm text-base-content/70">Inactive routes</div>
+          <div className="mt-2 text-3xl font-bold text-warning">
+            {routeSummaryCounts.inactive_routes}
+          </div>
         </div>
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-          <div className="text-sm text-base-content/70">Trips today</div>
-          <div className="mt-2 text-3xl font-bold">{stats.trips}</div>
-          <div className="text-xs text-base-content/60">{stats.buses} active buses across all routes</div>
+          <div className="text-sm text-base-content/70">Active buses</div>
+          <div className="mt-2 text-3xl font-bold text-info">{routeSummaryCounts.active_buses}</div>
+          <div className="text-xs text-base-content/60">Across all routes</div>
         </div>
       </div>
 

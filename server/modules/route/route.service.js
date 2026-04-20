@@ -1,12 +1,52 @@
 import Route from "./route.model.js"; // Model
+import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
   async getAllRoutes() {
-    const routes = await Route.find()
-      .populate("start_terminal_id")
-      .populate("end_terminal_id");
-    return routes;
+    const [
+      routes,
+      totalRoutes,
+      activeRoutes,
+      inactiveRoutes,
+      activeBusesAcrossRoutes,
+      activeBusesByRoute,
+    ] = await Promise.all([
+      Route.find().populate("start_terminal_id").populate("end_terminal_id"),
+      Route.countDocuments(),
+      Route.countDocuments({ status: "active" }),
+      Route.countDocuments({ status: "inactive" }),
+      BusAssignment.distinct("bus_id", { assignment_status: "active" }).then(
+        (busIds) => busIds.length,
+      ),
+      BusAssignment.aggregate([
+        { $match: { assignment_status: "active" } },
+        { $group: { _id: "$route_id", busIds: { $addToSet: "$bus_id" } } },
+        { $project: { active_buses_count: { $size: "$busIds" } } },
+      ]),
+    ]);
+
+    const activeBusesCountByRouteId = new Map(
+      activeBusesByRoute.map((row) => [String(row._id), row.active_buses_count]),
+    );
+
+    const routesWithActiveBuses = routes.map((route) => {
+      const plain = route.toObject();
+      return {
+        ...plain,
+        active_buses_count: activeBusesCountByRouteId.get(String(route._id)) ?? 0,
+      };
+    });
+
+    return {
+      routes: routesWithActiveBuses,
+      counts: {
+        total_routes: totalRoutes,
+        active_routes: activeRoutes,
+        inactive_routes: inactiveRoutes,
+        active_buses: activeBusesAcrossRoutes,
+      },
+    };
   },
   // CREATE ROUTE ===================================================================
   async createRoute(routeData) {
@@ -106,7 +146,14 @@ export const RouteService = {
       error.statusCode = 404;
       throw error;
     }
-    return route;
+    const busIds = await BusAssignment.distinct("bus_id", {
+      assignment_status: "active",
+      route_id: route._id,
+    });
+    return {
+      ...route.toObject(),
+      active_buses_count: busIds.length,
+    };
   },
   // UPDATE ROUTE BY ID ===================================================================
   async updateRouteById(id, updateData) {

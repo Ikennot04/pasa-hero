@@ -8,12 +8,11 @@ export type RouteStatus = "active" | "paused";
 export type RouteRow = {
   id: string;
   routeCode: string;
+  routeName: string;
   startRoute: string;
   endRoute: string;
-  estimatedDurationMinutes: number;
   status: RouteStatus;
-  activeBusCount: number;
-  tripsToday: number;
+  active_buses_count: number;
   updatedAt: string;
 };
 
@@ -40,7 +39,8 @@ export default function Routes({ routes }: RoutesProps) {
     return routes.filter((row) => {
       if (statusFilter !== "all" && row.status !== statusFilter) return false;
       if (!lowered) return true;
-      const haystack = `${row.routeCode} ${row.startRoute} ${row.endRoute}`.toLowerCase();
+      const haystack =
+        `${row.routeCode} ${row.routeName} ${row.startRoute} ${row.endRoute}`.toLowerCase();
       return haystack.includes(lowered);
     });
   }, [routes, query, statusFilter]);
@@ -56,7 +56,7 @@ export default function Routes({ routes }: RoutesProps) {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Code, start route, end route"
+            placeholder="Code, name, start or end route"
             className="input input-bordered w-full"
           />
         </label>
@@ -83,7 +83,6 @@ export default function Routes({ routes }: RoutesProps) {
             <tr>
               <th>Route</th>
               <th>Start route → End route</th>
-              <th>ETA</th>
               <th>Status</th>
               <th>Active buses</th>
               <th>Updated</th>
@@ -93,7 +92,7 @@ export default function Routes({ routes }: RoutesProps) {
           <tbody>
             {filteredRoutes.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center text-sm text-base-content/60">
+                <td colSpan={6} className="text-center text-sm text-base-content/60">
                   No routes found for your search/filter.
                 </td>
               </tr>
@@ -101,12 +100,18 @@ export default function Routes({ routes }: RoutesProps) {
               filteredRoutes.map((row) => (
                 <tr key={row.id}>
                   <td>
-                    <div className="font-semibold">{row.routeCode}</div>
+                    {row.routeName ? (
+                      <>
+                        <div className="font-semibold">{row.routeName}</div>
+                        <div className="text-sm text-base-content/60">{row.routeCode}</div>
+                      </>
+                    ) : (
+                      <div className="font-semibold">{row.routeCode}</div>
+                    )}
                   </td>
                   <td className="whitespace-nowrap">
                     {row.startRoute} → {row.endRoute}
                   </td>
-                  <td className="whitespace-nowrap">{row.estimatedDurationMinutes} min</td>
                   <td>
                     <span
                       className={`badge badge-outline capitalize ${row.status === "active" ? "badge-success" : "badge-warning"}`}
@@ -114,11 +119,11 @@ export default function Routes({ routes }: RoutesProps) {
                       {row.status}
                     </span>
                   </td>
-                  <td>{row.activeBusCount}</td>
+                  <td>{row.active_buses_count}</td>
                   <td className="text-sm text-base-content/70">{formatTimeAgo(row.updatedAt)}</td>
                   <td>
                     <Link
-                      href={`/admin/routes/details?routeId=${encodeURIComponent(row.id)}`}
+                      href={`/admin/routes/${encodeURIComponent(row.id)}`}
                       className="btn btn-sm btn-outline"
                     >
                       View details

@@ -13,10 +13,11 @@ type RouteStopRow = {
 type AddBusStopProps = {
   routeId: string | null | undefined;
   activeStops: RouteStopRow[];
-  onAddStop: (payload: { stopName: string; latitude: number; longitude: number }) => {
-    ok: boolean;
-    message: string;
-  };
+  onAddStop: (payload: {
+    stopName: string;
+    latitude: number;
+    longitude: number;
+  }) => Promise<{ ok: boolean; message: string }>;
   onToast: (message: string) => void;
 };
 
@@ -77,7 +78,7 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
     setNewStopLongitude(Number(lng.toFixed(6)));
   }
 
-  function onSubmitAddStop() {
+  async function onSubmitAddStop() {
     const stopName = newStopName.trim();
     if (!stopName) {
       onToast("Please enter a stop name.");
@@ -88,7 +89,7 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
       return;
     }
 
-    const result = onAddStop({
+    const result = await onAddStop({
       stopName,
       latitude: Number(newStopLatitude.toFixed(6)),
       longitude: Number(newStopLongitude.toFixed(6)),
@@ -183,7 +184,11 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
             <button type="button" className="btn btn-ghost" onClick={() => setOpenAddStopModal(false)}>
               Cancel
             </button>
-            <button type="button" className="btn bg-[#0062CA] text-white" onClick={onSubmitAddStop}>
+            <button
+              type="button"
+              className="btn bg-[#0062CA] text-white"
+              onClick={() => void onSubmitAddStop()}
+            >
               Add stop
             </button>
           </div>

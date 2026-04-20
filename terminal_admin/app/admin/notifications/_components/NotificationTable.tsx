@@ -1,14 +1,14 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+
 import {
   busRefLabel,
   routeRefLabel,
-  scopeSummary,
   senderRefLabel,
   terminalRefLabel,
   type NotificationFields,
   type NotificationPriority,
-  type NotificationScope,
 } from "../terminalBroadcastCatalog";
 
 function formatDateTime(iso: string) {
@@ -26,19 +26,24 @@ const TYPE_LABEL: Record<NotificationFields["notification_type"], string> = {
   full: "Full",
   skipped_stop: "Skipped stop",
   info: "Info",
+  arrival_reported: "Arrival reported",
+  arrival_confirmed: "Arrival confirmed",
+  departure_reported: "Departure reported",
+  departure_confirmed: "Departure confirmed",
+  other: "Other",
+  custom: "Custom",
 };
 
+function notificationTypeLabel(t: NotificationFields["notification_type"]) {
+  return TYPE_LABEL[t] ?? String(t).replace(/_/g, " ");
+}
+
 export type PriorityFilter = "all" | NotificationPriority;
-export type ScopeFilter = "all" | NotificationScope;
 
 function priorityBadge(p: NotificationPriority) {
   if (p === "high") return <span className="badge badge-error">High</span>;
   if (p === "medium") return <span className="badge badge-warning">Medium</span>;
   return <span className="badge badge-ghost badge-sm">Low</span>;
-}
-
-function scopeBadge(scope: NotificationScope) {
-  return <span className="badge badge-outline badge-sm capitalize">{scope}</span>;
 }
 
 export type NotificationTableProps = {
@@ -48,8 +53,6 @@ export type NotificationTableProps = {
   onSearchChange: (value: string) => void;
   priorityFilter: PriorityFilter;
   onPriorityFilterChange: (value: PriorityFilter) => void;
-  scopeFilter: ScopeFilter;
-  onScopeFilterChange: (value: ScopeFilter) => void;
 };
 
 export default function NotificationTable({
@@ -59,9 +62,31 @@ export default function NotificationTable({
   onSearchChange,
   priorityFilter,
   onPriorityFilterChange,
-  scopeFilter,
-  onScopeFilterChange,
 }: NotificationTableProps) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const totalRows = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, priorityFilter, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sorted.slice(start, start + pageSize);
+  }, [sorted, currentPage, pageSize]);
+
+  const rangeStart = totalRows === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const rangeEnd = totalRows === 0 ? 0 : Math.min(currentPage * pageSize, totalRows);
+
   return (
     <>
       <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
@@ -91,24 +116,24 @@ export default function NotificationTable({
             </select>
           </label>
 
-          <label className="form-control w-full max-w-xs">
-            <span className="label-text text-sm font-medium">Scope</span>
+          <label className="form-control w-full max-w-40">
+            <span className="label-text text-sm font-medium">Rows per page</span>
             <select
               className="select select-bordered w-full"
-              value={scopeFilter}
-              onChange={(e) => onScopeFilterChange(e.target.value as ScopeFilter)}
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
             >
-              <option value="all">All</option>
-              <option value="terminal">Terminal</option>
-              <option value="route">Route</option>
-              <option value="bus">Bus</option>
-              <option value="system">System</option>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
             </select>
           </label>
 
           <p className="text-sm text-base-content/70 xl:pb-2">
-            Showing <span className="font-medium">{sorted.length}</span> of{" "}
-            <span className="font-medium">{scopedLength}</span>
+            Showing <span className="font-medium">{rangeStart}</span>-{" "}
+            <span className="font-medium">{rangeEnd}</span> of{" "}
+            <span className="font-medium">{totalRows}</span> filtered (
+            <span className="font-medium">{scopedLength}</span> total)
           </p>
         </div>
       </div>
@@ -119,7 +144,6 @@ export default function NotificationTable({
             <tr className="border-base-300">
               <th>Created</th>
               <th>Updated</th>
-              <th>Scope</th>
               <th>Sender</th>
               <th>Terminal</th>
               <th>Route</th>
@@ -131,22 +155,18 @@ export default function NotificationTable({
             </tr>
           </thead>
           <tbody>
-            {sorted.length === 0 ? (
+            {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="text-center text-sm text-base-content/60 py-12">
+                <td colSpan={10} className="text-center text-sm text-base-content/60 py-12">
                   Nothing matches your filters.
                 </td>
               </tr>
             ) : (
-              sorted.map((n) => (
+              paginatedRows.map((n) => (
                 <tr key={n.id} className="border-base-200 align-top">
                   <td className="whitespace-nowrap text-sm">{formatDateTime(n.createdAt)}</td>
                   <td className="whitespace-nowrap text-sm text-base-content/80">
                     {formatDateTime(n.updatedAt)}
-                  </td>
-                  <td>
-                    {scopeBadge(n.scope)}
-                    <div className="text-xs text-base-content/60 mt-1 max-w-44">{scopeSummary(n)}</div>
                   </td>
                   <td className="max-w-40 text-sm">{senderRefLabel(n.sender_id)}</td>
                   <td className="max-w-36 text-sm">{terminalRefLabel(n.terminal_id)}</td>
@@ -157,7 +177,7 @@ export default function NotificationTable({
                     <span className="line-clamp-3">{n.message}</span>
                   </td>
                   <td>
-                    <span className="badge badge-ghost ">{TYPE_LABEL[n.notification_type]}</span>
+                    <span className="badge badge-ghost ">{notificationTypeLabel(n.notification_type)}</span>
                   </td>
                   <td>{priorityBadge(n.priority)}</td>
                 </tr>
@@ -165,6 +185,34 @@ export default function NotificationTable({
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100 px-4 py-3 shadow-sm">
+        <p className="text-sm text-base-content/70">
+          Page <span className="font-medium">{totalRows === 0 ? 0 : currentPage}</span> of{" "}
+          <span className="font-medium">{totalRows === 0 ? 0 : totalPages}</span>
+        </p>
+        <div className="join">
+          <button
+            type="button"
+            className="btn btn-sm join-item"
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage <= 1 || totalRows === 0}
+          >
+            Prev
+          </button>
+          <button type="button" className="btn btn-sm join-item btn-ghost pointer-events-none">
+            {totalRows === 0 ? 0 : currentPage}
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm join-item"
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage >= totalPages || totalRows === 0}
+          >
+            Next
+          </button>
+        </div>
       </div>
     </>
   );
