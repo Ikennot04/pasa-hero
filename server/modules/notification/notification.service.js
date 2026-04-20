@@ -1,5 +1,9 @@
 import Notification from "./notification.model.js";
+import Route from "../route/route.model.js";
 import Terminal from "../terminal/terminal.model.js";
+import User from "../user/user.model.js";
+
+const TERMINAL_STAFF_ROLES = ["terminal admin", "operator"];
 
 const TERMINAL_OPERATION_NOTIFICATION_TYPES = [
   "arrival_reported",
@@ -50,10 +54,60 @@ export const NotificationService = {
       throw new Error("Terminal not found");
     }
 
-    const query = Notification.find({ terminal_id: terminalId }).sort({
-      createdAt: -1,
-    });
-    return populateNotificationRefs(query);
+    const routeIdStrs = (
+      await Route.find({
+        $or: [
+          { start_terminal_id: terminalId },
+          { end_terminal_id: terminalId },
+        ],
+      })
+        .select("_id")
+        .lean()
+    ).map((r) => String(r._id));
+
+    const visibleFilter = {
+      $or: [
+        { terminal_id: terminalId },
+        ...(routeIdStrs.length
+          ? [{ route_id: { $in: routeIdStrs } }]
+          : []),
+      ],
+    };
+
+    const [notifications, visibleLean, staffUsers] = await Promise.all([
+      populateNotificationRefs(
+        Notification.find({ terminal_id: terminalId }).sort({ createdAt: -1 }),
+      ),
+      Notification.find(visibleFilter)
+        .select("sender_id priority")
+        .sort({ createdAt: -1 })
+        .lean(),
+      User.find({
+        role: { $in: TERMINAL_STAFF_ROLES },
+        assigned_terminal: terminal._id,
+      })
+        .select("_id")
+        .lean(),
+    ]);
+
+    const staffIdSet = new Set(staffUsers.map((u) => String(u._id)));
+
+    const visible_for_terminal = visibleLean.length;
+    const from_terminal_staff = visibleLean.filter((n) =>
+      staffIdSet.has(String(n.sender_id)),
+    ).length;
+    const high_priority = visibleLean.filter(
+      (n) => n.priority === "high",
+    ).length;
+
+    return {
+      notifications,
+      counts: {
+        visible_for_terminal,
+        from_terminal_staff,
+        high_priority,
+      },
+    };
   },
 
   // GET TODAY'S NOTIFICATIONS BY TERMINAL =================================
