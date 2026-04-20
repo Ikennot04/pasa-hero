@@ -1,42 +1,93 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import CreateNotificationModal from "./_components/CreateNotificationModal";
 import NotificationTable, {
   type PriorityFilter,
-  type ScopeFilter,
 } from "./_components/NotificationTable";
-import { buildInitialNotifications } from "./terminalBroadcastMock";
+import { useGetNotifications } from "./_hooks/useGetNotification";
 import {
-  busRefLabel,
-  MOCK_TERMINAL_SENDER_ID,
-  notificationVisibleAtTerminal,
-  routeRefLabel,
-  scopeSummary,
+  normalizeNotification,
   senderRefLabel,
   terminalRefLabel,
+  busRefLabel,
+  routeRefLabel,
+  scopeSummary,
+  type NotificationApiRecord,
   type NotificationFields,
 } from "./terminalBroadcastCatalog";
-import { DEFAULT_TERMINAL_NAME } from "./terminalNotificationsMock";
+
+type TerminalNotificationsPayload = {
+  notifications: NotificationApiRecord[];
+  counts: {
+    visible_for_terminal: number;
+    from_terminal_staff: number;
+    high_priority: number;
+  };
+};
 
 export default function NotificationsPage() {
-  const [mounted, setMounted] = useState(false);
+  const { getNotifications } = useGetNotifications();
   const [items, setItems] = useState<NotificationFields[]>([]);
+  const [counts, setCounts] = useState({
+    visible_for_terminal: 0,
+    from_terminal_staff: 0,
+    high_priority: 0,
+  });
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
-  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+
+  const loadNotifications = useCallback(async () => {
+    const data = await getNotifications();
+
+    if (!data) {
+      setToast("Failed to load notifications");
+      setItems([]);
+      setCounts({
+        visible_for_terminal: 0,
+        from_terminal_staff: 0,
+        high_priority: 0,
+      });
+      setLoading(false);
+      return;
+    }
+
+    if (data?.success && data.data) {
+      const payload = data.data as TerminalNotificationsPayload;
+      const raw = payload.notifications ?? [];
+      setItems(raw.map(normalizeNotification));
+      setCounts(
+        payload.counts ?? {
+          visible_for_terminal: 0,
+          from_terminal_staff: 0,
+          high_priority: 0,
+        },
+      );
+    } else {
+      const message =
+        typeof data?.message === "string" ? data.message : "Failed to load notifications";
+      setToast(message);
+      setItems([]);
+      setCounts({
+        visible_for_terminal: 0,
+        from_terminal_staff: 0,
+        high_priority: 0,
+      });
+    }
+    setLoading(false);
+  }, [getNotifications]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      setItems(buildInitialNotifications());
-      setMounted(true);
+    const t = window.setTimeout(() => {
+      void loadNotifications();
     }, 0);
-    return () => clearTimeout(t);
-  }, []);
+    return () => window.clearTimeout(t);
+  }, [loadNotifications]);
 
   useEffect(() => {
     if (!toast) return;
@@ -44,16 +95,16 @@ export default function NotificationsPage() {
     return () => clearTimeout(id);
   }, [toast]);
 
-  const scoped = useMemo(
-    () => items.filter(notificationVisibleAtTerminal),
-    [items],
-  );
+  const terminalBadgeLabel = useMemo(() => {
+    const first = items[0]?.terminal_id;
+    const name = terminalRefLabel(first ?? null);
+    return name !== "—" ? name : "Terminal";
+  }, [items]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return scoped.filter((n) => {
+    return items.filter((n) => {
       if (priorityFilter !== "all" && n.priority !== priorityFilter) return false;
-      if (scopeFilter !== "all" && n.scope !== scopeFilter) return false;
       if (!q) return true;
       return (
         n.title.toLowerCase().includes(q) ||
@@ -65,7 +116,7 @@ export default function NotificationsPage() {
         scopeSummary(n).toLowerCase().includes(q)
       );
     });
-  }, [scoped, search, priorityFilter, scopeFilter]);
+  }, [items, search, priorityFilter]);
 
   const sorted = useMemo(
     () =>
@@ -74,16 +125,6 @@ export default function NotificationsPage() {
       ),
     [filtered],
   );
-
-  const stats = useMemo(() => {
-    const fromTerminal = scoped.filter((n) => n.sender_id === MOCK_TERMINAL_SENDER_ID);
-    const high = scoped.filter((n) => n.priority === "high").length;
-    return {
-      total: scoped.length,
-      fromTerminal: fromTerminal.length,
-      high,
-    };
-  }, [scoped]);
 
   const onCreated = (n: NotificationFields) => {
     setItems((prev) => [n, ...prev]);
@@ -97,7 +138,7 @@ export default function NotificationsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Notifications</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-outline">{DEFAULT_TERMINAL_NAME}</span>
+          <span className="badge badge-outline">{terminalBadgeLabel}</span>
           <Link href="/admin/dashboard" className="btn btn-ghost">
             Dashboard
           </Link>
@@ -114,7 +155,7 @@ export default function NotificationsPage() {
         </div>
       ) : null}
 
-      {!mounted ? (
+      {loading ? (
         <div className="rounded-xl border border-base-300 bg-base-100 p-10 text-center text-sm text-base-content/60">
           Loading notifications…
         </div>
@@ -125,36 +166,34 @@ export default function NotificationsPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">
                 Visible for terminal
               </p>
-              <p className="mt-1 text-2xl font-semibold">{stats.total}</p>
+              <p className="mt-1 text-2xl font-semibold">{counts.visible_for_terminal}</p>
               <p className="mt-1 text-xs text-base-content/60">
-                {DEFAULT_TERMINAL_NAME} and related route/bus targets
+                All notifications visible for this terminal and its routes
               </p>
             </div>
             <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">
                 From terminal staff
               </p>
-              <p className="mt-1 text-2xl font-semibold">{stats.fromTerminal}</p>
-              <p className="mt-1 text-xs text-base-content/60">{senderRefLabel(MOCK_TERMINAL_SENDER_ID)}</p>
+              <p className="mt-1 text-2xl font-semibold">{counts.from_terminal_staff}</p>
+              <p className="mt-1 text-xs text-base-content/60">Sent by terminal admins and operators</p>
             </div>
             <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">
                 High priority
               </p>
-              <p className="mt-1 text-2xl font-semibold text-error">{stats.high}</p>
-              <p className="mt-1 text-xs text-base-content/60">In current list</p>
+              <p className="mt-1 text-2xl font-semibold text-error">{counts.high_priority}</p>
+              <p className="mt-1 text-xs text-base-content/60">In the visible set</p>
             </div>
           </div>
 
           <NotificationTable
             sorted={sorted}
-            scopedLength={scoped.length}
+            scopedLength={items.length}
             search={search}
             onSearchChange={setSearch}
             priorityFilter={priorityFilter}
             onPriorityFilterChange={setPriorityFilter}
-            scopeFilter={scopeFilter}
-            onScopeFilterChange={setScopeFilter}
           />
         </>
       )}

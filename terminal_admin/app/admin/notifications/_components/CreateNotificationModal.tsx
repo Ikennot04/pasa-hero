@@ -135,7 +135,10 @@ export default function CreateNotificationModal({ onCreated }: Props) {
         <div className="modal-box max-w-lg">
           <h3 className="font-bold text-lg">New notification</h3>
 
-          <form className="mt-4 space-y-3" onSubmit={handleSubmit(onSubmit)}>
+          <form
+            className="mt-4 space-y-4"
+            onSubmit={handleSubmit(onSubmit)}
+          >
             <label className="form-control w-full">
               <span className="label-text  font-medium">Title</span>
               <input
@@ -145,13 +148,13 @@ export default function CreateNotificationModal({ onCreated }: Props) {
                 {...register("title")}
               />
               {errors.title ? (
-                <span className="label-text-alt text-error">
+                <div className="label-text-alt text-error">
                   {errors.title.message}
-                </span>
+                </div>
               ) : null}
             </label>
 
-            <label className="form-control w-full">
+            <label className="form-control w-full mt-4">
               <span className="label-text  font-medium">Message</span>
               <textarea
                 className={`textarea textarea-bordered w-full min-h-24 ${errors.message ? "textarea-error" : ""}`}
@@ -159,13 +162,13 @@ export default function CreateNotificationModal({ onCreated }: Props) {
                 {...register("message")}
               />
               {errors.message ? (
-                <span className="label-text-alt text-error">
+                <div className="label-text-alt text-error">
                   {errors.message.message}
-                </span>
+                </div>
               ) : null}
             </label>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="form-control w-full">
                 <span className="label-text font-medium">
                   notification_type
