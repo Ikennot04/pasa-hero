@@ -71,6 +71,19 @@ async function seedNotifications() {
   await Notification.deleteMany({});
   await UserNotification.deleteMany({});
 
+  await User.updateMany(
+    {
+      email: {
+        $in: [
+          "pedro.reyes@email.com",
+          "maria.santos@email.com",
+          "rico.alvarez@email.com",
+        ],
+      },
+    },
+    { $set: { assigned_terminal: smTerminal._id } },
+  );
+
   const makeTerminalEvent = ({
     sender,
     bus,
@@ -392,6 +405,38 @@ async function seedNotifications() {
       type: "departure_confirmed",
       minutes: 51,
     }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus3,
+      route: route03C,
+      title: "SM Terminal — platform safety hold",
+      message:
+        "Hold departures on affected bays for equipment inspection; follow marshal instructions.",
+      type: "delay",
+      minutes: 72,
+      priority: "high",
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus1,
+      route: route01A,
+      title: "CEB-001 urgent passenger assistance",
+      message: "Marshal requested for priority boarding assistance at Bay 2.",
+      type: "info",
+      minutes: 68,
+      priority: "high",
+    }),
+    {
+      sender_id: String(terminalAdmin1._id),
+      terminal_id: String(smTerminal._id),
+      title: "Gate policy — high-priority advisory",
+      message:
+        "Terminal staff: enforce revised ID checks at south gates until end of shift.",
+      notification_type: "info",
+      priority: "high",
+      scope: "terminal",
+      createdAt: minutesAgo(64),
+    },
     {
       sender_id: String(superAdmin._id),
       terminal_id: String(smTerminal._id),
