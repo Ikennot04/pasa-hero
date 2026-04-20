@@ -43,6 +43,19 @@ export const NotificationService = {
     return populatedQuery;
   },
 
+  // GET ALL NOTIFICATIONS BY TERMINAL ====================================
+  async getAllNotificationsByTerminalId(terminalId) {
+    const terminal = await Terminal.findById(terminalId);
+    if (!terminal) {
+      throw new Error("Terminal not found");
+    }
+
+    const query = Notification.find({ terminal_id: terminalId }).sort({
+      createdAt: -1,
+    });
+    return populateNotificationRefs(query);
+  },
+
   // GET TODAY'S NOTIFICATIONS BY TERMINAL =================================
   async getTodaysNotificationsByTerminalId(terminalId) {
     const terminal = await Terminal.findById(terminalId);
