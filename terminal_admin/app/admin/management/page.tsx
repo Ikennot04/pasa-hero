@@ -78,12 +78,19 @@ function mapConfirmationHistory(
     .map((row) => {
       const kind =
         row.kind === "arrival" || row.kind === "departure" ? row.kind : null;
-      if (!kind || !row.at) return null;
+      const status =
+        row.action === "confirm"
+          ? ("confirmed" as const)
+          : row.action === "reject"
+            ? ("rejected" as const)
+            : null;
+      if (!kind || !row.at || !status) return null;
       return {
         id: String(row.terminal_log_id),
         busNumber: row.bus_number ?? "",
         routeName: row.route_name ?? "",
         kind,
+        status,
         at: new Date(row.at).toISOString(),
       };
     })
