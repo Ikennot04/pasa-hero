@@ -46,9 +46,9 @@ function getOccupancyStatus(occupancyCount, capacity) {
   return "empty";
 }
 
-/** April 17, 2026 — UTC (matches ?date=2026-04-17 on the API). */
-function utc2026_04_12(hour, minute = 0) {
-  return new Date(Date.UTC(2026, 3, 17, hour, minute, 0));
+/** April 21, 2026 — UTC (matches ?date=2026-04-21 on the API). */
+function utc2026_04_21(hour, minute = 0) {
+  return new Date(Date.UTC(2026, 3, 21, hour, minute, 0));
 }
 
 /** Extra SM assignments use these buses (not the main-seed CEB-003 / CEB-011 pair we keep for logs). */
@@ -139,7 +139,7 @@ export async function seedOperationalSummaryDemo() {
       { _id: smAssignments[i]._id },
       {
         $set: {
-          scheduled_arrival_at: utc2026_04_12(h, (i % 4) * 15),
+          scheduled_arrival_at: utc2026_04_21(h, (i % 4) * 15),
         },
       },
     );
@@ -165,7 +165,7 @@ export async function seedOperationalSummaryDemo() {
     route_id: use06F ? route06F._id : route03C._id,
     assignment_status: "active",
     assignment_result: "pending",
-    scheduled_arrival_at: utc2026_04_12(h, m),
+    scheduled_arrival_at: utc2026_04_21(h, m),
   }));
 
   await BusAssignment.insertMany(extraPayload);
@@ -210,8 +210,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b3._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(8, 0),
-      confirmation_time: utc2026_04_12(8, 5),
+      event_time: utc2026_04_21(8, 0),
+      confirmation_time: utc2026_04_21(8, 5),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -222,8 +222,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b3._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_12(12, 0),
-      confirmation_time: utc2026_04_12(12, 10),
+      event_time: utc2026_04_21(12, 0),
+      confirmation_time: utc2026_04_21(12, 10),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -234,8 +234,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[0]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(6, 15),
-      confirmation_time: utc2026_04_12(6, 18),
+      event_time: utc2026_04_21(6, 15),
+      confirmation_time: utc2026_04_21(6, 18),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -246,8 +246,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[0]._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_12(7, 25),
-      confirmation_time: utc2026_04_12(7, 28),
+      event_time: utc2026_04_21(7, 25),
+      confirmation_time: utc2026_04_21(7, 28),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -258,8 +258,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[8]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(16, 0),
-      confirmation_time: utc2026_04_12(16, 5),
+      event_time: utc2026_04_21(16, 0),
+      confirmation_time: utc2026_04_21(16, 5),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -270,8 +270,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[8]._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_12(16, 45),
-      confirmation_time: utc2026_04_12(16, 48),
+      event_time: utc2026_04_21(16, 45),
+      confirmation_time: utc2026_04_21(16, 48),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -283,8 +283,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b11._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(10, 0),
-      confirmation_time: utc2026_04_12(10, 3),
+      event_time: utc2026_04_21(10, 0),
+      confirmation_time: utc2026_04_21(10, 3),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -295,8 +295,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[1]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(13, 10),
-      confirmation_time: utc2026_04_12(13, 14),
+      event_time: utc2026_04_21(13, 10),
+      confirmation_time: utc2026_04_21(13, 14),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -307,8 +307,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[7]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(14, 50),
-      confirmation_time: utc2026_04_12(14, 55),
+      event_time: utc2026_04_21(14, 50),
+      confirmation_time: utc2026_04_21(14, 55),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -320,7 +320,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[3]._id,
       event_type: "arrival",
       status: "pending",
-      event_time: utc2026_04_12(9, 20),
+      event_time: utc2026_04_21(9, 20),
       confirmation_time: null,
       reported_by: operator._id,
       auto_detected: false,
@@ -331,7 +331,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[2]._id,
       event_type: "arrival",
       status: "pending",
-      event_time: utc2026_04_12(8, 40),
+      event_time: utc2026_04_21(8, 40),
       confirmation_time: null,
       reported_by: operator._id,
       auto_detected: false,
@@ -343,8 +343,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[5]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(11, 0),
-      confirmation_time: utc2026_04_12(11, 4),
+      event_time: utc2026_04_21(11, 0),
+      confirmation_time: utc2026_04_21(11, 4),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -355,7 +355,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[5]._id,
       event_type: "departure",
       status: "pending",
-      event_time: utc2026_04_12(11, 45),
+      event_time: utc2026_04_21(11, 45),
       confirmation_time: null,
       reported_by: operator._id,
       auto_detected: false,
@@ -366,8 +366,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[4]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(12, 5),
-      confirmation_time: utc2026_04_12(12, 8),
+      event_time: utc2026_04_21(12, 5),
+      confirmation_time: utc2026_04_21(12, 8),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -378,7 +378,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[4]._id,
       event_type: "departure",
       status: "pending",
-      event_time: utc2026_04_12(12, 55),
+      event_time: utc2026_04_21(12, 55),
       confirmation_time: null,
       reported_by: operator._id,
       auto_detected: false,
@@ -388,12 +388,12 @@ export async function seedOperationalSummaryDemo() {
 
   const totalSmAssignments = smAssignments.length + extraSpecs.length;
 
-  console.log("\n✅ Terminal operational summary demo (2026-04-17 UTC)");
+  console.log("\n✅ Terminal operational summary demo (2026-04-21 UTC)");
   console.log("   Terminal:", smTerminal.terminal_name, `(${smTerminal._id})`);
-  console.log("   Date: 04/17/2026 (UTC)");
+  console.log("   Date: 04/21/2026 (UTC)");
   console.log("   TerminalLog events:", logs.length);
   console.log("   SM assignments (scheduled that day):", totalSmAssignments);
-  console.log("\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=2026-04-17");
+  console.log("\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=2026-04-21");
   console.log("   Expected ≈ scheduled: 11, present: 3, departed_today: 3, pending: 4 (2+2)\n");
 }
 
@@ -1598,7 +1598,7 @@ const seedData = async () => {
     // ==========================================
     // 8. CREATE BUS ASSIGNMENTS
     // ==========================================
-    const today = new Date(2026, 3, 17);
+    const today = new Date(2026, 3, 21);
     today.setHours(0, 0, 0, 0);
 
     const assignments = await BusAssignment.insertMany([

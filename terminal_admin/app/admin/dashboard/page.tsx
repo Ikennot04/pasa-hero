@@ -153,7 +153,9 @@ export default function Dashboard() {
     // Terminal Summary
     const fetchTerminalSummary = async () => {
       const data = await fetchSummaryRef.current();
-      setTerminalSummary(data.data);
+      if (data?.success) {
+        setTerminalSummary(data?.data);
+      }
     };
     fetchTerminalSummary();
 
