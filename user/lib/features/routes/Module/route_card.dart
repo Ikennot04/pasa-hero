@@ -11,6 +11,7 @@ class RouteCard extends StatelessWidget {
   final bool showFollowButton;
   final bool isFollowing;
   final int activeBuses;
+  final VoidCallback? onFollowPressed;
 
   const RouteCard({
     super.key,
@@ -21,6 +22,7 @@ class RouteCard extends StatelessWidget {
     this.showFollowButton = false,
     this.isFollowing = false,
     this.activeBuses = 0,
+    this.onFollowPressed,
   });
 
   Color _getStatusColor() {
@@ -127,14 +129,14 @@ class RouteCard extends StatelessWidget {
                 ),
               if (showFollowButton && status == null)
                 FollowButton(
-                  onPressed: () {},
+                  onPressed: onFollowPressed,
                   isFollowing: isFollowing,
                 ),
               if (showFollowButton && status != null)
                 Container(
                   margin: const EdgeInsets.only(left: 8),
                   child: FollowButton(
-                    onPressed: () {},
+                    onPressed: onFollowPressed,
                     isFollowing: isFollowing,
                   ),
                 ),

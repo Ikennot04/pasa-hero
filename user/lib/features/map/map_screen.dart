@@ -1,23 +1,22 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/models/nearby_operator.dart';
-import '../../core/models/bus_stop.dart';
-import '../../core/services/bus_stops_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/map/map_service.dart';
 import 'services/bus_stop_icon_service.dart';
+import 'services/firestore_bus_stop_markers_stream.dart';
 import 'services/operator_bus_icon_service.dart';
-import 'services/bus_stop_marker_service.dart';
 import 'services/route_service.dart';
 import 'services/map_style_service.dart';
 
-/// Main map screen: transportation-focused map with bus stops from Firestore.
+/// Main map screen: transportation-focused map with bus stops from Firestore streams.
 ///
 /// - Custom map style hides POIs, transit icons, building/admin labels; keeps roads.
-/// - Markers from Firestore [bus_stops] (name, stop code, route).
+/// - Bus stop [Marker]s from [FirestoreBusStopMarkersStream] ([bus_stops] or route doc [stops]).
 /// - User location remains visible (blue dot).
 /// - When [routeOrigin] and [routeDestination] are set, draws driving route polyline.
 class MapScreen extends StatefulWidget {
@@ -26,6 +25,9 @@ class MapScreen extends StatefulWidget {
     this.routeOrigin,
     this.routeDestination,
     this.nearbyOperators = const [],
+    this.onMapControllerReady,
+    this.routeCatalogHighlightPoints,
+    this.selectedRouteCodeForStopsStream,
   });
 
   /// Start of the route (e.g. closest bus stop to user). When set with [routeDestination], route is drawn.
@@ -36,6 +38,15 @@ class MapScreen extends StatefulWidget {
 
   /// Live operator positions for the current Near Me route filter (bus image marker).
   final List<NearbyOperator> nearbyOperators;
+
+  /// Called when the [GoogleMap] is ready; use for [GoogleMapController.animateCamera] from parent.
+  final ValueChanged<GoogleMapController>? onMapControllerReady;
+
+  /// Near Me: Firestore route path (coordinates / stops / route_code) as a blue polyline.
+  final List<LatLng>? routeCatalogHighlightPoints;
+
+  /// When null, stream loads [bus_stops]; when set, loads [stops] from [routes] or [route_code] doc.
+  final String? selectedRouteCodeForStopsStream;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -55,17 +66,19 @@ class _MapScreenState extends State<MapScreen> {
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
   
+  /// User location + operator markers (bus stops come from [_busStopMarkersStream]).
   Set<Marker> _markers = {};
-  Set<Marker> _busStopMarkers = {};
+  Stream<List<Marker>>? _busStopMarkersStream;
+  bool _mapStopIconsReady = false;
+
   Set<Polyline> _routePolylines = {};
+  Polyline? _catalogRouteHighlightPolyline;
   Set<Circle> _userLocationCircles = {};
   String? _mapStyleJson;
 
   /// Radius in meters for the faded blue "you are here" glow when away from a bus stop.
   static const double _userLocationGlowRadiusMeters = 120.0;
 
-  final BusStopsService _busStopsService = BusStopsService();
-  final BusStopMarkerService _markerService = BusStopMarkerService();
   final RouteService _routeService = RouteService();
   final MapStyleService _mapStyleService = MapStyleService();
   final BusStopIconService _iconService = BusStopIconService.instance;
@@ -91,28 +104,71 @@ class _MapScreenState extends State<MapScreen> {
   bool _showDebugInfo = false; // Set to false by default for better performance
   String _locationStatus = 'Initializing...'; // Status message for debug
 
+  Set<Polyline> get _allPolylines {
+    final merged = Set<Polyline>.from(_routePolylines);
+    if (_catalogRouteHighlightPolyline != null) {
+      merged.add(_catalogRouteHighlightPolyline!);
+    }
+    return merged;
+  }
+
+  static bool _sameLatLngPath(List<LatLng>? a, List<LatLng>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return a == b;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].latitude != b[i].latitude || a[i].longitude != b[i].longitude) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _applyCatalogRouteHighlight(List<LatLng>? pts) {
+    if (pts == null || pts.length < 2) {
+      _catalogRouteHighlightPolyline = null;
+      return;
+    }
+    _catalogRouteHighlightPolyline = Polyline(
+      polylineId: const PolylineId('near_me_route_catalog_highlight'),
+      points: List<LatLng>.from(pts),
+      color: const Color(0xFF2563EB),
+      width: 5,
+      geodesic: true,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    _applyCatalogRouteHighlight(widget.routeCatalogHighlightPoints);
     _loadMapStyle();
     // Show all Cebu bus stops (sample on first frame, then from Firestore)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      Future.wait([
-        _iconService.loadIcons(),
-        _operatorBusIcon.load(context),
-      ]).then((_) {
-        if (mounted) setState(_applyMarkers);
+      try {
+        await _iconService.loadIcons();
+      } catch (_) {}
+      try {
+        await _operatorBusIcon.load(context);
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() {
+        _mapStopIconsReady = true;
+        _busStopMarkersStream = FirestoreBusStopMarkersStream.watchStopMarkers(
+          routeCode: widget.selectedRouteCodeForStopsStream,
+          icon: _iconService.defaultIcon,
+        );
+        _rebuildOverlayMarkers();
       });
-      if (mounted && _busStopMarkers.isEmpty) {
-        _applySampleBusStopMarkersCebu();
-      }
       if (mounted && widget.routeOrigin != null && widget.routeDestination != null) {
         _fetchAndDrawRoute(widget.routeOrigin!, widget.routeDestination!);
       }
     });
-    _loadAllCebuBusStops();
-    _initializeLocation();
+    // After first frame so the Activity is ready for permission / fused location.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _initializeLocation();
+    });
   }
 
   @override
@@ -126,8 +182,24 @@ class _MapScreenState extends State<MapScreen> {
         setState(() => _routePolylines = {});
       }
     }
+    if (!_sameLatLngPath(
+      oldWidget.routeCatalogHighlightPoints,
+      widget.routeCatalogHighlightPoints,
+    )) {
+      setState(() => _applyCatalogRouteHighlight(widget.routeCatalogHighlightPoints));
+    }
     if (!listEquals(oldWidget.nearbyOperators, widget.nearbyOperators)) {
-      setState(_applyMarkers);
+      setState(_rebuildOverlayMarkers);
+    }
+    if (oldWidget.selectedRouteCodeForStopsStream !=
+            widget.selectedRouteCodeForStopsStream &&
+        _mapStopIconsReady) {
+      setState(() {
+        _busStopMarkersStream = FirestoreBusStopMarkersStream.watchStopMarkers(
+          routeCode: widget.selectedRouteCodeForStopsStream,
+          icon: _iconService.defaultIcon,
+        );
+      });
     }
   }
 
@@ -174,10 +246,10 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
-    // Cancel location stream subscription
     _positionStreamSubscription?.cancel();
-    // Dispose map controller to prevent memory leaks
-    _mapController?.dispose();
+    // Do not call [GoogleMapController.dispose] — the [GoogleMap] platform view owns it;
+    // disposing here causes "disposed" / lifecycle errors when the widget rebuilds.
+    _mapController = null;
     super.dispose();
   }
 
@@ -205,36 +277,12 @@ class _MapScreenState extends State<MapScreen> {
     });
 
     try {
-      // Check if location services are enabled
-      print('🗺️ [MapScreen] Step 1: Checking if location services are enabled...');
-      bool serviceEnabled = await _locationService.isLocationServiceEnabled();
-      print('   📍 Location services enabled: $serviceEnabled');
-      
-      if (!serviceEnabled) {
-        print('   ❌ Location services are DISABLED - using default location');
-        // If location services disabled, use default location silently
-        setState(() {
-          _initialCameraPosition = MapService.getDefaultCameraPosition();
-          _isLoading = false;
-          _hasError = false;
-        });
-        if (showError && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Location services disabled. Using default location.'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        _isLocationRequestInProgress = false; // Reset guard
-        return;
-      }
-
-      // Request permission
-      print('🗺️ [MapScreen] Step 2: Requesting location permission...');
+      // Do not skip when isLocationServiceEnabled is false — OEMs can report wrong;
+      // [LocationService] still uses last-known and will error only if nothing works.
+      print('🗺️ [MapScreen] Step 1: Requesting location permission...');
       bool hasPermission = await _locationService.requestPermission();
       print('   📍 Permission granted: $hasPermission');
-      
+
       if (!hasPermission) {
         print('   ❌ Permission NOT granted - using default location');
         // If no permission, use default location silently
@@ -255,8 +303,7 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      // Get current position (optimized for low-end devices)
-      print('🗺️ [MapScreen] Step 3: Getting current position (optimized mode)...');
+      print('🗺️ [MapScreen] Step 2: Getting current position...');
       Position position = await _locationService.getCurrentPosition(
         preferLowAccuracy: _preferLowAccuracy,
         useCachedPosition: _useCachedPosition,
@@ -476,9 +523,7 @@ class _MapScreenState extends State<MapScreen> {
           _isLoading = false;
         });
         // Update marker immediately for manual re-center
-        _applyMarkers();
-        // Reload bus stops near the new position
-        _loadBusStopsNearUser(position.latitude, position.longitude);
+        _rebuildOverlayMarkers();
       }
       
       // Set up location stream if not already set up
@@ -548,12 +593,12 @@ class _MapScreenState extends State<MapScreen> {
   /// Called when the map is created and controller is available.
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
+    widget.onMapControllerReady?.call(controller);
     if (_mapStyleJson != null) {
       controller.setMapStyle(_mapStyleJson);
     }
-    // Ensure markers (including bus stops) are applied when map is ready
-    if (_busStopMarkers.isNotEmpty || _currentPosition != null) {
-      setState(() => _applyMarkers());
+    if (_currentPosition != null || widget.nearbyOperators.isNotEmpty) {
+      setState(() => _rebuildOverlayMarkers());
     }
     // Set initial camera position if we have a position and haven't set it yet
     if (_currentPosition != null && !_hasSetInitialCameraPosition) {
@@ -589,21 +634,27 @@ class _MapScreenState extends State<MapScreen> {
     await _positionStreamSubscription?.cancel();
     
     try {
-      // Check permissions first
       final hasPermission = await _locationService.requestPermission();
-      final serviceEnabled = await _locationService.isLocationServiceEnabled();
-      
-      if (!hasPermission || !serviceEnabled) {
-        print('⚠️ [MapScreen] Cannot set up location stream: permission or service not available');
+      if (!hasPermission) {
+        print('⚠️ [MapScreen] Cannot set up location stream: no permission');
         return;
       }
-      
-      // Set up location stream with low accuracy for battery efficiency
+
+      final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+      final locationSettings = isAndroid
+          ? AndroidSettings(
+              accuracy: LocationAccuracy.low,
+              distanceFilter: 10,
+              intervalDuration: const Duration(seconds: 2),
+              forceLocationManager: false,
+            )
+          : const LocationSettings(
+              accuracy: LocationAccuracy.low,
+              distanceFilter: 10,
+            );
+
       _positionStreamSubscription = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low,
-          distanceFilter: 10, // Only update if moved at least 10 meters
-        ),
+        locationSettings: locationSettings,
       ).listen(
         (Position position) {
           // Update marker position without moving camera
@@ -629,11 +680,8 @@ class _MapScreenState extends State<MapScreen> {
     
     setState(() {
       _currentPosition = position;
-      _applyMarkers(); // This updates the marker position in the Set<Marker>
+      _rebuildOverlayMarkers(); // This updates the marker position in the Set<Marker>
     });
-    
-    // Optionally reload bus stops near the new position (but don't move camera)
-    _loadBusStopsNearUser(position.latitude, position.longitude);
   }
 
   Future<void> _loadMapStyle() async {
@@ -647,19 +695,9 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  /// Fallback: create markers from sample Cebu bus stops.
-  void _applySampleBusStopMarkersCebu() {
-    final markers = _markerService.createSampleMarkers();
-    setState(() {
-      _busStopMarkers = markers;
-      _applyMarkers();
-    });
-    print('📍 [MapScreen] Applied ${markers.length} Cebu bus stop markers');
-  }
-
-  /// Rebuild _markers and _userLocationCircles from user location + bus stop markers.
-  void _applyMarkers() {
-    final Set<Marker> next = Set<Marker>.from(_busStopMarkers);
+  /// User location, operators, and circles (bus stops from Firestore stream).
+  void _rebuildOverlayMarkers() {
+    final Set<Marker> next = {};
     final Set<Circle> nextCircles = {};
     for (final op in widget.nearbyOperators) {
       next.add(
@@ -700,72 +738,14 @@ class _MapScreenState extends State<MapScreen> {
     _userLocationCircles = nextCircles;
   }
 
-  /// Build bus stop markers; uses green icon for the stop with [closestStopId].
-  void _applyBusStopMarkers(List<BusStop> stops, {String? closestStopId}) {
-    final markers = _markerService.createMarkersFromStops(stops, closestStopId: closestStopId);
-    setState(() {
-      _busStopMarkers = markers;
-      _applyMarkers();
-    });
-  }
-
-  /// Load all bus stops in Cebu (center). Used when user location is not yet available.
-  Future<void> _loadAllCebuBusStops() async {
-    try {
-      final result = await _busStopsService.getBusStopsInCebu();
-      if (mounted) {
-        _applyBusStopMarkers(result.stops, closestStopId: result.closestStopId);
-        print('📍 [MapScreen] Loaded ${result.stops.length} Cebu bus stops ${result.isRealData ? "(real)" : "(demo)"}');
-        if (!result.isRealData) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Showing demo bus stops. Enable "Places API" in Google Cloud Console to see real stops.',
-              ),
-              duration: Duration(seconds: 5),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('⚠️ [MapScreen] Error loading Cebu bus stops: $e');
-      if (mounted) _applySampleBusStopMarkersCebu();
-    }
-  }
-
-  /// Load bus stops using user location: closest (rankby=distance) + up to 60 in radius; highlight closest in green.
-  Future<void> _loadBusStopsNearUser(double userLat, double userLng) async {
-    try {
-      final result = await _busStopsService.getBusStopsWithClosestHighlighted(userLat, userLng);
-      if (mounted && result.stops.isNotEmpty) {
-        _applyBusStopMarkers(result.stops, closestStopId: result.closestStopId);
-        print('📍 [MapScreen] Loaded ${result.stops.length} stops; closest highlighted');
-        if (!result.isRealData) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Showing demo bus stops. Enable "Places API" to see real stops and closest to you.',
-              ),
-              duration: Duration(seconds: 5),
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('⚠️ [MapScreen] Error loading stops near user: $e');
-    }
-  }
-
-  /// Adds user location marker and reloads bus stops using user location (closest + city radius, highlight closest).
+  /// Adds user location marker when map is ready.
   void _addMarkerAsync(Position position) {
     Future.delayed(const Duration(milliseconds: 300), () {
       if (!mounted || _mapController == null) return;
       setState(() {
         _currentPosition = position;
-        _applyMarkers();
+        _rebuildOverlayMarkers();
       });
-      _loadBusStopsNearUser(position.latitude, position.longitude);
-      print('📍 [MapScreen] User at (${position.latitude}, ${position.longitude}); loading stops with closest highlighted');
     });
   }
 
@@ -779,24 +759,34 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Google Map with bus stop markers (key forces update when marker count changes)
-          GoogleMap(
-            key: ValueKey('map_${_busStopMarkers.isNotEmpty}_${_routePolylines.length}'),
-            initialCameraPosition:
-                _initialCameraPosition ?? MapService.getDefaultCameraPosition(),
-            onMapCreated: _onMapCreated,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            markers: _markers,
-            circles: _userLocationCircles,
-            polylines: _routePolylines,
-            trafficEnabled: _enableTrafficLayer,
-            mapType: MapService.getDefaultMapType(),
-            zoomControlsEnabled: false,
-            compassEnabled: true,
-            liteModeEnabled: false,
-            buildingsEnabled: true,
-            indoorViewEnabled: false,
+          StreamBuilder<List<Marker>>(
+            stream: _busStopMarkersStream ??
+                Stream<List<Marker>>.value(const <Marker>[]),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                debugPrint('Firestore bus stop markers: ${snapshot.error}');
+              }
+              final stopMarkers = snapshot.data ?? const <Marker>[];
+              final allMarkers = {..._markers, ...stopMarkers};
+              return GoogleMap(
+                key: ValueKey('map_${_routePolylines.length}'),
+                initialCameraPosition:
+                    _initialCameraPosition ?? MapService.getDefaultCameraPosition(),
+                onMapCreated: _onMapCreated,
+                myLocationEnabled: true,
+                myLocationButtonEnabled: false,
+                markers: allMarkers,
+                circles: _userLocationCircles,
+                polylines: _allPolylines,
+                trafficEnabled: _enableTrafficLayer,
+                mapType: MapService.getDefaultMapType(),
+                zoomControlsEnabled: false,
+                compassEnabled: true,
+                liteModeEnabled: false,
+                buildingsEnabled: true,
+                indoorViewEnabled: false,
+              );
+            },
           ),
 
           // Loading indicator overlay

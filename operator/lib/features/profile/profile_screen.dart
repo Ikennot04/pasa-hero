@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/driver_status_service.dart';
+import '../../../core/services/operator_location_sync_service.dart';
 import 'screen/profile_screen_data.dart';
 
 /// Operator profile screen shown after login.
@@ -473,6 +475,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (result != null && result != _currentRouteCode) {
       setState(() => _isLoading = true);
       final success = await ProfileDataService.updateOperatorRouteCode(result);
+      if (success) {
+        await OperatorLocationSyncService.instance
+            .mergeRouteCodeIntoOperatorLocation(result);
+      }
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -584,6 +590,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _signOut(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final db = FirebaseFirestore.instance;
+      // Mark operator account offline before sign out.
+      await db.collection('users').doc(user.uid).set({
+        'status': 0,
+        'online': 0,
+        'last_seen': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Mark operator live location offline then remove it from live map.
+      await db.collection(operatorLocationsCollection).doc(user.uid).set({
+        'status': 0,
+        'online': 0,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      await db.collection(operatorLocationsCollection).doc(user.uid).delete();
+    }
+    OperatorLocationSyncService.instance.stop();
     await FirebaseAuth.instance.signOut();
     if (context.mounted) {
       Navigator.of(context).pushReplacementNamed('/login');

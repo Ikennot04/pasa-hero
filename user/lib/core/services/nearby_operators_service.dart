@@ -12,8 +12,9 @@ class NearbyOperatorsService {
   final FirebaseFirestore _db;
 
   static const String collectionName = 'operator_locations';
-  /// Staleness window (server [updatedAt] when present).
-  static const Duration maxAge = Duration(hours: 24);
+  /// Staleness window (server [updatedAt] when present). Shorter window avoids
+  /// counting stale Firestore docs as "live" active drivers.
+  static const Duration maxAge = Duration(minutes: 45);
   /// Only used when both rider GPS and a **route filter** apply (optional cap for future use).
   static const double defaultMaxDistanceMeters = 300000;
   static const int _maxOperatorsWithoutUserGps = 50;
@@ -66,17 +67,38 @@ class NearbyOperatorsService {
     return null;
   }
 
-  /// When the driver has no route on their profile, still show them (live GPS doc exists).
-  /// Otherwise passengers who pick a route filter never see drivers who forgot Profile.
+  /// When the passenger picks a **specific** route, the operator must have that route set.
+  /// (Otherwise every doc with an empty [routeCode] incorrectly matches every route and
+  /// inflates "active driver" counts.)
+  /// "All nearby buses" uses no route filter — unassigned drivers still appear there.
   static bool _routeMatchesFilter(String? operatorRoute, String filterRaw) {
     final f = _routeNorm(filterRaw);
     if (f.isEmpty) return true;
     final op = _routeNorm(operatorRoute ?? '');
-    if (op.isEmpty) return true;
+    if (op.isEmpty) return false;
     if (op == f || op.contains(f) || f.contains(op)) return true;
     final fk = _routeNumericOrBodyKey(filterRaw);
     final ok = _routeNumericOrBodyKey(operatorRoute ?? '');
     if (fk.isNotEmpty && ok.isNotEmpty && fk == ok) return true;
+    return false;
+  }
+
+  /// True if the location doc was explicitly marked offline (e.g. after sign-out merge).
+  static bool _isExplicitlyOffline(Map<String, dynamic> data) {
+    final online = data['online'];
+    if (online == 0 || online == false || online == '0') return true;
+    final status = data['status'];
+    if (status == 0 || status == false) return true;
+    if (status is String) {
+      final s = status.toLowerCase().trim();
+      if (s == '0' ||
+          s == 'offline' ||
+          s == 'inactive' ||
+          s == 'logged_out' ||
+          s == 'logged out') {
+        return true;
+      }
+    }
     return false;
   }
 
@@ -97,13 +119,16 @@ class NearbyOperatorsService {
     for (final doc in snap.docs) {
       try {
         final data = doc.data();
+        if (_isExplicitlyOffline(data)) continue;
+
         final coords = _coordsFromData(data);
         if (coords == null) continue;
         final lat = coords.$1;
         final lng = coords.$2;
 
         final updated = _readUpdatedAt(data);
-        if (updated != null && now.difference(updated) > maxAge) continue;
+        // Operator sync always sets [updatedAt]; docs without it are not trustworthy "live" counts.
+        if (updated == null || now.difference(updated) > maxAge) continue;
 
         final routeStr = _routeCodeFromData(data);
 

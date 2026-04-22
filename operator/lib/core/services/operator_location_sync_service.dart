@@ -47,20 +47,7 @@ class OperatorLocationSyncService {
 
   Future<bool> _ensureForegroundLocationPermission() async {
     try {
-      final enabled = await Geolocator.isLocationServiceEnabled();
-      if (!enabled) {
-        debugPrint('[OperatorLocationSync] location services disabled');
-        return false;
-      }
-      var p = await Geolocator.checkPermission();
-      if (p == LocationPermission.denied) {
-        p = await Geolocator.requestPermission();
-      }
-      if (p == LocationPermission.denied || p == LocationPermission.deniedForever) {
-        debugPrint('[OperatorLocationSync] location permission: $p');
-        return false;
-      }
-      return true;
+      return await _locationService.requestPermission();
     } catch (e) {
       debugPrint('[OperatorLocationSync] permission check failed: $e');
       return false;
@@ -78,21 +65,57 @@ class OperatorLocationSyncService {
         'longitude': pos.longitude,
         'accuracyMeters': pos.accuracy,
         'routeCode': codeForFirestore,
+        'route_code': codeForFirestore,
+        'online': 1,
+        'status': 1,
         'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
     );
   }
 
+  /// Merges the new route into [operator_locations] right away so riders are not stuck
+  /// on the previous [routeCode] until the next periodic GPS tick (~30s).
+  Future<void> mergeRouteCodeIntoOperatorLocation(String routeCode) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final trimmed = routeCode.trim();
+    if (trimmed.isEmpty) return;
+    final upper = trimmed.toUpperCase();
+    try {
+      await FirebaseFirestore.instance
+          .collection(operatorLocationsCollection)
+          .doc(user.uid)
+          .set(
+        {
+          'uid': user.uid,
+          'routeCode': upper,
+          'route_code': upper,
+          'online': 1,
+          'status': 1,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      debugPrint(
+        '[OperatorLocationSync] merged route into operator_locations: $upper',
+      );
+    } catch (e, st) {
+      debugPrint(
+        '[OperatorLocationSync] mergeRouteCodeIntoOperatorLocation failed: $e\n$st',
+      );
+    }
+  }
+
   /// If a full GPS fix fails, still publish last known coordinates so riders see the bus.
   Future<void> _tryLastKnownFallback(User user) async {
     try {
       final last = await Geolocator.getLastKnownPosition().timeout(
-        const Duration(seconds: 4),
+        const Duration(seconds: 8),
       );
       if (last == null) return;
       final age = DateTime.now().difference(last.timestamp);
-      if (age > const Duration(minutes: 20)) return;
+      if (age > const Duration(hours: 2)) return;
 
       final codeForFirestore = await ProfileDataService.resolveRouteCodeForLocationPublish();
 

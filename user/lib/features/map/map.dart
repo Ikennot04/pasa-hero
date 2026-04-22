@@ -13,6 +13,9 @@ class MapWidget extends StatelessWidget {
     this.routeOrigin,
     this.routeDestination,
     this.nearbyOperators = const [],
+    this.onMapControllerReady,
+    this.routeCatalogHighlightPoints,
+    this.selectedRouteCodeForStopsStream,
   });
 
   /// Start of the route (e.g. closest bus stop to user).
@@ -24,12 +27,23 @@ class MapWidget extends StatelessWidget {
   /// Operators with live location (same list as Near Me / route filter; bus icon on map).
   final List<NearbyOperator> nearbyOperators;
 
+  final ValueChanged<GoogleMapController>? onMapControllerReady;
+
+  /// When set (≥2 points), drawn as a highlight polyline (e.g. Firestore route path).
+  final List<LatLng>? routeCatalogHighlightPoints;
+
+  /// Near Me: when set, bus stop [Marker]s come from [routes]/[route_code] doc; when null, from [bus_stops].
+  final String? selectedRouteCodeForStopsStream;
+
   @override
   Widget build(BuildContext context) {
     return MapScreen(
       routeOrigin: routeOrigin,
       routeDestination: routeDestination,
       nearbyOperators: nearbyOperators,
+      onMapControllerReady: onMapControllerReady,
+      routeCatalogHighlightPoints: routeCatalogHighlightPoints,
+      selectedRouteCodeForStopsStream: selectedRouteCodeForStopsStream,
     );
   }
 }

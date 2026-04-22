@@ -1,4 +1,7 @@
 import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,6 +18,7 @@ const CameraPosition _initialCameraOverBusStops = CameraPosition(
   target: LatLng(10.3270, 123.9475),
   zoom: 14.0,
 );
+const String _userLocationsCollection = 'user_locations';
 
 class RouteScreen extends StatefulWidget {
   const RouteScreen({super.key});
@@ -36,9 +40,12 @@ class _RouteScreenState extends State<RouteScreen> {
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
   Set<Marker> _markers = {};
+  Set<Marker> _userMarkers = {};
   Set<Polyline> _routePolylines = {};
   bool _isLocationRequestInProgress = false;
   String? _routeId;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _userLocationsSub;
+  StreamSubscription<Position>? _positionStreamSub;
 
   static const String _busStopRoutePolylineId = 'bus_stop_route';
 
@@ -49,7 +56,85 @@ class _RouteScreenState extends State<RouteScreen> {
     _loadOperatorIcon();
     _loadMapStyle();
     _loadRouteId();
-    _initializeLocation();
+    _watchUserLocations();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _initializeLocation();
+    });
+  }
+
+  static bool _userLocDocExplicitlyOffline(Map<String, dynamic> data) {
+    final online = data['online'];
+    if (online == 0 || online == false || online == '0') return true;
+    final status = data['status'];
+    if (status == 0 || status == false) return true;
+    if (status is String) {
+      final s = status.toLowerCase().trim();
+      if (s == '0' || s == 'offline' || s == 'inactive') return true;
+    }
+    return false;
+  }
+
+  static LatLng? _latLngFromUserLocData(Map<String, dynamic> data) {
+    final latRaw = data['latitude'] ?? data['lat'];
+    final lngRaw = data['longitude'] ?? data['lng'];
+    double? lat;
+    double? lng;
+    if (latRaw is num) lat = latRaw.toDouble();
+    if (lngRaw is num) lng = lngRaw.toDouble();
+    lat ??= double.tryParse('$latRaw');
+    lng ??= double.tryParse('$lngRaw');
+    if (lat != null && lng != null) return LatLng(lat, lng);
+    for (final key in ['position', 'location', 'geo']) {
+      final g = data[key];
+      if (g is GeoPoint) return LatLng(g.latitude, g.longitude);
+      if (g is Map) {
+        final nestedLat = g['latitude'] ?? g['lat'];
+        final nestedLng = g['longitude'] ?? g['lng'];
+        final lat2 = nestedLat is num ? nestedLat.toDouble() : double.tryParse('$nestedLat');
+        final lng2 = nestedLng is num ? nestedLng.toDouble() : double.tryParse('$nestedLng');
+        if (lat2 != null && lng2 != null) return LatLng(lat2, lng2);
+      }
+    }
+    return null;
+  }
+
+  Set<Marker> _mergeWithUserMarkers(Set<Marker> base) {
+    final nonUser = base.where((m) => !m.markerId.value.startsWith('user_')).toSet();
+    return {...nonUser, ..._userMarkers};
+  }
+
+  void _watchUserLocations() {
+    _userLocationsSub?.cancel();
+    _userLocationsSub = FirebaseFirestore.instance
+        .collection(_userLocationsCollection)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      final users = <Marker>{};
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        if (_userLocDocExplicitlyOffline(data)) continue;
+        final pos = _latLngFromUserLocData(data);
+        if (pos == null) continue;
+        final email = data['email']?.toString() ?? 'Rider';
+        users.add(
+          Marker(
+            markerId: MarkerId('user_${doc.id}'),
+            position: pos,
+            zIndexInt: 5,
+            anchor: const Offset(0.5, 1),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: InfoWindow(title: 'Rider', snippet: email),
+          ),
+        );
+      }
+      setState(() {
+        _userMarkers = users;
+        _markers = _mergeWithUserMarkers(_markers);
+      });
+    }, onError: (e) {
+      print('⚠️ [RouteScreen] user_locations stream error: $e');
+    });
   }
 
   Future<void> _loadRouteId() async {
@@ -62,6 +147,9 @@ class _RouteScreenState extends State<RouteScreen> {
     ProfileDataService.setLocationSyncRouteFallback(t);
     if (mounted) {
       setState(() => _routeId = t);
+      if (t != null && t.isNotEmpty) {
+        unawaited(RouteCodeService.syncRouteCodeWithGpsAndRoutes(t));
+      }
       await _loadBusStopSignAndUpdateMarkers(routeCode: t);
     }
   }
@@ -92,7 +180,7 @@ class _RouteScreenState extends State<RouteScreen> {
           ),
         );
       }
-      _markers = {...existingNonBusStop, ...busStopMarkers};
+      _markers = _mergeWithUserMarkers({...existingNonBusStop, ...busStopMarkers});
       _routePolylines = _routePolylines
           .where((p) => p.polylineId.value != _busStopRoutePolylineId)
           .toSet();
@@ -150,7 +238,7 @@ class _RouteScreenState extends State<RouteScreen> {
   Future<void> _loadOperatorIcon() async {
     try {
       final icon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(),
+        const ImageConfiguration(size: Size(104, 104)),
         'assets/images/buspic.png',
       );
       if (mounted) {
@@ -178,31 +266,7 @@ class _RouteScreenState extends State<RouteScreen> {
     });
 
     try {
-      // Check if location services are enabled
-      print('🗺️ [RouteScreen] Step 1: Checking if location services are enabled...');
-      bool serviceEnabled = await _locationService.isLocationServiceEnabled();
-      print('   📍 Location services enabled: $serviceEnabled');
-      
-      if (!serviceEnabled) {
-        print('   ❌ Location services are DISABLED - using default location');
-        setState(() {
-          _initialCameraPosition = MapService.getDefaultCameraPosition();
-          _isLoading = false;
-        });
-        if (showError && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Location services disabled. Using default location.'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        _isLocationRequestInProgress = false;
-        return;
-      }
-
-      // Request permission
-      print('🗺️ [RouteScreen] Step 2: Requesting location permission...');
+      print('🗺️ [RouteScreen] Step 1: Requesting location permission...');
       bool hasPermission = await _locationService.requestPermission();
       print('   📍 Permission granted: $hasPermission');
       
@@ -224,8 +288,7 @@ class _RouteScreenState extends State<RouteScreen> {
         return;
       }
 
-      // Get current position (optimized for low-end devices)
-      print('🗺️ [RouteScreen] Step 3: Getting current position (optimized mode)...');
+      print('🗺️ [RouteScreen] Step 2: Getting current position...');
       Position position = await _locationService.getCurrentPosition(
         preferLowAccuracy: false,
         useCachedPosition: !forceRefresh,
@@ -260,6 +323,7 @@ class _RouteScreenState extends State<RouteScreen> {
           print('   ⚠️ Error moving camera: $e');
         }
       }
+      _startPositionFollow();
     } catch (e) {
       print('   ❌ [RouteScreen] _initializeLocation() ERROR: $e');
       print('   📋 Error type: ${e.runtimeType}');
@@ -330,6 +394,39 @@ class _RouteScreenState extends State<RouteScreen> {
     }
   }
 
+  Future<void> _startPositionFollow() async {
+    await _positionStreamSub?.cancel();
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final settings = isAndroid
+        ? AndroidSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+            intervalDuration: const Duration(seconds: 2),
+            forceLocationManager: false,
+          )
+        : const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          );
+
+    _positionStreamSub = Geolocator.getPositionStream(locationSettings: settings).listen(
+      (position) async {
+        if (!mounted) return;
+        _addOperatorMarker(position);
+        if (_mapController != null) {
+          try {
+            await _mapController!.moveCamera(
+              MapService.createInstantCameraUpdate(position),
+            );
+          } catch (_) {}
+        }
+      },
+      onError: (e) {
+        print('⚠️ [RouteScreen] follow stream error: $e');
+      },
+    );
+  }
+
   /// Adds a marker for the operator's location; keeps all bus stop markers.
   void _addOperatorMarker(Position position) {
     setState(() {
@@ -342,15 +439,17 @@ class _RouteScreenState extends State<RouteScreen> {
         ),
         icon: _operatorIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
       );
-      _markers = {
+      _markers = _mergeWithUserMarkers({
         ..._markers.where((m) => m.markerId.value != 'operator_location'),
         operatorMarker,
-      };
+      });
     });
   }
 
   @override
   void dispose() {
+    _userLocationsSub?.cancel();
+    _positionStreamSub?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -435,6 +534,30 @@ class _RouteScreenState extends State<RouteScreen> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                  ),
+                ),
+              if (_routeId != null && _routeId!.isNotEmpty)
+                Positioned(
+                  top: showFreeRideBadge ? 64 : 16,
+                  left: 16,
+                  child: Material(
+                    elevation: 3,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade700,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Route: ${_routeId!}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ),
