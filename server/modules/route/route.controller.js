@@ -9,6 +9,16 @@ export const getAllRoutes = async (req, res) => {
   }
 };
 
+export const getRoutesByTerminalId = async (req, res) => {
+  try {
+    const { terminalId } = req.params;
+    const { routes, counts } = await RouteService.getRoutesByTerminalId(terminalId);
+    res.status(200).json({ success: true, counts, data: routes });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 export const createRoute = async (req, res) => {
   try {
     const routeData = req.body;

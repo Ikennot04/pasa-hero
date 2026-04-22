@@ -48,6 +48,60 @@ export const RouteService = {
       },
     };
   },
+  // GET ROUTES BY TERMINAL ID ==========================================================
+  async getRoutesByTerminalId(terminalId) {
+    const routes = await Route.find({
+      $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
+    })
+      .populate("start_terminal_id")
+      .populate("end_terminal_id");
+
+    const routeIds = routes.map((route) => route._id);
+
+    const activeBusesByRoute = await BusAssignment.aggregate([
+      { $match: { assignment_status: "active", route_id: { $in: routeIds } } },
+      { $group: { _id: "$route_id", busIds: { $addToSet: "$bus_id" } } },
+      { $project: { active_buses_count: { $size: "$busIds" } } },
+    ]);
+
+    const activeBusesAcrossRoutes = await BusAssignment.distinct("bus_id", {
+      assignment_status: "active",
+      route_id: { $in: routeIds },
+    }).then((busIds) => busIds.length);
+
+    const [totalRoutes, activeRoutes, inactiveRoutes] = await Promise.all([
+      Route.countDocuments({
+        $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
+      }),
+      Route.countDocuments({
+        $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
+        status: "active",
+      }),
+      Route.countDocuments({
+        $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
+        status: "inactive",
+      }),
+    ]);
+
+    const activeBusesCountByRouteId = new Map(
+      activeBusesByRoute.map((row) => [String(row._id), row.active_buses_count]),
+    );
+
+    const routesWithActiveBuses = routes.map((route) => ({
+      ...route.toObject(),
+      active_buses_count: activeBusesCountByRouteId.get(String(route._id)) ?? 0,
+    }));
+
+    return {
+      routes: routesWithActiveBuses,
+      counts: {
+        total_routes: totalRoutes,
+        active_routes: activeRoutes,
+        inactive_routes: inactiveRoutes,
+        active_buses: activeBusesAcrossRoutes,
+      },
+    };
+  },
   // CREATE ROUTE ===================================================================
   async createRoute(routeData) {
     const normalizedRouteType =
