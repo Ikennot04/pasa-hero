@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useConfirmTerminalLog } from "../_hooks/useConfirmTerminalLog";
+import { useRejectTerminalLog } from "../_hooks/useRejectTerminalLog";
 
 type PendingDepartureRow = {
   id: string;
@@ -33,7 +34,9 @@ export default function DepartureConfirmation({
   onRejectDeparture,
 }: DepartureConfirmationProps) {
   const { confirmTerminalLog } = useConfirmTerminalLog();
+  const { rejectTerminalLog } = useRejectTerminalLog();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
 
   const handleConfirm = async (terminalLogId: string) => {
@@ -66,6 +69,39 @@ export default function DepartureConfirmation({
       }
     } finally {
       setConfirmingId(null);
+    }
+  };
+
+  const handleReject = async (terminalLogId: string) => {
+    setRejectingId(terminalLogId);
+    setLastError(null);
+    try {
+      const res = await rejectTerminalLog(terminalLogId);
+      if (
+        res &&
+        typeof res === "object" &&
+        "success" in res &&
+        res.success === true
+      ) {
+        await onRejectDeparture(terminalLogId);
+        const successMsg =
+          "message" in res &&
+          typeof (res as { message?: unknown }).message === "string"
+            ? (res as { message: string }).message
+            : "Departure rejected";
+        onConfirmToast?.(successMsg);
+      } else {
+        const msg =
+          res &&
+          typeof res === "object" &&
+          "message" in res &&
+          typeof (res as { message?: unknown }).message === "string"
+            ? (res as { message: string }).message
+            : "Could not reject";
+        setLastError(msg);
+      }
+    } finally {
+      setRejectingId(null);
     }
   };
 
@@ -102,15 +138,16 @@ export default function DepartureConfirmation({
                       <button
                         type="button"
                         className={`btn btn-sm text-sm bg-[#0062CA] text-white ${confirmingId === row.id ? "loading" : ""}`}
-                        disabled={confirmingId !== null}
+                        disabled={confirmingId !== null || rejectingId !== null}
                         onClick={() => void handleConfirm(row.id)}
                       >
                         Confirm
                       </button>
                       <button
                         type="button"
-                        className="btn btn-sm text-sm btn-outline btn-error"
-                        onClick={() => onRejectDeparture(row.id)}
+                        className={`btn btn-sm text-sm btn-outline btn-error ${rejectingId === row.id ? "loading" : ""}`}
+                        disabled={confirmingId !== null || rejectingId !== null}
+                        onClick={() => void handleReject(row.id)}
                       >
                         Reject
                       </button>
