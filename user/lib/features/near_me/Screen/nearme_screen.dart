@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 import '../../../core/models/bus_stop.dart';
 import '../../../core/models/nearby_operator.dart';
 import '../../../core/models/operator_route_option.dart';
@@ -13,6 +15,7 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/location_cache_service.dart';
 import '../../../core/services/map/map_service.dart';
 import '../../../core/services/nearby_operators_service.dart';
+import '../../../core/services/route_path_coordinates_service.dart';
 import '../../../shared/bottom_navBar.dart';
 import '../../map/map.dart';
 import '../Module/free_ride.dart';
@@ -56,6 +59,7 @@ class _NearMeContentState extends State<_NearMeContent> {
   String? _routeDistanceText; // Formatted distance text
   bool _isCalculatingDistance = false;
   bool _hasLoadedOnce = false; // Track if we've loaded data at least once
+  List<Map<String, dynamic>> _terminalCards = [];
 
   final LocationService _locationService = LocationService();
   final BusStopsService _busStopsService = BusStopsService();
@@ -73,6 +77,18 @@ class _NearMeContentState extends State<_NearMeContent> {
   /// `null` = show all nearby operators (distance filter only).
   String? _selectedRouteCode;
 
+  final RoutePathCoordinatesService _routePathCoordinatesService =
+      RoutePathCoordinatesService();
+
+  GoogleMapController? _mapController;
+  LatLngBounds? _pendingRouteFitBounds;
+  int _routeFitRequestId = 0;
+
+  /// Firestore path for the selected route code (polyline on map).
+  List<LatLng>? _routeCatalogHighlightPoints;
+
+  static const double _routeCameraPadding = 50.0;
+
   /// Fallback list when API hasn't loaded yet; includes lat/lng for route drawing.
   static const List<Map<String, dynamic>> _terminalsFallback = [
     {'terminalName': 'Pacific Terminal', 'location': 'Pacific Mall, Mandaue', 'lat': 10.3232, 'lng': 123.9456, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.6 Km', 'isHighlighted': true},
@@ -81,6 +97,9 @@ class _NearMeContentState extends State<_NearMeContent> {
     {'terminalName': 'Ayala Terminal', 'location': 'Ayala Center, Cebu City', 'lat': 10.3192, 'lng': 123.9076, 'routes': ['02A', '04B', '12C'], 'distance': '1.2 Km', 'isHighlighted': false},
     {'terminalName': 'SM Terminal', 'location': 'SM City, Cebu', 'lat': 10.3156, 'lng': 123.9182, 'routes': ['03D', '05E', '08F'], 'distance': '1.5 Km', 'isHighlighted': false},
   ];
+
+  static const String _terminalsApiUrl =
+      'https://pasa-hero-server.vercel.app/api/terminals/';
 
   void _updateFromSheetExtent(double extent) {
     setState(() {
@@ -93,7 +112,7 @@ class _NearMeContentState extends State<_NearMeContent> {
   @override
   void initState() {
     super.initState();
-    _destinations = List<Map<String, dynamic>>.from(_terminalsFallback);
+    _terminalCards = List<Map<String, dynamic>>.from(_terminalsFallback);
     _sheetController = DraggableScrollableController();
     _sheetController.addListener(() => _updateFromSheetExtent(_sheetController.size));
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -102,10 +121,64 @@ class _NearMeContentState extends State<_NearMeContent> {
         // Listen to Firestore immediately so a slow route-catalog fetch never delays drivers.
         _subscribeNearbyOperators();
         _loadRouteOptions();
+        _loadTerminalCardsFromApi();
         // Try to load from cache first, then fetch if needed
         _loadFromCacheOrFetch();
       }
     });
+  }
+
+  Future<void> _loadTerminalCardsFromApi() async {
+    try {
+      final uri = Uri.parse(_terminalsApiUrl);
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (resp.statusCode < 200 || resp.statusCode >= 300) return;
+
+      final body = jsonDecode(resp.body);
+      if (body is! Map<String, dynamic>) return;
+      final rows = body['data'];
+      if (rows is! List) return;
+
+      final List<Map<String, dynamic>> mapped = [];
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final name = row['terminal_name']?.toString().trim();
+        final latRaw = row['location_lat'];
+        final lngRaw = row['location_lng'];
+        final lat = latRaw is num ? latRaw.toDouble() : double.tryParse('$latRaw');
+        final lng = lngRaw is num ? lngRaw.toDouble() : double.tryParse('$lngRaw');
+        if (name == null || name.isEmpty || lat == null || lng == null) continue;
+
+        String distance = '--';
+        final p = _userPosition;
+        if (p != null) {
+          final meters = Geolocator.distanceBetween(
+            p.latitude,
+            p.longitude,
+            lat,
+            lng,
+          );
+          distance = '${(meters / 1000).toStringAsFixed(1)} Km';
+        }
+
+        mapped.add({
+          'terminalName': name,
+          'location': '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
+          'lat': lat,
+          'lng': lng,
+          'routes': const <String>[],
+          'distance': distance,
+          'isHighlighted': false,
+        });
+      }
+
+      if (!mounted || mapped.isEmpty) return;
+      setState(() {
+        _terminalCards = mapped;
+      });
+    } catch (_) {
+      // Keep fallback terminals if API fails.
+    }
   }
 
   void _startNearbyServerPolling() {
@@ -124,9 +197,8 @@ class _NearMeContentState extends State<_NearMeContent> {
         if (!mounted) return;
         setState(() {
           _operatorsFirestoreError = null;
-          if (list.isNotEmpty) {
-            _nearbyOperators = list;
-          }
+          // Always apply server snapshot so an empty result clears inflated cache/listeners.
+          _nearbyOperators = list;
         });
       } catch (e) {
         if (mounted) {
@@ -211,13 +283,15 @@ class _NearMeContentState extends State<_NearMeContent> {
     try {
       Position? position;
       try {
-        final enabled = await _locationService.isLocationServiceEnabled();
         final hasPermission = await _locationService.requestPermission();
-        if (enabled && hasPermission) {
+        // Do not require isLocationServiceEnabled — false positives block fixes; last-known still works.
+        if (hasPermission) {
+          // Do not wrap in Future.timeout — LocationService already runs fused + LocationManager
+          // passes and stream fallbacks (can take well over 8s on cold GPS).
           final fetchedPosition = await _locationService.getCurrentPosition(
             preferLowAccuracy: true,
             useCachedPosition: true,
-          ).timeout(const Duration(seconds: 8));
+          );
           
           position = fetchedPosition;
           
@@ -241,6 +315,7 @@ class _NearMeContentState extends State<_NearMeContent> {
       _applyDestinationsFromStops(result.stops, null);
       _hasLoadedOnce = true;
       _subscribeNearbyOperators();
+      _loadTerminalCardsFromApi();
     } catch (e) {
       if (mounted) {
         setState(() => _destinationsLoading = false);
@@ -265,6 +340,7 @@ class _NearMeContentState extends State<_NearMeContent> {
       );
       if (!mounted) return;
       _applyDestinationsFromStops(result.stops, result.closestStopId);
+      _loadTerminalCardsFromApi();
     } catch (e) {
       print('⚠️ [NearMe] Error loading bus stops: $e');
       if (mounted) {
@@ -367,6 +443,69 @@ class _NearMeContentState extends State<_NearMeContent> {
     }
   }
 
+  void _onMapControllerReady(GoogleMapController controller) {
+    _mapController = controller;
+    _applyPendingRouteCameraFit();
+  }
+
+  Future<void> _applyPendingRouteCameraFit() async {
+    final ctrl = _mapController;
+    final bounds = _pendingRouteFitBounds;
+    if (ctrl == null || bounds == null) return;
+    _pendingRouteFitBounds = null;
+    try {
+      await ctrl.animateCamera(
+        CameraUpdate.newLatLngBounds(bounds, _routeCameraPadding),
+      );
+    } catch (_) {}
+  }
+
+  /// Loads path + stop positions from Firestore, draws highlight, fits camera to route + all stops.
+  Future<void> _fitMapCameraToFirestoreRoute(String routeCode) async {
+    final id = ++_routeFitRequestId;
+    final pathPts =
+        await _routePathCoordinatesService.fetchRoutePathLatLng(routeCode);
+    final stopPts =
+        await _routePathCoordinatesService.fetchRouteStopPositionsLatLng(routeCode);
+    if (!mounted || id != _routeFitRequestId) return;
+
+    final forBounds = <LatLng>[...pathPts, ...stopPts];
+    if (forBounds.length < 2) {
+      _pendingRouteFitBounds = null;
+      setState(() => _routeCatalogHighlightPoints = null);
+      return;
+    }
+
+    final List<LatLng> polylinePts;
+    if (pathPts.length >= 2) {
+      polylinePts = pathPts;
+    } else if (stopPts.length >= 2) {
+      polylinePts = stopPts;
+    } else {
+      polylinePts = pathPts.isNotEmpty && stopPts.isNotEmpty
+          ? [pathPts.first, stopPts.first]
+          : const <LatLng>[];
+    }
+
+    final bounds = RoutePathCoordinatesService.latLngBoundsFromPoints(forBounds);
+
+    setState(() {
+      _routeCatalogHighlightPoints =
+          polylinePts.length >= 2 ? List<LatLng>.from(polylinePts) : null;
+    });
+
+    final ctrl = _mapController;
+    if (ctrl == null) {
+      _pendingRouteFitBounds = bounds;
+      return;
+    }
+    try {
+      await ctrl.animateCamera(
+        CameraUpdate.newLatLngBounds(bounds, _routeCameraPadding),
+      );
+    } catch (_) {}
+  }
+
   void _subscribeNearbyOperators() {
     _nearbyOperatorsSub?.cancel();
     final p = _userPosition;
@@ -401,12 +540,13 @@ class _NearMeContentState extends State<_NearMeContent> {
     _nearbyServerPoll?.cancel();
     _nearbyOperatorsSub?.cancel();
     _sheetController.dispose();
+    _mapController = null;
     super.dispose();
   }
 
   /// Builds the scrollable list of terminals (uses fallback list with routes/distance for card display)
   Widget _buildTerminalsList(ScrollController scrollController) {
-    final terminals = _terminalsFallback;
+    final terminals = _terminalCards;
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
@@ -442,6 +582,9 @@ class _NearMeContentState extends State<_NearMeContent> {
               routeOrigin: _routeOrigin,
               routeDestination: _routeDestination,
               nearbyOperators: _nearbyOperators,
+              onMapControllerReady: _onMapControllerReady,
+              routeCatalogHighlightPoints: _routeCatalogHighlightPoints,
+              selectedRouteCodeForStopsStream: _selectedRouteCode,
             ),
           ),
 
@@ -660,9 +803,15 @@ class _NearMeContentState extends State<_NearMeContent> {
                                       ),
                                     ),
                                   ],
-                                  onChanged: (value) {
+                                  onChanged: (value) async {
                                     setState(() => _selectedRouteCode = value);
                                     _subscribeNearbyOperators();
+                                    if (value == null || value.isEmpty) {
+                                      _pendingRouteFitBounds = null;
+                                      setState(() => _routeCatalogHighlightPoints = null);
+                                      return;
+                                    }
+                                    await _fitMapCameraToFirestoreRoute(value);
                                   },
                                 ),
                               const SizedBox(height: 4),

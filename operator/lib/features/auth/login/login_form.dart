@@ -2,13 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../../../shared/nav_bar.dart';
 
 /// Firestore users collection; operator documents use role_id / roleid = 2.
 const String _usersCollection = 'users';
+const String _operatorSigninUrl =
+    'https://pasa-hero-server.vercel.app/api/users/auth/signin';
 
 /// Operator role id (matches backend/users table).
 const int operatorRoleId = 2;
+
+bool _isOperatorRoleFromUserMap(Map<String, dynamic>? userMap) {
+  if (userMap == null) return false;
+  final role = userMap['role']?.toString().trim().toLowerCase();
+  final roleIdValue = userMap['roleid'] ?? userMap['role_id'];
+  final roleId = roleIdValue is num ? roleIdValue.toInt() : int.tryParse('${roleIdValue ?? ''}');
+  return role == 'operator' || roleId == 2;
+}
+
+Map<String, dynamic>? _userMapFromSigninPayload(Map<String, dynamic>? backendPayload) {
+  final userData = backendPayload?['data'];
+  if (userData is! Map<String, dynamic>) return null;
+  if (userData['user'] is Map<String, dynamic>) {
+    return userData['user'] as Map<String, dynamic>;
+  }
+  return userData;
+}
 
 class LoginForm extends StatefulWidget {
   const LoginForm({super.key});
@@ -35,6 +56,23 @@ class _LoginFormState extends State<LoginForm> {
     try {
       return Firebase.apps.isNotEmpty;
     } catch (_) {
+      return false;
+    }
+  }
+
+  /// True if [users] doc marks this account as an operator (Firebase-only login path).
+  Future<bool> _isFirestoreOperator(String uid) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection(_usersCollection)
+          .doc(uid)
+          .get();
+      if (!doc.exists) return false;
+      final data = doc.data();
+      if (data == null) return false;
+      return _isOperatorRoleFromUserMap(data);
+    } catch (e) {
+      print('⚠️ [LoginForm] _isFirestoreOperator: $e');
       return false;
     }
   }
@@ -391,10 +429,74 @@ class _LoginFormState extends State<LoginForm> {
     }
     setState(() => _isLoading = true);
     try {
-      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Same email, different casing can matter for Mongo exact match — try variants (no server change).
+      final lowerEmail = email.toLowerCase();
+      final emailCandidates = <String>{
+        email,
+        if (lowerEmail != email) lowerEmail,
+      };
+
+      Map<String, dynamic>? backendPayload;
+      try {
+        for (final emailCandidate in emailCandidates) {
+          final backendResponse = await http.post(
+            Uri.parse(_operatorSigninUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': emailCandidate,
+              'password': password,
+            }),
+          );
+          final decoded = jsonDecode(backendResponse.body);
+          backendPayload = decoded is Map<String, dynamic> ? decoded : null;
+
+          if (backendResponse.statusCode >= 200 && backendResponse.statusCode < 300) {
+            final userMap = _userMapFromSigninPayload(backendPayload);
+            if (!_isOperatorRoleFromUserMap(userMap)) {
+              throw Exception('Account not found');
+            }
+            break;
+          }
+
+          final msg = backendPayload?['message']?.toString() ?? '';
+          final msgLower = msg.toLowerCase();
+          if (msgLower.contains('invalid password') ||
+              msgLower.contains('wrong password') ||
+              msgLower.contains('incorrect password')) {
+            throw Exception(msg.isNotEmpty ? msg : 'Invalid password');
+          }
+          if (!msgLower.contains('email not found') && !msgLower.contains('not found')) {
+            throw Exception(msg.isNotEmpty ? msg : 'Login failed');
+          }
+          backendPayload = null;
+        }
+      } on FormatException {
+        throw Exception('Login failed: invalid server response');
+      }
+
+      final backendValidatedOperator = backendPayload != null;
+
+      UserCredential? credential;
+      FirebaseAuthException? lastAuthError;
+      for (final emailCandidate in emailCandidates) {
+        try {
+          credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: emailCandidate,
+            password: password,
+          );
+          break;
+        } on FirebaseAuthException catch (e) {
+          lastAuthError = e;
+          if (e.code == 'user-not-found') {
+            continue;
+          }
+          rethrow;
+        }
+      }
+      if (credential == null) {
+        if (lastAuthError != null) throw lastAuthError;
+        throw Exception('Login failed');
+      }
       
       if (credential.user == null) {
         if (mounted) {
@@ -403,6 +505,14 @@ class _LoginFormState extends State<LoginForm> {
           );
         }
         return;
+      }
+
+      if (!backendValidatedOperator) {
+        final isOperatorInFirestore = await _isFirestoreOperator(credential.user!.uid);
+        if (!isOperatorInFirestore) {
+          await FirebaseAuth.instance.signOut();
+          throw Exception('Account not found');
+        }
       }
       
       // Try to create/update Firestore document

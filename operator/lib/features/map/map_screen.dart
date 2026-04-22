@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -13,6 +14,14 @@ const CameraPosition _initialCameraOverBusStops = CameraPosition(
   target: LatLng(10.3270, 123.9475),
   zoom: 14.0,
 );
+const String _userLocationsCollection = 'user_locations';
+
+/// Draw order: bus stops and route ends low, operator mid, riders on top (large stop
+/// bitmaps were hiding default rider pins).
+const int _zBusStopMarker = 1;
+const int _zRouteEndpointMarker = 2;
+const int _zOperatorMarker = 3;
+const int _zRiderMarker = 5;
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -33,9 +42,21 @@ class _MapScreenState extends State<MapScreen> {
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
   Set<Marker> _markers = {};
+  Set<Marker> _userMarkers = {};
   Set<Polyline> _routePolylines = {};
   bool _isLocationRequestInProgress = false;
   String? _activeRouteCode;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _userLocationsSub;
+  StreamSubscription<Position>? _positionStreamSub;
+  int _debugUserDocsTotal = 0;
+  int _debugUserDocsRoleMatched = 0;
+  int _debugUserDocsWithCoords = 0;
+  String _debugUserStreamStatus = 'waiting';
+  String? _debugUserStreamError;
+  DateTime? _debugLastUserSnapshotAt;
+  bool _showDebugPanel = true;
+  /// When true, GoogleMap shows the OS "my location" dot (backup if custom marker fails).
+  bool _myLocationLayerEnabled = false;
 
   /// Polyline id for the bus stop route (so operator can see their route).
   static const String _busStopRoutePolylineId = 'bus_stop_route';
@@ -47,6 +68,63 @@ class _MapScreenState extends State<MapScreen> {
     _loadOperatorIcon();
     // Load bus stop sign icon and dynamic route stops from Firestore.
     _loadBusStopsFromDatabaseAndShow();
+    _watchUserLocations();
+    // Do not wait for Firestore/route highlight — GPS was only starting after that chain,
+    // and _highlightRoute's fit-bounds camera was overriding the operator view afterward.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _initializeLocation(showError: true);
+    });
+  }
+
+  static bool _userLocDocExplicitlyOffline(Map<String, dynamic> data) {
+    final online = data['online'];
+    if (online == 0 || online == false || online == '0') return true;
+    final status = data['status'];
+    if (status == 0 || status == false) return true;
+    if (status is String) {
+      final s = status.toLowerCase().trim();
+      if (s == '0' || s == 'offline' || s == 'inactive') return true;
+    }
+    return false;
+  }
+
+  /// Rider app writes [latitude]/[longitude]; support GeoPoint aliases.
+  static LatLng? _latLngFromUserLocData(Map<String, dynamic> data) {
+    final latRaw = data['latitude'] ?? data['lat'];
+    final lngRaw = data['longitude'] ?? data['lng'];
+    double? lat;
+    double? lng;
+    if (latRaw is num) lat = latRaw.toDouble();
+    if (lngRaw is num) lng = lngRaw.toDouble();
+    lat ??= double.tryParse('$latRaw');
+    lng ??= double.tryParse('$lngRaw');
+    if (lat != null && lng != null) return LatLng(lat, lng);
+    for (final key in ['position', 'location', 'geo']) {
+      final g = data[key];
+      if (g is GeoPoint) return LatLng(g.latitude, g.longitude);
+      if (g is Map) {
+        final nestedLat = g['latitude'] ?? g['lat'];
+        final nestedLng = g['longitude'] ?? g['lng'];
+        final lat2 = nestedLat is num ? nestedLat.toDouble() : double.tryParse('$nestedLat');
+        final lng2 = nestedLng is num ? nestedLng.toDouble() : double.tryParse('$nestedLng');
+        if (lat2 != null && lng2 != null) return LatLng(lat2, lng2);
+      }
+    }
+    return null;
+  }
+
+  static bool _userLocMatchesRiderRole(Map<String, dynamic> data) {
+    final role = data['role']?.toString().trim().toLowerCase();
+    final userType = data['userType']?.toString().trim().toLowerCase();
+    final roleIdRaw = data['roleid'] ?? data['role_id'];
+    final roleId = roleIdRaw is num ? roleIdRaw.toInt() : int.tryParse('$roleIdRaw');
+
+    // Exclude only explicit staff/operator records; include everything else so
+    // rider markers still show when role fields are missing or use legacy values.
+    const blockedRoles = <String>{'operator', 'driver', 'admin', 'staff'};
+    if (blockedRoles.contains(role) || blockedRoles.contains(userType)) return false;
+    if (roleId == 2 || roleId == 3) return false;
+    return true;
   }
 
   Future<String?> _resolveOperatorRouteCode() async {
@@ -89,6 +167,80 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  void _watchUserLocations() {
+    _userLocationsSub?.cancel();
+    if (mounted) {
+      setState(() {
+        _debugUserStreamStatus = 'subscribing';
+        _debugUserStreamError = null;
+      });
+    }
+    _userLocationsSub = FirebaseFirestore.instance
+        .collection(_userLocationsCollection)
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      final userMarkers = <Marker>{};
+      int roleMatched = 0;
+      int withCoords = 0;
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        // Mirror the user app behavior: if a live location doc has coordinates,
+        // render it instead of dropping by role/status mismatches.
+        final isOffline = _userLocDocExplicitlyOffline(data);
+        final isRiderLike = _userLocMatchesRiderRole(data);
+        if (!isOffline && isRiderLike) {
+          roleMatched++;
+        }
+
+        final pos = _latLngFromUserLocData(data);
+        if (pos == null) continue;
+        // Keep filtering out explicit offline docs only.
+        if (isOffline) continue;
+        withCoords++;
+
+        final email = data['email']?.toString() ?? 'Rider';
+        userMarkers.add(
+          Marker(
+            markerId: MarkerId('user_${doc.id}'),
+            position: pos,
+            zIndexInt: _zRiderMarker,
+            anchor: const Offset(0.5, 1),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            infoWindow: InfoWindow(
+              title: 'Rider',
+              snippet: email,
+            ),
+          ),
+        );
+      }
+
+      setState(() {
+        _userMarkers = userMarkers;
+        _markers = _mergeWithUserMarkers(_markers);
+        _debugUserDocsTotal = snapshot.docs.length;
+        _debugUserDocsRoleMatched = roleMatched;
+        _debugUserDocsWithCoords = withCoords;
+        _debugUserStreamStatus = 'active';
+        _debugUserStreamError = null;
+        _debugLastUserSnapshotAt = DateTime.now();
+      });
+      print('✅ [MapScreen] Live users visible: ${userMarkers.length}');
+    }, onError: (e) {
+      print('⚠️ [MapScreen] user_locations stream error: $e');
+      if (!mounted) return;
+      setState(() {
+        _debugUserStreamStatus = 'error';
+        _debugUserStreamError = e.toString();
+      });
+    });
+  }
+
+  Set<Marker> _mergeWithUserMarkers(Set<Marker> base) {
+    final nonUser = base.where((m) => !m.markerId.value.startsWith('user_')).toSet();
+    return {...nonUser, ..._userMarkers};
+  }
+
   /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
   Future<void> _addBusStopMarkers(
     List<({String name, LatLng position})> stops,
@@ -107,6 +259,7 @@ class _MapScreenState extends State<MapScreen> {
           Marker(
             markerId: MarkerId('bus_stop_$i'),
             position: stop.position,
+            zIndexInt: _zBusStopMarker,
             icon: icon,
             infoWindow: InfoWindow(
               title: stop.name,
@@ -115,7 +268,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
         );
       }
-      _markers = {...existingNonBusStop, ...busStopMarkers};
+      _markers = _mergeWithUserMarkers({...existingNonBusStop, ...busStopMarkers});
       _routePolylines = _routePolylines
           .where((p) => p.polylineId.value != _busStopRoutePolylineId)
           .toSet();
@@ -144,7 +297,7 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _loadOperatorIcon() async {
     try {
       final icon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(),
+        const ImageConfiguration(size: Size(104, 104)),
         'assets/images/buspic.png',
       );
       if (mounted) {
@@ -175,8 +328,20 @@ class _MapScreenState extends State<MapScreen> {
     } catch (e) {
       print('⚠️ [MapScreen] Error loading route code: $e');
     }
-    // Initialize location after loading route
-    _initializeLocation();
+    if (mounted) await _recenterOnOperator();
+  }
+
+  /// Move camera back to the operator after route fit-bounds or other camera changes.
+  Future<void> _recenterOnOperator() async {
+    final pos = _currentPosition;
+    final c = _mapController;
+    if (!mounted || pos == null || c == null) return;
+    try {
+      await c.moveCamera(MapService.createInstantCameraUpdate(pos));
+      print('🗺️ [MapScreen] Camera recentered on operator');
+    } catch (e) {
+      print('⚠️ [MapScreen] _recenterOnOperator: $e');
+    }
   }
 
   /// Highlights the route on the map based on the route code.
@@ -252,6 +417,7 @@ class _MapScreenState extends State<MapScreen> {
             Marker(
               markerId: const MarkerId('route_start'),
               position: coordinates.startPoint,
+              zIndexInt: _zRouteEndpointMarker,
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
               infoWindow: InfoWindow(
                 title: startStopName,
@@ -262,6 +428,7 @@ class _MapScreenState extends State<MapScreen> {
             Marker(
               markerId: const MarkerId('route_end'),
               position: coordinates.endPoint,
+              zIndexInt: _zRouteEndpointMarker,
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
               infoWindow: InfoWindow(
                 title: endStopName,
@@ -270,7 +437,7 @@ class _MapScreenState extends State<MapScreen> {
             ),
           };
 
-          _markers = updatedMarkers;
+          _markers = _mergeWithUserMarkers(updatedMarkers);
         });
 
         print('✅ [MapScreen] Added route start/end markers. Total markers: ${_markers.length}');
@@ -282,6 +449,8 @@ class _MapScreenState extends State<MapScreen> {
             await _mapController!.animateCamera(
               CameraUpdate.newLatLngBounds(bounds, 100),
             );
+            // Route overview replaces the operator camera; snap back so the driver sees themselves.
+            await _recenterOnOperator();
           } catch (e) {
             print('⚠️ [MapScreen] Error fitting camera to route: $e');
           }
@@ -323,6 +492,8 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    _userLocationsSub?.cancel();
+    _positionStreamSub?.cancel();
     _mapController?.dispose();
     super.dispose();
   }
@@ -349,32 +520,7 @@ class _MapScreenState extends State<MapScreen> {
     });
 
     try {
-      // Check if location services are enabled
-      print('🗺️ [MapScreen] Step 1: Checking if location services are enabled...');
-      bool serviceEnabled = await _locationService.isLocationServiceEnabled();
-      print('   📍 Location services enabled: $serviceEnabled');
-      
-      if (!serviceEnabled) {
-        print('   ❌ Location services are DISABLED - using default location');
-        // If location services disabled, use default location silently
-        setState(() {
-          _initialCameraPosition = MapService.getDefaultCameraPosition();
-          _isLoading = false;
-        });
-        if (showError && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Location services disabled. Using default location.'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        _isLocationRequestInProgress = false; // Reset guard
-        return;
-      }
-
-      // Request permission
-      print('🗺️ [MapScreen] Step 2: Requesting location permission...');
+      print('🗺️ [MapScreen] Step 1: Requesting location permission...');
       bool hasPermission = await _locationService.requestPermission();
       print('   📍 Permission granted: $hasPermission');
       
@@ -382,6 +528,7 @@ class _MapScreenState extends State<MapScreen> {
         print('   ❌ Permission NOT granted - using default location');
         // If no permission, use default location silently
         setState(() {
+          _myLocationLayerEnabled = false;
           _initialCameraPosition = MapService.getDefaultCameraPosition();
           _isLoading = false;
         });
@@ -397,8 +544,7 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      // Get current position (optimized for low-end devices)
-      print('🗺️ [MapScreen] Step 3: Getting current position (optimized mode)...');
+      print('🗺️ [MapScreen] Step 2: Getting current position...');
       Position position = await _locationService.getCurrentPosition(
         preferLowAccuracy: false,
         useCachedPosition: !forceRefresh,
@@ -419,6 +565,7 @@ class _MapScreenState extends State<MapScreen> {
           _currentPosition = position;
           _initialCameraPosition = MapService.cameraPositionFromPosition(position);
           _isLoading = false;
+          _myLocationLayerEnabled = true;
         });
       }
       
@@ -453,6 +600,7 @@ class _MapScreenState extends State<MapScreen> {
       } else {
         print('   ⚠️ Map controller is not ready yet - will center when ready');
       }
+      _startPositionFollow();
       
       // Show success message
       if (mounted) {
@@ -479,6 +627,7 @@ class _MapScreenState extends State<MapScreen> {
         
         setState(() {
           _isLoading = false;
+          _myLocationLayerEnabled = false;
           _initialCameraPosition = MapService.getDefaultCameraPosition();
         });
         
@@ -502,6 +651,7 @@ class _MapScreenState extends State<MapScreen> {
         final errorMessage = e.toString().replaceAll('Exception: ', '');
         setState(() {
           _isLoading = false;
+          _myLocationLayerEnabled = false;
           _initialCameraPosition = MapService.getDefaultCameraPosition();
         });
         
@@ -538,6 +688,31 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  Future<void> _startPositionFollow() async {
+    await _positionStreamSub?.cancel();
+    const settings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5,
+    );
+    _positionStreamSub = Geolocator.getPositionStream(locationSettings: settings).listen(
+      (position) async {
+        if (!mounted) return;
+        _currentPosition = position;
+        _addOperatorMarker(position);
+        if (_mapController != null) {
+          try {
+            await _mapController!.moveCamera(
+              MapService.createInstantCameraUpdate(position),
+            );
+          } catch (_) {}
+        }
+      },
+      onError: (e) {
+        print('⚠️ [MapScreen] follow stream error: $e');
+      },
+    );
+  }
+
   /// Adds a marker for the operator's location.
   /// Keeps all existing markers (bus stops, route start/end) by building a new set.
   void _addOperatorMarker(Position position) {
@@ -545,17 +720,20 @@ class _MapScreenState extends State<MapScreen> {
       final operatorMarker = Marker(
         markerId: const MarkerId('operator_location'),
         position: LatLng(position.latitude, position.longitude),
+        zIndexInt: _zOperatorMarker,
+        anchor: const Offset(0.5, 0.92),
         infoWindow: const InfoWindow(
           title: 'Your Location',
           snippet: 'Operator current location',
         ),
-        icon: _operatorIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+        // Orange fallback pin so it is never confused with rider pins (azure).
+        icon: _operatorIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
       );
       // Replace only operator marker; keep all bus_stop_*, route_start, route_end
-      _markers = {
+      _markers = _mergeWithUserMarkers({
         ..._markers.where((m) => m.markerId.value != 'operator_location'),
         operatorMarker,
-      };
+      });
       
       print('✅ [MapScreen] Added operator marker. Total markers: ${_markers.length}');
       print('   📍 Bus stop markers preserved: ${_markers.where((m) => m.markerId.value.startsWith('bus_stop_')).length}');
@@ -647,7 +825,8 @@ class _MapScreenState extends State<MapScreen> {
             mapType: MapService.getDefaultMapType(),
             zoomControlsEnabled: true,
             compassEnabled: true,
-            myLocationEnabled: false,
+            myLocationEnabled: _myLocationLayerEnabled,
+            myLocationButtonEnabled: false,
             markers: _markers,
             polylines: _routePolylines,
           ),
@@ -655,6 +834,68 @@ class _MapScreenState extends State<MapScreen> {
             const Center(
               child: CircularProgressIndicator(),
             ),
+          Positioned(
+            top: 12,
+            left: 12,
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _showDebugPanel = !_showDebugPanel;
+                });
+              },
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 280),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.72),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: _showDebugPanel
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'USER LOCATION DEBUG',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text('stream: $_debugUserStreamStatus',
+                              style: const TextStyle(color: Colors.white, fontSize: 11)),
+                          Text('docs total: $_debugUserDocsTotal',
+                              style: const TextStyle(color: Colors.white, fontSize: 11)),
+                          Text('role match: $_debugUserDocsRoleMatched',
+                              style: const TextStyle(color: Colors.white, fontSize: 11)),
+                          Text('with coords: $_debugUserDocsWithCoords',
+                              style: const TextStyle(color: Colors.white, fontSize: 11)),
+                          Text('markers now: ${_userMarkers.length}',
+                              style: const TextStyle(color: Colors.white, fontSize: 11)),
+                          Text(
+                            'last snapshot: ${_debugLastUserSnapshotAt?.toIso8601String() ?? '-'}',
+                            style: const TextStyle(color: Colors.white, fontSize: 11),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (_debugUserStreamError != null)
+                            Text(
+                              'error: $_debugUserStreamError',
+                              style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      )
+                    : const Text(
+                        'Show debug',
+                        style: TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+              ),
+            ),
+          ),
         ],
       ),
     );

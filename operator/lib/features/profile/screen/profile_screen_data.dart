@@ -1,6 +1,22 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
+
+/// Firestore often returns [Map<Object?, Object?>]; normalize for parsing.
+Map<String, dynamic>? firestoreMap(dynamic value) {
+  if (value == null) return null;
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    return value.map((k, v) => MapEntry(k.toString(), v));
+  }
+  return null;
+}
 
 /// Route information model for operator profiles.
 class RouteInfo {
@@ -36,6 +52,8 @@ class RouteCoordinates {
 class RouteCatalogService {
   static const String _routeCodeCollection = 'route_code';
   static const String _routesCollection = 'routes';
+  static const String _routesApiUrl =
+      'https://pasa-hero-server.vercel.app/api/routes';
 
   static void _put(
     Map<String, RouteInfo> out, {
@@ -62,19 +80,41 @@ class RouteCatalogService {
 
       final routesSnap = await FirebaseFirestore.instance.collection(_routesCollection).get();
       for (final doc in routesSnap.docs) {
-        final data = doc.data();
+        final data = firestoreMap(doc.data());
+        if (data == null) continue;
         final code = ((data['code'] as String?)?.trim().isNotEmpty ?? false)
             ? (data['code'] as String).trim()
             : doc.id.trim();
         if (code.isEmpty) continue;
-        await rcRef.doc(code).set({
+        final stops = RouteDataService.stopsFromRoutesDocument(data);
+        final payload = <String, dynamic>{
           'routeCode': code,
           if ((data['name'] as String?)?.trim().isNotEmpty ?? false)
             'name': (data['name'] as String).trim(),
           if ((data['description'] as String?)?.trim().isNotEmpty ?? false)
             'description': (data['description'] as String).trim(),
           'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        };
+        if (stops.length >= 2) {
+          payload['pointA'] = {
+            'latitude': stops.first.position.latitude,
+            'longitude': stops.first.position.longitude,
+          };
+          payload['pointB'] = {
+            'latitude': stops.last.position.latitude,
+            'longitude': stops.last.position.longitude,
+          };
+          payload['busStops'] = stops
+              .map(
+                (s) => {
+                  'name': s.name,
+                  'latitude': s.position.latitude,
+                  'longitude': s.position.longitude,
+                },
+              )
+              .toList();
+        }
+        await rcRef.doc(code).set(payload, SetOptions(merge: true));
       }
 
     } catch (_) {
@@ -84,6 +124,44 @@ class RouteCatalogService {
 
   static Future<List<RouteInfo>> fetchAvailableRoutes() async {
     final byCode = <String, RouteInfo>{};
+
+    // 1) Primary source: backend routes API (non-hardcoded live route list).
+    try {
+      final uri = Uri.parse(_routesApiUrl);
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          final rows = decoded['data'];
+          if (rows is List) {
+            for (final row in rows) {
+              if (row is! Map) continue;
+              final code = row['route_code']?.toString().trim() ?? '';
+              if (code.isEmpty) continue;
+              final name = row['route_name']?.toString().trim();
+              final status = row['status']?.toString().trim();
+              _put(
+                byCode,
+                codeRaw: code,
+                nameRaw: (name == null || name.isEmpty) ? code : name,
+                descriptionRaw: (status == null || status.isEmpty)
+                    ? 'Live route from API'
+                    : 'Status: $status',
+              );
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // If API has data, use it directly for route choices.
+    if (byCode.isNotEmpty) {
+      final list = byCode.values.toList();
+      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      return list;
+    }
+
+    // 2) Fallback: existing Firestore flow.
     await ensureRouteCodeSeededFromRoutes();
 
     try {
@@ -200,6 +278,9 @@ class ProfileDataService {
       });
       setLocationSyncRouteFallback(trimmed);
       print('✅ [ProfileDataService] Route code updated: $routeCode');
+      unawaited(
+        RouteCodeService.syncRouteCodeWithGpsAndRoutes(trimmed.toUpperCase()),
+      );
       return true;
     } catch (e) {
       print('❌ [ProfileDataService] Error updating route code: $e');
@@ -237,14 +318,16 @@ class RouteDataService {
   /// Fetches a route definition from Firestore by code.
   /// Returns map with code, name, description, stops (list of { name, latitude, longitude }).
   static Future<Map<String, dynamic>?> getRouteFromFirestore(String code) async {
+    final variants = _routeDocIdVariants(code);
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(_routesCollection)
-          .doc(code)
-          .get();
-
-      if (doc.exists && doc.data() != null) {
-        return doc.data();
+      for (final id in variants) {
+        final doc = await FirebaseFirestore.instance
+            .collection(_routesCollection)
+            .doc(id)
+            .get();
+        if (doc.exists && doc.data() != null) {
+          return firestoreMap(doc.data());
+        }
       }
       return null;
     } catch (e) {
@@ -253,21 +336,53 @@ class RouteDataService {
     }
   }
 
+  static Set<String> _routeDocIdVariants(String code) {
+    final t = code.trim();
+    if (t.isEmpty) return const {};
+    return {t, t.toUpperCase(), t.toLowerCase()};
+  }
+
+  /// Stops list from a `routes` document (or any map with a [stops] array).
+  static List<({String name, LatLng position})> stopsFromRoutesDocument(
+    Map<String, dynamic>? data,
+  ) {
+    return _parseStopsFromRoutesDoc(data);
+  }
+
+  /// Position from a stop map (routes / route_code [busStops] item).
+  static LatLng? stopPositionFromFirestoreMap(Map<String, dynamic> stop) {
+    for (final key in ['location', 'position', 'geo']) {
+      final v = stop[key];
+      if (v is GeoPoint) return LatLng(v.latitude, v.longitude);
+    }
+    final lat = (stop['latitude'] as num?)?.toDouble() ??
+        (stop['lat'] as num?)?.toDouble();
+    final lng = (stop['longitude'] as num?)?.toDouble() ??
+        (stop['lng'] as num?)?.toDouble();
+    if (lat != null && lng != null) return LatLng(lat, lng);
+    return null;
+  }
+
   static List<({String name, LatLng position})> _parseStopsFromRoutesDoc(
     Map<String, dynamic>? data,
   ) {
     if (data == null) return const [];
-    final stopsList = data['stops'] as List<dynamic>?;
-    if (stopsList == null || stopsList.isEmpty) return const [];
+    final raw = data['stops'] ?? data['bus_stop'];
+    final stopsList = raw is List ? List<dynamic>.from(raw) : <dynamic>[];
+    if (stopsList.isEmpty) return const [];
     final out = <({String name, LatLng position})>[];
-    for (int i = 0; i < stopsList.length; i++) {
+    for (var i = 0; i < stopsList.length; i++) {
       final stop = stopsList[i];
-      if (stop is! Map<String, dynamic>) continue;
-      final name = (stop['name'] as String?)?.trim();
-      final lat = (stop['latitude'] as num?)?.toDouble();
-      final lng = (stop['longitude'] as num?)?.toDouble();
-      if (name == null || name.isEmpty || lat == null || lng == null) continue;
-      out.add((name: name, position: LatLng(lat, lng)));
+      if (stop is GeoPoint) {
+        out.add((name: 'Stop ${i + 1}', position: LatLng(stop.latitude, stop.longitude)));
+        continue;
+      }
+      final sm = firestoreMap(stop);
+      if (sm == null) continue;
+      final name = (sm['name'] as String?)?.trim();
+      final pos = stopPositionFromFirestoreMap(sm);
+      if (pos == null) continue;
+      out.add((name: (name != null && name.isNotEmpty) ? name : 'Stop ${i + 1}', position: pos));
     }
     return out;
   }
@@ -335,6 +450,7 @@ class RouteDataService {
         'name': name,
         'description': description,
         'stops': stopsData,
+        'bus_stop': stopsData,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -384,27 +500,59 @@ class RouteCodeData {
 
   static RouteCodeData? fromMap(String code, Map<String, dynamic>? data) {
     if (data == null) return null;
-    final pointAObj = data['pointA'] as Map<String, dynamic>?;
-    final pointBObj = data['pointB'] as Map<String, dynamic>?;
-    if (pointAObj == null || pointBObj == null) return null;
-    final latA = (pointAObj['latitude'] as num?)?.toDouble();
-    final lngA = (pointAObj['longitude'] as num?)?.toDouble();
-    final latB = (pointBObj['latitude'] as num?)?.toDouble();
-    final lngB = (pointBObj['longitude'] as num?)?.toDouble();
-    if (latA == null || lngA == null || latB == null || lngB == null) return null;
-    final stopsList = data['busStops'] as List<dynamic>? ?? [];
-    final busStops = <({String name, LatLng position})>[];
-    for (final s in stopsList) {
-      if (s is! Map<String, dynamic>) continue;
-      final name = s['name'] as String? ?? '';
-      final lat = (s['latitude'] as num?)?.toDouble();
-      final lng = (s['longitude'] as num?)?.toDouble();
-      if (lat != null && lng != null) busStops.add((name: name, position: LatLng(lat, lng)));
+
+    LatLng? readEndpoint(dynamic v) {
+      if (v is GeoPoint) return LatLng(v.latitude, v.longitude);
+      final m = firestoreMap(v);
+      if (m == null) return null;
+      final lat = (m['latitude'] as num?)?.toDouble();
+      final lng = (m['longitude'] as num?)?.toDouble();
+      if (lat != null && lng != null) return LatLng(lat, lng);
+      return null;
     }
+
+    final rawStops = data['busStops'] ?? data['bus_stop'];
+    final List<dynamic> stopsList =
+        rawStops is List ? List<dynamic>.from(rawStops) : <dynamic>[];
+    final busStops = <({String name, LatLng position})>[];
+    for (var i = 0; i < stopsList.length; i++) {
+      final s = stopsList[i];
+      if (s is GeoPoint) {
+        busStops.add(
+          (name: 'Stop ${i + 1}', position: LatLng(s.latitude, s.longitude)),
+        );
+        continue;
+      }
+      final sm = firestoreMap(s);
+      if (sm == null) continue;
+      final name = (sm['name'] as String?)?.trim() ?? '';
+      final pos = RouteDataService.stopPositionFromFirestoreMap(sm);
+      if (pos == null) continue;
+      busStops.add(
+        (
+          name: name.isNotEmpty ? name : 'Stop ${i + 1}',
+          position: pos,
+        ),
+      );
+    }
+
+    LatLng? pointA = readEndpoint(data['pointA']);
+    LatLng? pointB = readEndpoint(data['pointB']);
+
+    if (busStops.length >= 2) {
+      pointA ??= busStops.first.position;
+      pointB ??= busStops.last.position;
+    } else if (busStops.length == 1) {
+      pointA ??= busStops.first.position;
+      pointB ??= busStops.first.position;
+    }
+
+    if (pointA == null || pointB == null) return null;
+
     return RouteCodeData(
       routeCode: code,
-      pointA: LatLng(latA, lngA),
-      pointB: LatLng(latB, lngB),
+      pointA: pointA,
+      pointB: pointB,
       busStops: busStops,
     );
   }
@@ -422,20 +570,25 @@ class RouteCodeService {
   }) async {
     try {
       final doc = FirebaseFirestore.instance.collection(routeCodeCollection).doc(routeCode);
+      final stopMaps = busStops
+          .map((s) => {
+                'name': s.name,
+                'latitude': s.position.latitude,
+                'longitude': s.position.longitude,
+              })
+          .toList();
       final data = {
         'routeCode': routeCode,
         'pointA': {'latitude': pointA.latitude, 'longitude': pointA.longitude},
         'pointB': {'latitude': pointB.latitude, 'longitude': pointB.longitude},
-        'busStops': busStops.map((s) => {
-          'name': s.name,
-          'latitude': s.position.latitude,
-          'longitude': s.position.longitude,
-        }).toList(),
+        'busStops': stopMaps,
+        // Snake_case alias (same data) for dashboards / exports.
+        'bus_stop': stopMaps,
         if (name != null) 'name': name,
         if (description != null) 'description': description,
         'updatedAt': FieldValue.serverTimestamp(),
       };
-      await doc.set(data);
+      await doc.set(data, SetOptions(merge: true));
       print('✅ [RouteCodeService] Saved route_code $routeCode (point A, point B, ${busStops.length} bus stops)');
       return true;
     } catch (e) {
@@ -444,18 +597,115 @@ class RouteCodeService {
     }
   }
 
+  static Set<String> _routeCodeDocVariants(String code) {
+    final t = code.trim();
+    if (t.isEmpty) return const {};
+    return {t, t.toUpperCase(), t.toLowerCase()};
+  }
+
   /// Fetches one route by code. Returns null if not found or invalid.
   static Future<RouteCodeData?> get(String routeCode) async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(routeCodeCollection)
-          .doc(routeCode)
-          .get();
-      return RouteCodeData.fromMap(routeCode, doc.data());
+      for (final id in _routeCodeDocVariants(routeCode)) {
+        final doc = await FirebaseFirestore.instance
+            .collection(routeCodeCollection)
+            .doc(id)
+            .get();
+        if (!doc.exists) continue;
+        final data = firestoreMap(doc.data());
+        final parsed = RouteCodeData.fromMap(routeCode.trim().toUpperCase(), data);
+        if (parsed != null) return parsed;
+      }
+      return null;
     } catch (e) {
       print('❌ [RouteCodeService] Error getting $routeCode: $e');
       return null;
     }
+  }
+
+  /// Writes [pointA]/[pointB]/[busStops] from `routes` catalog + current GPS (point A when possible).
+  static Future<bool> syncRouteCodeWithGpsAndRoutes(String routeCodeRaw) async {
+    final logicalCode = routeCodeRaw.trim().toUpperCase();
+    if (logicalCode.isEmpty) return false;
+
+    String docId = logicalCode;
+    for (final id in _routeCodeDocVariants(routeCodeRaw)) {
+      final d = await FirebaseFirestore.instance
+          .collection(routeCodeCollection)
+          .doc(id)
+          .get();
+      if (d.exists) {
+        docId = id;
+        break;
+      }
+    }
+
+    final routeDoc = await RouteDataService.getRouteFromFirestore(logicalCode);
+    var catalogStops = RouteDataService.stopsFromRoutesDocument(routeDoc);
+
+    Position? gps;
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (enabled) {
+        var perm = await Geolocator.checkPermission();
+        if (perm == LocationPermission.denied) {
+          perm = await Geolocator.requestPermission();
+        }
+        if (perm == LocationPermission.whileInUse ||
+            perm == LocationPermission.always) {
+          gps = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 15),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[RouteCodeService] GPS during sync: $e');
+    }
+
+    late LatLng pointA;
+    late LatLng pointB;
+    var busStops = catalogStops;
+
+    if (catalogStops.length >= 2) {
+      pointA = gps != null
+          ? LatLng(gps.latitude, gps.longitude)
+          : catalogStops.first.position;
+      pointB = catalogStops.last.position;
+    } else if (catalogStops.length == 1) {
+      pointA = gps != null
+          ? LatLng(gps.latitude, gps.longitude)
+          : catalogStops.first.position;
+      pointB = catalogStops.first.position;
+    } else {
+      if (gps != null) {
+        pointA = LatLng(gps.latitude, gps.longitude);
+        pointB = LatLng(gps.latitude + 0.0045, gps.longitude + 0.0045);
+        busStops = [];
+      } else {
+        debugPrint(
+          '[RouteCodeService] No routes.stops and no GPS for $logicalCode — skip sync',
+        );
+        return false;
+      }
+    }
+
+    final name = routeDoc != null
+        ? (routeDoc['name'] as String?)?.trim()
+        : null;
+    final description = routeDoc != null
+        ? (routeDoc['description'] as String?)?.trim()
+        : null;
+
+    return save(
+      routeCode: docId,
+      pointA: pointA,
+      pointB: pointB,
+      busStops: busStops,
+      name: (name != null && name.isNotEmpty) ? name : null,
+      description:
+          (description != null && description.isNotEmpty) ? description : null,
+    );
   }
 
   /// Returns all route codes in the collection.
