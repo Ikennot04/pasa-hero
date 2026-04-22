@@ -189,14 +189,22 @@ export default function Management() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const confirmArrival = useCallback((_id: string) => {
+  const confirmArrival = useCallback((id: string) => {
+    void id;
     void loadTerminalManagement();
   }, [loadTerminalManagement]);
-  const rejectArrival = () => {};
-  const confirmDeparture = useCallback((_id: string) => {
+  const rejectArrival = useCallback((id: string) => {
+    void id;
     void loadTerminalManagement();
   }, [loadTerminalManagement]);
-  const rejectDeparture = () => {};
+  const confirmDeparture = useCallback((id: string) => {
+    void id;
+    void loadTerminalManagement();
+  }, [loadTerminalManagement]);
+  const rejectDeparture = useCallback((id: string) => {
+    void id;
+    void loadTerminalManagement();
+  }, [loadTerminalManagement]);
 
   return (
     <div className="space-y-6 pb-6 pt-4">
