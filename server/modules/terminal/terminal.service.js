@@ -71,10 +71,9 @@ export const TerminalService = {
   },
   // GET TERMINAL NAMES EXCEPT ONE TERMINAL ID ===========================================
   async getTerminalNamesExcludingId(terminalId) {
-    if (!mongoose.Types.ObjectId.isValid(terminalId)) {
-      const err = new Error("Invalid terminal id.");
-      err.statusCode = 400;
-      throw err;
+    const isExistingTerminal = await Terminal.findById(terminalId);
+    if (!isExistingTerminal) {
+      throw new Error("Terminal not found.");
     }
 
     const terminalNames = await Terminal.find({ _id: { $ne: terminalId } })
