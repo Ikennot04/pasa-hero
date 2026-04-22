@@ -69,6 +69,21 @@ export const TerminalService = {
     const terminals = await Terminal.find();
     return terminals;
   },
+  // GET TERMINAL NAMES EXCEPT ONE TERMINAL ID ===========================================
+  async getTerminalNamesExcludingId(terminalId) {
+    if (!mongoose.Types.ObjectId.isValid(terminalId)) {
+      const err = new Error("Invalid terminal id.");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const terminalNames = await Terminal.find({ _id: { $ne: terminalId } })
+      .select("terminal_name")
+      .sort({ terminal_name: 1 })
+      .lean();
+
+    return terminalNames
+  },
   // CREATE TERMINAL ===================================================================
   async createTerminal(terminalData) {
     const existingTerminal = await Terminal.findOne({ terminal_name: terminalData.terminal_name });

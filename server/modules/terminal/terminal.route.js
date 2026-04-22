@@ -8,6 +8,7 @@ import {
   getPendingConfirmationsByTerminalId,
   getTerminalBusOperationalListByTerminalId,
   getTerminalManagement,
+  getTerminalNamesExcludingId,
 } from "./terminal.controller.js";
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.get('/:id/operational-summary', getTerminalOperationalSummary);
 router.get('/:id/terminal-management', getTerminalManagement);
 router.get('/:id/pending-confirmations', getPendingConfirmationsByTerminalId);
 router.get('/:id/buses-present', getTerminalBusOperationalListByTerminalId);
+router.get('/:id/other-terminal-names', getTerminalNamesExcludingId);
 router.get('/:id', getTerminalById);
 router.patch('/:id', updateTerminalById);
 
