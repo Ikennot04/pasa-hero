@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { useConfirmTerminalLog } from "../_hooks/useConfirmTerminalLog";
+
 type PendingArrivalRow = {
   id: string;
   busNumber: string;
@@ -9,7 +12,8 @@ type PendingArrivalRow = {
 
 type ArrivalConfirmationProps = {
   pendingArrivals: PendingArrivalRow[];
-  onConfirmArrival: (id: string) => void;
+  onConfirmArrival?: (id: string) => void | Promise<void>;
+  onConfirmToast?: (message: string) => void;
   onRejectArrival: (id: string) => void;
 };
 
@@ -25,14 +29,57 @@ function formatDateTime(iso: string) {
 export default function ArrivalConfirmation({
   pendingArrivals,
   onConfirmArrival,
+  onConfirmToast,
   onRejectArrival,
 }: ArrivalConfirmationProps) {
+  const { confirmTerminalLog } = useConfirmTerminalLog();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  const handleConfirm = async (terminalLogId: string) => {
+    setConfirmingId(terminalLogId);
+    setLastError(null);
+    try {
+      const res = await confirmTerminalLog(terminalLogId);
+      if (
+        res &&
+        typeof res === "object" &&
+        "success" in res &&
+        res.success === true
+      ) {
+        await onConfirmArrival?.(terminalLogId);
+        const successMsg =
+          "message" in res &&
+          typeof (res as { message?: unknown }).message === "string"
+            ? (res as { message: string }).message
+            : "Arrival confirmed";
+        onConfirmToast?.(successMsg);
+      } else {
+        const msg =
+          res &&
+          typeof res === "object" &&
+          "message" in res &&
+          typeof (res as { message?: unknown }).message === "string"
+            ? (res as { message: string }).message
+            : "Could not confirm";
+        setLastError(msg);
+      }
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Pending arrival confirmations</h2>
         <span className="badge bg-[#408A71] text-white">{pendingArrivals.length}</span>
       </div>
+      {lastError ? (
+        <div className="alert alert-error mb-3 py-2 text-sm" role="alert">
+          {lastError}
+        </div>
+      ) : null}
       <div className="overflow-x-auto min-h-40 max-h-80">
         <table className="table table-zebra w-full">
           <thead>
@@ -54,8 +101,9 @@ export default function ArrivalConfirmation({
                     <div className="flex flex-wrap justify-end gap-2">
                       <button
                         type="button"
-                        className="btn btn-sm text-sm bg-[#408A71] text-white"
-                        onClick={() => onConfirmArrival(row.id)}
+                        className={`btn btn-sm text-sm bg-[#408A71] text-white ${confirmingId === row.id ? "loading" : ""}`}
+                        disabled={confirmingId !== null}
+                        onClick={() => void handleConfirm(row.id)}
                       >
                         Confirm
                       </button>
