@@ -44,3 +44,15 @@ export const deleteRouteStopById = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const reorderRouteStops = async (req, res) => {
+  try {
+    const { routeId } = req.params;
+    const { ordered_stop_ids: orderedStopIds } = req.body ?? {};
+    const routeStops = await RouteStopService.reorderRouteStops(routeId, orderedStopIds);
+    res.status(200).json({ success: true, data: routeStops });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};

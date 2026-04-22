@@ -2,10 +2,22 @@ import mongoose from "mongoose";
 
 const busAssignmentSchema = new mongoose.Schema(
   {
-    bus_id: { type: String, ref: "Bus", required: true },
-    driver_id: { type: String, ref: "Driver", required: true },
-    operator_user_id: { type: String, ref: "Driver", required: true }, //Bus operator ni
-    route_id: { type: String, ref: "Route", required: true },
+    bus_id: { type: mongoose.Schema.Types.ObjectId, ref: "Bus", required: true },
+    driver_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Driver",
+      required: true,
+    },
+    operator_user_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    }, // Bus operator user id
+    route_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Route",
+      required: true,
+    },
 
     assignment_status: {
       type: String,
@@ -18,21 +30,15 @@ const busAssignmentSchema = new mongoose.Schema(
       enum: ["pending", "completed", "cancelled"],
     },
 
-    arrival_status: {
-      type: String,
-      default: "arrival_pending",
-      enum: ["arrival_pending", "arrived"],
+    latest_terminal_log_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TerminalLog",
+      default: null,
+      nullable: true,
     },
-    arrival_confirmed_by: { type: String, ref: "User", default: null }, // Terminal admin ID
-    arrival_confirmed_at: { type: Date, default: null },
-    
-    departure_status: {
-      type: String,
-      default: "departure_pending",
-      enum: ["departure_pending", "departed"],
-    },
-    departure_confirmed_by: { type: String, ref: "User", default: null }, // Terminal admin ID
-    departure_confirmed_at: { type: Date, default: null },
+
+    /** Scheduled arrival at the route destination terminal (see Route.end_terminal_id). */
+    scheduled_arrival_at: { type: Date, default: null },
   },
   { timestamps: true },
 );

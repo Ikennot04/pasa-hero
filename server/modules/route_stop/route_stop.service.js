@@ -70,4 +70,68 @@ export const RouteStopService = {
     await RouteStop.findByIdAndDelete(id);
     return routeStop;
   },
+
+  // REORDER STOPS FOR A ROUTE (sets stop_order 1..n from ordered_stop_ids) ===================================================================
+  async reorderRouteStops(routeId, orderedStopIds) {
+    const route = await Route.findById(routeId);
+    if (!route) {
+      const error = new Error("This route does not exist.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (!Array.isArray(orderedStopIds)) {
+      const error = new Error("ordered_stop_ids must be an array.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const existing = await RouteStop.find({ route_id: routeId });
+    if (existing.length === 0) {
+      if (orderedStopIds.length === 0) {
+        return [];
+      }
+      const error = new Error("This route has no stops to reorder.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (orderedStopIds.length !== existing.length) {
+      const error = new Error(
+        "ordered_stop_ids must list every stop for this route exactly once.",
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const validIds = new Set(existing.map((s) => String(s._id)));
+    const seen = new Set();
+    for (const rawId of orderedStopIds) {
+      const id = String(rawId);
+      if (seen.has(id)) {
+        const error = new Error("ordered_stop_ids must not contain duplicates.");
+        error.statusCode = 400;
+        throw error;
+      }
+      seen.add(id);
+      if (!validIds.has(id)) {
+        const error = new Error(
+          "ordered_stop_ids contains a stop that does not belong to this route.",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
+    const bulkOps = orderedStopIds.map((rawId, index) => ({
+      updateOne: {
+        filter: { _id: rawId, route_id: routeId },
+        update: { $set: { stop_order: index + 1 } },
+      },
+    }));
+
+    await RouteStop.bulkWrite(bulkOps);
+
+    return RouteStop.find({ route_id: routeId }).sort({ stop_order: 1 });
+  },
 };
