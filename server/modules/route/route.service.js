@@ -50,9 +50,12 @@ export const RouteService = {
   },
   // GET ROUTES BY TERMINAL ID ==========================================================
   async getRoutesByTerminalId(terminalId) {
-    const routes = await Route.find({
+    const terminalFilter = {
       $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
-    })
+      route_type: "normal",
+    };
+
+    const routes = await Route.find(terminalFilter)
       .populate("start_terminal_id")
       .populate("end_terminal_id");
 
@@ -70,17 +73,9 @@ export const RouteService = {
     }).then((busIds) => busIds.length);
 
     const [totalRoutes, activeRoutes, inactiveRoutes] = await Promise.all([
-      Route.countDocuments({
-        $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
-      }),
-      Route.countDocuments({
-        $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
-        status: "active",
-      }),
-      Route.countDocuments({
-        $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
-        status: "inactive",
-      }),
+      Route.countDocuments(terminalFilter),
+      Route.countDocuments({ ...terminalFilter, status: "active" }),
+      Route.countDocuments({ ...terminalFilter, status: "inactive" }),
     ]);
 
     const activeBusesCountByRouteId = new Map(
