@@ -193,7 +193,9 @@ export default function Management() {
     void loadTerminalManagement();
   }, [loadTerminalManagement]);
   const rejectArrival = () => {};
-  const confirmDeparture = () => {};
+  const confirmDeparture = useCallback((_id: string) => {
+    void loadTerminalManagement();
+  }, [loadTerminalManagement]);
   const rejectDeparture = () => {};
 
   return (
@@ -269,6 +271,7 @@ export default function Management() {
         <DepartureConfirmation
           pendingDepartures={pendingDepartureRows}
           onConfirmDeparture={confirmDeparture}
+          onConfirmToast={(msg) => setToast(msg)}
           onRejectDeparture={rejectDeparture}
         />
       </div>
