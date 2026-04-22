@@ -75,6 +75,10 @@ export const UserService = {
       throw error;
     }
 
+    if (user.assigned_terminal) {
+      await user.populate({ path: "assigned_terminal", select: "terminal_name" });
+    }
+
     const token = jwt.sign(
       {
         userId: user._id,
