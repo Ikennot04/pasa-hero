@@ -10,31 +10,15 @@ import {
 } from "../addTerminalNotificationSchema";
 import {
   MOCK_TERMINAL_SENDER_ID,
-  TERMINAL_BUS_OPTIONS,
-  TERMINAL_ROUTE_OPTIONS,
   type NotificationFields,
-  type NotificationTargetScope,
 } from "../terminalBroadcastCatalog";
 import { DEFAULT_TERMINAL_ID } from "../terminalNotificationsMock";
 
 const TYPE_OPTIONS = [
-  { value: "delay", label: "Delay" },
-  { value: "full", label: "Full (at capacity)" },
-  { value: "skipped_stop", label: "Skipped stop" },
   { value: "info", label: "Info" },
+  { value: "other", label: "Other" },
+  { value: "custom", label: "Custom" },
 ] as const;
-
-const PRIORITY_OPTIONS = [
-  { value: "high", label: "High" },
-  { value: "medium", label: "Medium" },
-  { value: "low", label: "Low" },
-] as const;
-
-const SCOPE_OPTIONS: { value: NotificationTargetScope; label: string }[] = [
-  { value: "terminal", label: "Entire terminal" },
-  { value: "route", label: "Specific route" },
-  { value: "bus", label: "Specific bus" },
-];
 
 type Props = {
   onCreated: (n: NotificationFields) => void;
@@ -48,8 +32,6 @@ export default function CreateNotificationModal({ onCreated }: Props) {
     register,
     handleSubmit,
     reset,
-    watch,
-    setValue,
     formState: { errors },
   } = useForm<AddTerminalNotificationForm>({
     resolver: yupResolver(addTerminalNotificationSchema),
@@ -65,8 +47,6 @@ export default function CreateNotificationModal({ onCreated }: Props) {
     },
   });
 
-  const targetScope = watch("target_scope");
-
   useEffect(() => {
     const el = dialogRef.current;
     if (!el) return;
@@ -76,15 +56,6 @@ export default function CreateNotificationModal({ onCreated }: Props) {
     el.addEventListener("close", onClose);
     return () => el.removeEventListener("close", onClose);
   }, [open]);
-
-  useEffect(() => {
-    if (targetScope === "terminal") {
-      setValue("route_id", "");
-      setValue("bus_id", "");
-    }
-    if (targetScope === "route") setValue("bus_id", "");
-    if (targetScope === "bus") setValue("route_id", "");
-  }, [targetScope, setValue]);
 
   function openModal() {
     reset({
@@ -100,23 +71,19 @@ export default function CreateNotificationModal({ onCreated }: Props) {
   }
 
   function onSubmit(data: AddTerminalNotificationForm) {
-    const route_id =
-      data.target_scope === "route" ? data.route_id || null : null;
-    const bus_id = data.target_scope === "bus" ? data.bus_id || null : null;
-    const scope = data.target_scope;
     const now = new Date().toISOString();
 
     const next: NotificationFields = {
       id: `sent-${crypto.randomUUID()}`,
       sender_id: MOCK_TERMINAL_SENDER_ID,
       terminal_id: DEFAULT_TERMINAL_ID,
-      bus_id,
-      route_id,
+      bus_id: null,
+      route_id: null,
       title: data.title.trim(),
       message: data.message.trim(),
       notification_type: data.notification_type,
-      priority: data.priority,
-      scope,
+      priority: "medium",
+      scope: "terminal",
       createdAt: now,
       updatedAt: now,
     };
@@ -168,45 +135,15 @@ export default function CreateNotificationModal({ onCreated }: Props) {
               ) : null}
             </label>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label className="form-control w-full">
-                <span className="label-text font-medium">
-                  notification_type
-                </span>
-                <select
-                  className="select select-bordered w-full"
-                  {...register("notification_type")}
-                >
-                  {TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="form-control w-full">
-                <span className="label-text font-medium">priority</span>
-                <select
-                  className="select select-bordered w-full"
-                  {...register("priority")}
-                >
-                  {PRIORITY_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
             <label className="form-control w-full">
-              <span className="label-text font-medium">Scope</span>
+              <span className="label-text font-medium">
+                notification_type
+              </span>
               <select
                 className="select select-bordered w-full"
-                {...register("target_scope")}
+                {...register("notification_type")}
               >
-                {SCOPE_OPTIONS.map((o) => (
+                {TYPE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -214,53 +151,10 @@ export default function CreateNotificationModal({ onCreated }: Props) {
               </select>
             </label>
 
-            {targetScope === "route" ? (
-              <label className="form-control w-full">
-                <span className="label-text text-sm font-medium">
-                  route_id (select)
-                </span>
-                <select
-                  className={`select select-bordered select-sm w-full ${errors.route_id ? "select-error" : ""}`}
-                  {...register("route_id")}
-                >
-                  <option value="">Select route…</option>
-                  {TERMINAL_ROUTE_OPTIONS.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-                {errors.route_id ? (
-                  <span className="label-text-alt text-error">
-                    {errors.route_id.message}
-                  </span>
-                ) : null}
-              </label>
-            ) : null}
-
-            {targetScope === "bus" ? (
-              <label className="form-control w-full">
-                <span className="label-text text-xs font-medium">
-                  bus_id (select)
-                </span>
-                <select
-                  className={`select select-bordered select-sm w-full ${errors.bus_id ? "select-error" : ""}`}
-                  {...register("bus_id")}
-                >
-                  <option value="">Select bus…</option>
-                  {TERMINAL_BUS_OPTIONS.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.bus_number}
-                    </option>
-                  ))}
-                </select>
-                {errors.bus_id ? (
-                  <span className="label-text-alt text-error">
-                    {errors.bus_id.message}
-                  </span>
-                ) : null}
-              </label>
-            ) : null}
+            <input type="hidden" {...register("priority")} value="medium" />
+            <input type="hidden" {...register("target_scope")} value="terminal" />
+            <input type="hidden" {...register("route_id")} value="" />
+            <input type="hidden" {...register("bus_id")} value="" />
 
             <div className="modal-action flex-wrap gap-2">
               <button
