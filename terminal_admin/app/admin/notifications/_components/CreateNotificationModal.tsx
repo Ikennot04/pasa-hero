@@ -10,9 +10,12 @@ import {
 } from "../addTerminalNotificationSchema";
 import {
   MOCK_TERMINAL_SENDER_ID,
+  normalizeNotification,
+  type NotificationApiRecord,
   type NotificationFields,
 } from "../terminalBroadcastCatalog";
 import { DEFAULT_TERMINAL_ID } from "../terminalNotificationsMock";
+import { useCreateNotification } from "../_hooks/useCreateNotification";
 
 const TYPE_OPTIONS = [
   { value: "info", label: "Info" },
@@ -26,13 +29,15 @@ type Props = {
 
 export default function CreateNotificationModal({ onCreated }: Props) {
   const [open, setOpen] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const { createNotification, error: createError } = useCreateNotification();
 
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<AddTerminalNotificationForm>({
     resolver: yupResolver(addTerminalNotificationSchema),
     mode: "onTouched",
@@ -67,15 +72,19 @@ export default function CreateNotificationModal({ onCreated }: Props) {
       route_id: "",
       bus_id: "",
     });
+    setSubmitError(null);
     setOpen(true);
   }
 
-  function onSubmit(data: AddTerminalNotificationForm) {
+  async function onSubmit(data: AddTerminalNotificationForm) {
     const terminalAdminUserId = localStorage.getItem("terminal_admin_user_id")?.trim();
     const senderId = terminalAdminUserId || MOCK_TERMINAL_SENDER_ID;
+    const assignedTerminalId = localStorage.getItem("assigned_terminal")?.trim();
+    const terminalId = assignedTerminalId || DEFAULT_TERMINAL_ID;
 
     const payload = {
       sender_id: senderId,
+      terminal_id: terminalId,
       title: data.title.trim(),
       message: data.message.trim(),
       notification_type: data.notification_type,
@@ -83,27 +92,21 @@ export default function CreateNotificationModal({ onCreated }: Props) {
       priority: "medium",
     };
 
-    console.log("Notification form data:", payload);
+    setSubmitError(null);
+    const response = await createNotification(payload);
 
-    const now = new Date().toISOString();
+    if (response?.success && response?.data) {
+      const normalized = normalizeNotification(response.data as NotificationApiRecord);
+      onCreated(normalized);
+      setOpen(false);
+      return;
+    }
 
-    const next: NotificationFields = {
-      id: `sent-${crypto.randomUUID()}`,
-      sender_id: senderId,
-      terminal_id: DEFAULT_TERMINAL_ID,
-      bus_id: null,
-      route_id: null,
-      title: data.title.trim(),
-      message: data.message.trim(),
-      notification_type: data.notification_type,
-      priority: "medium",
-      scope: "terminal",
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    onCreated(next);
-    setOpen(false);
+    const message =
+      typeof response?.message === "string"
+        ? response.message
+        : createError || "Failed to create notification";
+    setSubmitError(message);
   }
 
   return (
@@ -171,15 +174,23 @@ export default function CreateNotificationModal({ onCreated }: Props) {
             <input type="hidden" {...register("bus_id")} value="" />
 
             <div className="modal-action flex-wrap gap-2">
+              {submitError ? (
+                <div className="w-full text-sm text-error">{submitError}</div>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => setOpen(false)}
+                disabled={isSubmitting}
               >
                 Cancel
               </button>
-              <button type="submit" className="btn bg-[#0062CA] text-white">
-                Send notification
+              <button
+                type="submit"
+                className="btn bg-[#0062CA] text-white"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Sending..." : "Send notification"}
               </button>
             </div>
           </form>
