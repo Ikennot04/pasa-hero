@@ -71,11 +71,25 @@ export default function CreateNotificationModal({ onCreated }: Props) {
   }
 
   function onSubmit(data: AddTerminalNotificationForm) {
+    const terminalAdminUserId = localStorage.getItem("terminal_admin_user_id")?.trim();
+    const senderId = terminalAdminUserId || MOCK_TERMINAL_SENDER_ID;
+
+    const payload = {
+      sender_id: senderId,
+      title: data.title.trim(),
+      message: data.message.trim(),
+      notification_type: data.notification_type,
+      scope: "terminal",
+      priority: "medium",
+    };
+
+    console.log("Notification form data:", payload);
+
     const now = new Date().toISOString();
 
     const next: NotificationFields = {
       id: `sent-${crypto.randomUUID()}`,
-      sender_id: MOCK_TERMINAL_SENDER_ID,
+      sender_id: senderId,
       terminal_id: DEFAULT_TERMINAL_ID,
       bus_id: null,
       route_id: null,
