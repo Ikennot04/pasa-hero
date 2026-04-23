@@ -46,10 +46,9 @@ export const getTerminalManagement = async (req, res) => {
   }
 };
 
-export const getTerminalNamesExcludingId = async (req, res) => {
+export const getAllTerminalNames = async (req, res) => {
   try {
-    const { id } = req.params;
-    const data = await TerminalService.getTerminalNamesExcludingId(id);
+    const data = await TerminalService.getAllTerminalNames();
     res.status(200).json({ success: true, data });
   } catch (error) {
     const statusCode = error.statusCode || 400;

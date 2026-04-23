@@ -69,19 +69,12 @@ export const TerminalService = {
     const terminals = await Terminal.find();
     return terminals;
   },
-  // GET TERMINAL NAMES EXCEPT ONE TERMINAL ID ===========================================
-  async getTerminalNamesExcludingId(terminalId) {
-    const isExistingTerminal = await Terminal.findById(terminalId);
-    if (!isExistingTerminal) {
-      throw new Error("Terminal not found.");
-    }
-
-    const terminalNames = await Terminal.find({ _id: { $ne: terminalId } })
+  // GET ALL TERMINAL NAMES (id + name, sorted by name) ==================================
+  async getAllTerminalNames() {
+    return Terminal.find()
       .select("terminal_name")
       .sort({ terminal_name: 1 })
       .lean();
-
-    return terminalNames
   },
   // CREATE TERMINAL ===================================================================
   async createTerminal(terminalData) {
