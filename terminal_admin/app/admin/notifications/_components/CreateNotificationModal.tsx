@@ -9,12 +9,10 @@ import {
   type AddTerminalNotificationForm,
 } from "../addTerminalNotificationSchema";
 import {
-  MOCK_TERMINAL_SENDER_ID,
   normalizeNotification,
   type NotificationApiRecord,
   type NotificationFields,
 } from "../terminalBroadcastCatalog";
-import { DEFAULT_TERMINAL_ID } from "../terminalNotificationsMock";
 import { useCreateNotification } from "../_hooks/useCreateNotification";
 
 const TYPE_OPTIONS = [
@@ -78,9 +76,14 @@ export default function CreateNotificationModal({ onCreated }: Props) {
 
   async function onSubmit(data: AddTerminalNotificationForm) {
     const terminalAdminUserId = localStorage.getItem("terminal_admin_user_id")?.trim();
-    const senderId = terminalAdminUserId || MOCK_TERMINAL_SENDER_ID;
+    const senderId = terminalAdminUserId;
     const assignedTerminalId = localStorage.getItem("assigned_terminal")?.trim();
-    const terminalId = assignedTerminalId || DEFAULT_TERMINAL_ID;
+    const terminalId = assignedTerminalId;
+
+    if (!senderId || !terminalId) {
+      setSubmitError("Missing terminal admin context. Please sign in again.");
+      return;
+    }
 
     const payload = {
       sender_id: senderId,

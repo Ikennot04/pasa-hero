@@ -129,6 +129,7 @@ export default function NotificationsPage() {
   const onCreated = (n: NotificationFields) => {
     setItems((prev) => [n, ...prev]);
     setToast("Notification created successfully.");
+    void loadNotifications();
   };
 
   return (

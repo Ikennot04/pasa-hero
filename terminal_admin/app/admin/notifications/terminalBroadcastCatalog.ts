@@ -1,5 +1,3 @@
-import { DEFAULT_TERMINAL_ID, DEFAULT_TERMINAL_NAME } from "./terminalNotificationsMock";
-
 /**
  * Matches `server/modules/notification/notification.model.js` plus Mongoose timestamps.
  * `id` is the document id for React keys only — not shown in the UI.
@@ -18,14 +16,14 @@ export type NotificationType =
   | "custom";
 export type NotificationPriority = "high" | "medium" | "low";
 
-export type PopulatedSender = { _id: string; f_name?: string; l_name?: string };
-export type PopulatedTerminal = { _id: string; terminal_name?: string };
-export type PopulatedRoute = {
+type PopulatedSender = { _id: string; f_name?: string; l_name?: string };
+type PopulatedTerminal = { _id: string; terminal_name?: string };
+type PopulatedRoute = {
   _id: string;
   route_name?: string;
   route_code?: string;
 };
-export type PopulatedBus = { _id: string; bus_number?: string; plate_number?: string };
+type PopulatedBus = { _id: string; bus_number?: string; plate_number?: string };
 
 export type NotificationFields = {
   id: string;
@@ -62,45 +60,6 @@ export function normalizeNotification(doc: NotificationApiRecord): NotificationF
   };
 }
 
-/** Mock User ids aligned with `sender_id` ref:User */
-export const MOCK_TERMINAL_SENDER_ID = "user-terminal-admin-1";
-export const MOCK_SYSTEM_SENDER_ID = "user-system-1";
-
-const MOCK_USER_NAMES: Record<string, string> = {
-  [MOCK_TERMINAL_SENDER_ID]: "A. Reyes (Terminal Admin)",
-  [MOCK_SYSTEM_SENDER_ID]: "Pasahero Operations",
-};
-
-/** Mock Terminal names for `terminal_id` ref:Terminal */
-const MOCK_TERMINAL_NAMES: Record<string, string> = {
-  [DEFAULT_TERMINAL_ID]: DEFAULT_TERMINAL_NAME,
-};
-
-/** Routes (ref:Route) — labels for display when API returns only ids */
-export const TERMINAL_ROUTE_OPTIONS = [
-  { id: "route-pitx-nedsa", name: "PITX — NEDSA" },
-  { id: "route-pitx-sne", name: "PITX — SM North EDSA" },
-  { id: "route-pitx-fv", name: "PITX — Fairview" },
-  { id: "route-pitx-mon", name: "PITX — Monumento" },
-] as const;
-
-/** Buses (ref:Bus) */
-export const TERMINAL_BUS_OPTIONS = [
-  { id: "bus-1", bus_number: "01-AB" },
-  { id: "bus-2", bus_number: "12C" },
-  { id: "bus-3", bus_number: "13B" },
-  { id: "bus-4", bus_number: "02-D" },
-  { id: "bus-5", bus_number: "07E" },
-  { id: "bus-6", bus_number: "09F" },
-  { id: "bus-7", bus_number: "11A" },
-  { id: "bus-8", bus_number: "15G" },
-] as const;
-
-const ROUTE_IDS: Set<string> = new Set(TERMINAL_ROUTE_OPTIONS.map((r) => r.id));
-const BUS_IDS: Set<string> = new Set(TERMINAL_BUS_OPTIONS.map((b) => b.id));
-
-export type NotificationTargetScope = "terminal" | "route" | "bus";
-
 function isPopulatedSender(v: NotificationFields["sender_id"]): v is PopulatedSender {
   return typeof v === "object" && v !== null && "_id" in v;
 }
@@ -117,13 +76,13 @@ function isPopulatedBus(v: NotificationFields["bus_id"]): v is PopulatedBus {
   return typeof v === "object" && v !== null && "_id" in v;
 }
 
-/** Populated-style label for ref:User — never returns raw id in UI */
+/** Populated-style label for ref:User. */
 export function senderRefLabel(senderId: NotificationFields["sender_id"]): string {
   if (isPopulatedSender(senderId)) {
     const name = [senderId.f_name, senderId.l_name].filter(Boolean).join(" ");
     return name || "—";
   }
-  return MOCK_USER_NAMES[senderId] ?? "Unknown user";
+  return senderId;
 }
 
 /** Populated-style label for ref:Terminal */
@@ -132,7 +91,7 @@ export function terminalRefLabel(terminalId: NotificationFields["terminal_id"]):
   if (isPopulatedTerminal(terminalId)) {
     return terminalId.terminal_name ?? "Unknown terminal";
   }
-  return MOCK_TERMINAL_NAMES[terminalId] ?? "Unknown terminal";
+  return terminalId;
 }
 
 /** Populated-style label for ref:Route */
@@ -142,8 +101,7 @@ export function routeRefLabel(routeId: NotificationFields["route_id"]): string {
     const parts = [routeId.route_name, routeId.route_code].filter(Boolean);
     return parts.length ? parts.join(" · ") : "Unknown route";
   }
-  const name = TERMINAL_ROUTE_OPTIONS.find((r) => r.id === routeId)?.name;
-  return name ?? "Unknown route";
+  return routeId;
 }
 
 /** Populated-style label for ref:Bus (fleet number) */
@@ -152,27 +110,7 @@ export function busRefLabel(busId: NotificationFields["bus_id"]): string {
   if (isPopulatedBus(busId)) {
     return busId.bus_number ?? busId.plate_number ?? "Unknown bus";
   }
-  const row = TERMINAL_BUS_OPTIONS.find((b) => b.id === busId);
-  return row?.bus_number ?? "Unknown bus";
-}
-
-export function notificationVisibleAtTerminal(n: NotificationFields): boolean {
-  const termId =
-    n.terminal_id === null
-      ? null
-      : typeof n.terminal_id === "object"
-        ? String(n.terminal_id._id)
-        : n.terminal_id;
-  if (termId === DEFAULT_TERMINAL_ID) return true;
-
-  const routeId =
-    n.route_id === null ? null : typeof n.route_id === "object" ? String(n.route_id._id) : n.route_id;
-  if (routeId && ROUTE_IDS.has(routeId)) return true;
-
-  const busId =
-    n.bus_id === null ? null : typeof n.bus_id === "object" ? String(n.bus_id._id) : n.bus_id;
-  if (busId && BUS_IDS.has(busId)) return true;
-  return false;
+  return busId;
 }
 
 export function scopeSummary(n: NotificationFields): string {

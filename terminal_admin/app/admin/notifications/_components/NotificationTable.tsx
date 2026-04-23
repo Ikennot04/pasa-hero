@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   busRefLabel,
@@ -68,24 +68,15 @@ export default function NotificationTable({
 
   const totalRows = sorted.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, priorityFilter, pageSize]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
+  const clampedPage = Math.min(currentPage, totalPages);
 
   const paginatedRows = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
+    const start = (clampedPage - 1) * pageSize;
     return sorted.slice(start, start + pageSize);
-  }, [sorted, currentPage, pageSize]);
+  }, [sorted, clampedPage, pageSize]);
 
-  const rangeStart = totalRows === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const rangeEnd = totalRows === 0 ? 0 : Math.min(currentPage * pageSize, totalRows);
+  const rangeStart = totalRows === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
+  const rangeEnd = totalRows === 0 ? 0 : Math.min(clampedPage * pageSize, totalRows);
 
   return (
     <>
@@ -98,7 +89,10 @@ export default function NotificationTable({
               placeholder="Title, message, sender, terminal, route, bus…"
               className="input input-bordered w-full"
               value={search}
-              onChange={(e) => onSearchChange(e.target.value)}
+              onChange={(e) => {
+                setCurrentPage(1);
+                onSearchChange(e.target.value);
+              }}
             />
           </label>
 
@@ -107,7 +101,10 @@ export default function NotificationTable({
             <select
               className="select select-bordered w-full"
               value={priorityFilter}
-              onChange={(e) => onPriorityFilterChange(e.target.value as PriorityFilter)}
+              onChange={(e) => {
+                setCurrentPage(1);
+                onPriorityFilterChange(e.target.value as PriorityFilter);
+              }}
             >
               <option value="all">All</option>
               <option value="high">High</option>
@@ -121,7 +118,10 @@ export default function NotificationTable({
             <select
               className="select select-bordered w-full"
               value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
+              onChange={(e) => {
+                setCurrentPage(1);
+                setPageSize(Number(e.target.value));
+              }}
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -189,26 +189,26 @@ export default function NotificationTable({
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-base-300 bg-base-100 px-4 py-3 shadow-sm">
         <p className="text-sm text-base-content/70">
-          Page <span className="font-medium">{totalRows === 0 ? 0 : currentPage}</span> of{" "}
+          Page <span className="font-medium">{totalRows === 0 ? 0 : clampedPage}</span> of{" "}
           <span className="font-medium">{totalRows === 0 ? 0 : totalPages}</span>
         </p>
         <div className="join">
           <button
             type="button"
             className="btn btn-sm join-item"
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage <= 1 || totalRows === 0}
+            onClick={() => setCurrentPage(Math.max(1, clampedPage - 1))}
+            disabled={clampedPage <= 1 || totalRows === 0}
           >
             Prev
           </button>
           <button type="button" className="btn btn-sm join-item btn-ghost pointer-events-none">
-            {totalRows === 0 ? 0 : currentPage}
+            {totalRows === 0 ? 0 : clampedPage}
           </button>
           <button
             type="button"
             className="btn btn-sm join-item"
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage >= totalPages || totalRows === 0}
+            onClick={() => setCurrentPage(Math.min(totalPages, clampedPage + 1))}
+            disabled={clampedPage >= totalPages || totalRows === 0}
           >
             Next
           </button>
