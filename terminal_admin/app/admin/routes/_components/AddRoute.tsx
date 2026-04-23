@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as yup from "yup";
 
 import { buildAddRouteSchema, yupErrorsToFieldMap, type AddRouteFormValues } from "../addRouteSchema";
+import { useCreateRoute } from "../_hooks/useCreateRoute";
 import { useGetTerminalNames } from "../_hooks/useGetTerminalNames";
 import type { RouteRow } from "./Routes";
 
@@ -18,6 +19,7 @@ type AddRouteProps = {
   routes: RouteRow[];
   setRoutes: React.Dispatch<React.SetStateAction<RouteRow[]>>;
   setToast: React.Dispatch<React.SetStateAction<string | null>>;
+  onCreated?: () => void | Promise<void>;
 };
 
 const EMPTY_FORM: NewRouteForm = {
@@ -29,13 +31,15 @@ const EMPTY_FORM: NewRouteForm = {
 
 type TerminalNameRow = { _id?: string; terminal_name?: string };
 
-export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps) {
+export default function AddRoute({ routes, setRoutes, setToast, onCreated }: AddRouteProps) {
   const [openAddModal, setOpenAddModal] = useState(false);
   const [form, setForm] = useState<NewRouteForm>(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof NewRouteForm, string>>>({});
   const [endTerminalOptions, setEndTerminalOptions] = useState<TerminalNameRow[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { getTerminalNames } = useGetTerminalNames();
+  const { createRoute } = useCreateRoute();
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -79,7 +83,7 @@ export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps)
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function onCreateRoute(e: React.FormEvent<HTMLFormElement>) {
+  async function onCreateRoute(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     const assignedId = localStorage.getItem("assigned_terminal") ?? "";
@@ -115,22 +119,40 @@ export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps)
         start_terminal_id: validated.start_terminal_id,
         end_terminal_id: validated.end_terminal_id,
       };
-      console.log("Add route payload", payload);
 
-      const next: RouteRow = {
-        id: `route-${crypto.randomUUID()}`,
-        routeCode: route_code,
-        routeName: route_name,
-        startRoute: assignedName || validated.start_terminal_id,
-        endRoute: endName,
-        status: "active",
-        active_buses_count: 0,
-        updatedAt: new Date().toISOString(),
-      };
-
-      setRoutes((prev) => [next, ...prev]);
-      setOpenAddModal(false);
-      setToast(`Route ${route_code} added.`);
+      setIsSubmitting(true);
+      try {
+        const res = await createRoute(payload);
+        if (res && typeof res === "object" && "success" in res && res.success === true) {
+          const doc = res.data as
+            | { _id?: string; route_code?: string; route_name?: string; status?: string; updatedAt?: string }
+            | undefined;
+          await onCreated?.();
+          if (!onCreated && doc?._id) {
+            const next: RouteRow = {
+              id: String(doc._id),
+              routeCode: doc.route_code ?? route_code,
+              routeName: doc.route_name ?? route_name,
+              startRoute: assignedName || validated.start_terminal_id,
+              endRoute: endName,
+              status: doc.status === "active" ? "active" : "paused",
+              active_buses_count: 0,
+              updatedAt: doc.updatedAt ?? new Date().toISOString(),
+            };
+            setRoutes((prev) => [next, ...prev]);
+          }
+          setOpenAddModal(false);
+          setToast(`Route ${route_code} added.`);
+          return;
+        }
+        const message =
+          res && typeof res === "object" && "message" in res
+            ? String((res as { message: unknown }).message)
+            : "Could not create route.";
+        setToast(message);
+      } finally {
+        setIsSubmitting(false);
+      }
     } catch (err) {
       if (err instanceof yup.ValidationError) {
         setFieldErrors(yupErrorsToFieldMap(err) as Partial<Record<keyof NewRouteForm, string>>);
@@ -237,10 +259,19 @@ export default function AddRoute({ routes, setRoutes, setToast }: AddRouteProps)
             </div>
 
             <div className="modal-action flex-wrap gap-2">
-              <button type="button" className="btn btn-ghost" onClick={() => setOpenAddModal(false)}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={isSubmitting}
+                onClick={() => setOpenAddModal(false)}
+              >
                 Cancel
               </button>
-              <button type="submit" className="btn bg-[#0062CA] text-white">
+              <button
+                type="submit"
+                className={`btn bg-[#0062CA] text-white${isSubmitting ? " loading" : ""}`}
+                disabled={isSubmitting}
+              >
                 Add route
               </button>
             </div>
