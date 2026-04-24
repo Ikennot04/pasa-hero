@@ -3,6 +3,7 @@ import Route from "../route/route.model.js";
 import Terminal from "../terminal/terminal.model.js";
 import Driver from "../driver/driver.model.js";
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
+import Notification from "../notification/notification.model.js";
 
 export const DashboardService = {
   async getDashboardCounts() {
@@ -18,6 +19,7 @@ export const DashboardService = {
       completedAssignments,
       cancelledAssignments,
       scheduledAssignments,
+      latestAlerts,
     ] = await Promise.all([
       Bus.countDocuments({ is_deleted: false, status: "active" }),
       Route.countDocuments({ status: "active" }),
@@ -39,6 +41,13 @@ export const DashboardService = {
         assignment_status: { $ne: "active" },
         assignment_result: "pending",
       }),
+      Notification.find()
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select(
+          "title notification_type",
+        )
+        .lean(),
     ]);
 
     const idleBuses = Math.max(activeBuses - onRoadBuses - maintenanceBuses, 0);
@@ -60,6 +69,7 @@ export const DashboardService = {
         active: activeAssignments,
         cancelled: cancelledAssignments,
       },
+      latest_alerts: latestAlerts,
     };
   },
 };
