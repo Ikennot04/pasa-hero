@@ -72,4 +72,31 @@ export const DashboardService = {
       latest_alerts: latestAlerts,
     };
   },
+
+  async getActiveBusesPerRouteCount() {
+    const [activeRoutes, activeBusesByRoute] = await Promise.all([
+      Route.find({ status: "active" }).select("_id route_name route_code").lean(),
+      BusAssignment.aggregate([
+        {
+          $match: {
+            assignment_status: "active",
+            assignment_result: "pending",
+          },
+        },
+        { $group: { _id: "$route_id", busIds: { $addToSet: "$bus_id" } } },
+        { $project: { _id: 1, active_buses_count: { $size: "$busIds" } } },
+      ]),
+    ]);
+
+    const activeCountByRouteId = new Map(
+      activeBusesByRoute.map((row) => [String(row._id), row.active_buses_count]),
+    );
+
+    return activeRoutes.map((route) => ({
+      route_id: route._id,
+      route_name: route.route_name,
+      route_code: route.route_code,
+      active_buses_count: activeCountByRouteId.get(String(route._id)) ?? 0,
+    }));
+  },
 };
