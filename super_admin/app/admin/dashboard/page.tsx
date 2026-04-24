@@ -1,9 +1,15 @@
+ "use client";
+
+import { useEffect, useState } from "react";
+
 import {
   OverviewStats,
   LiveBusCount,
   RecentAlerts,
   TodayAssignments,
 } from "./_components/_overview";
+import type { DashboardSummaryStats } from "./_components/_overview";
+import { useGetDashboardSummary } from "./_hooks/useGetDashboardSummary";
 
 // Analytics
 import "./_components/_analytics/chart-register";
@@ -125,11 +131,25 @@ const USER_GROWTH = [
 ];
 
 export default function Dashboard() {
+  const { getDashboardSummary } = useGetDashboardSummary();
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummaryStats | null>(null);
+
+  useEffect(() => {
+    const fetchDashboardSummary = async () => {
+      const response = await getDashboardSummary();
+      if (response?.data) {
+        setDashboardSummary(response.data);
+      }
+    };
+
+    fetchDashboardSummary();
+  }, [getDashboardSummary]);
+
   return (
     <>
       {/* Overview stats */}
       <div className="space-y-6 pb-6">
-        <OverviewStats />
+        <OverviewStats summary={dashboardSummary} />
         <LiveBusCount data={LIVE_BUS} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

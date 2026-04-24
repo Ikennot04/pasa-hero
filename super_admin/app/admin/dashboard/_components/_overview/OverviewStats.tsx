@@ -1,40 +1,25 @@
- "use client";
-
-import { useEffect, useMemo, useState } from "react";
 import { FaBus, FaRoute } from "react-icons/fa";
-import { FaMapLocationDot } from "react-icons/fa6";
 import { TbSteeringWheelFilled } from "react-icons/tb";
-import { useGetDashboardSummary } from "../../_hooks/useGetDashboardSummary";
+import { FaMapLocationDot } from "react-icons/fa6";
+import { useMemo } from "react";
+
 import type { StatItem } from "./StatCard";
 import { StatCard } from "./StatCard";
 
-type OverviewStatsProps = {
-  title?: string;
-};
-
-type DashboardSummary = {
+export type DashboardSummaryStats = {
   active_buses?: number;
   active_routes?: number;
   active_terminals?: number;
   active_drivers?: number;
 };
 
-export function OverviewStats({ title = "Overview" }: OverviewStatsProps) {
-  const { getDashboardSummary } = useGetDashboardSummary();
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+type OverviewStatsProps = {
+  title?: string;
+  summary: DashboardSummaryStats | null;
+};
 
-  useEffect(() => {
-    const fetchDashboardSummary = async () => {
-      const response = await getDashboardSummary();
-      if (response?.data) {
-        setSummary(response.data as DashboardSummary);
-      }
-    };
-
-    fetchDashboardSummary();
-  }, [getDashboardSummary]);
-
-  const stats: StatItem[] = useMemo(
+export function OverviewStats({ title = "Overview", summary }: OverviewStatsProps) {
+  const stats = useMemo<StatItem[]>(
     () => [
       {
         label: "Active Buses",

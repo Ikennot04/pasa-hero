@@ -1,12 +1,12 @@
 "use client";
 
 import axios from "axios";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 export const useGetDashboardSummary = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getDashboardSummary = async () => {
+  const getDashboardSummary = useCallback(async () => {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
       const { data: response } = await axios.get(`${baseUrl}/api/admin-dashboard/counts`);
@@ -18,6 +18,6 @@ export const useGetDashboardSummary = () => {
         setError("Unexpected error");
       }
     }
-  };
+  }, []);
   return { getDashboardSummary, error };
 };
