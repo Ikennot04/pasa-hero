@@ -84,6 +84,8 @@ export const UserService = {
         userId: user._id,
         email: user.email,
         assigned_terminal: user.assigned_terminal,
+        f_name: user.f_name,
+        role: user.role,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES || "7d" },

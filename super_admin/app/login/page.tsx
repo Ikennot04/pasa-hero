@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 
+import { useLogin } from "./_hooks/useLogin";
+
 const loginSchema = yup.object({
   email: yup
     .string()
@@ -20,6 +22,7 @@ type LoginFormData = yup.InferType<typeof loginSchema>;
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
+  const { handleLogin, error: serverError } = useLogin();
 
   const {
     register,
@@ -30,9 +33,8 @@ export default function Login() {
     defaultValues: { email: "", password: "" },
   });
 
-  function onSubmit(data: LoginFormData) {
-    // TODO: wire to your auth API
-    console.log(data);
+  async function onSubmit(data: LoginFormData) {
+    await handleLogin({ email: data.email, password: data.password });
   }
 
   const inputBase =
@@ -171,6 +173,15 @@ export default function Login() {
                 </p>
               )}
             </div>
+
+            {serverError && (
+              <p
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+                role="alert"
+              >
+                {serverError}
+              </p>
+            )}
 
             <button
               type="submit"
