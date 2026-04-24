@@ -13,9 +13,10 @@ import {
   FaRoute,
   FaBell,
   FaSignOutAlt,
+  FaUser,
 } from "react-icons/fa";
 import { TbSteeringWheelFilled } from "react-icons/tb";
-import { FaGear, FaMapLocationDot, FaUserShield } from "react-icons/fa6";
+import { FaMapLocationDot, FaUserShield } from "react-icons/fa6";
 
 import { useAuthToken } from "../useAuthToken.hook";
 
@@ -63,9 +64,9 @@ const routes: NavRoute[] = [
     label: "Notifications",
   },
   {
-    path: "/admin/setting",
-    icon: <FaGear className="size-6" />,
-    label: "Settings",
+    path: "/admin/profile",
+    icon: <FaUser className="size-6" />,
+    label: "Profile",
   },
 ];
 
