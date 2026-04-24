@@ -4,61 +4,20 @@ import { useState, useMemo } from "react";
 import CreateOperator from "./_components/CreateOperator";
 import CreateTerminalAdmin from "./_components/CreateTerminalAdmin";
 import UserTable from "./_components/UserTable";
+import { useGetUsers } from "./_hooks/useGetUsers";
 
 const ROLES = ["user", "super admin", "operator", "terminal admin"] as const;
 const STATUSES = ["active", "inactive", "suspended"] as const;
 
-const MOCK_USERS = [
-    {
-      id: 1,
-      f_name: "Cy",
-      l_name: "Ganderton",
-      email: "cy.ganderton@example.com",
-      role: "super admin",
-      status: "active",
-    },
-    {
-      id: 2,
-      f_name: "Hart",
-      l_name: "Hagerty",
-      email: "hart.hagerty@example.com",
-      role: "operator",
-      status: "active",
-    },
-    {
-      id: 3,
-      f_name: "Brice",
-      l_name: "Swyre",
-      email: "brice.swyre@example.com",
-      role: "user",
-      status: "inactive",
-    },
-    {
-      id: 4,
-      f_name: "John",
-      l_name: "Doe",
-      email: "john.doe@example.com",
-      role: "user",
-      status: "inactive",
-    },
-    {
-      id: 5,
-      f_name: "Jane",
-      l_name: "Smith",
-      email: "jane.smith@example.com",
-      role: "terminal admin",
-      status: "suspended",
-    },
-  ];
-
 export default function Users() {
+  const { users, loading, error, refetch } = useGetUsers();
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return MOCK_USERS.filter((user) => {
+    return users.filter((user) => {
       const matchRole = roleFilter === "all" || user.role === roleFilter;
       const matchStatus = statusFilter === "all" || user.status === statusFilter;
       const matchSearch =
@@ -67,7 +26,7 @@ export default function Users() {
         user.email.toLowerCase().includes(q);
       return matchRole && matchStatus && matchSearch;
     });
-  }, [roleFilter, statusFilter, searchQuery]);
+  }, [users, roleFilter, statusFilter, searchQuery]);
 
   return (
     <div className="space-y-4 pt-6">
@@ -112,7 +71,9 @@ export default function Users() {
         </div>
         <div className="flex items-end pb-2">
           <span className="text-sm text-base-content/70">
-            Showing {filteredUsers.length} of {MOCK_USERS.length} users
+            {loading
+              ? "Loading users…"
+              : `Showing ${filteredUsers.length} of ${users.length} users`}
           </span>
         </div>
         </div>
@@ -121,7 +82,24 @@ export default function Users() {
           <CreateTerminalAdmin />
         </div>
       </div>
-      <UserTable users={filteredUsers} />
+      {error ? (
+        <div className="alert alert-error">
+          <span>{error}</span>
+          <button type="button" className="btn btn-sm" onClick={() => void refetch()}>
+            Retry
+          </button>
+        </div>
+      ) : null}
+      {loading && !users.length ? (
+        <div className="flex justify-center py-12">
+          <span className="loading loading-spinner loading-lg" />
+        </div>
+      ) : error && !users.length ? null : (
+        <UserTable
+          key={`${roleFilter}-${statusFilter}-${searchQuery}`}
+          users={filteredUsers}
+        />
+      )}
     </div>
   );
 }
