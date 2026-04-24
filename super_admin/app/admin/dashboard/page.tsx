@@ -18,30 +18,9 @@ import {
   RoutePerformanceReport,
   TotalOccupancyPerRouteReport,
   Top5BusesAndRoutesReport,
-  NotificationVolumeReport,
-  UserGrowthReport,
 } from "./_components/_analytics";
 
 // Analytics & Reports ==================================================================
-
-const NOTIFICATION_VOLUME = [
-  { date: "Feb 15", all: 420, low: 280, medium: 90, high: 50 },
-  { date: "Feb 16", all: 510, low: 340, medium: 110, high: 60 },
-  { date: "Feb 17", all: 380, low: 250, medium: 80, high: 50 },
-  { date: "Feb 18", all: 590, low: 400, medium: 130, high: 60 },
-  { date: "Feb 19", all: 470, low: 310, medium: 100, high: 60 },
-  { date: "Feb 20", all: 530, low: 350, medium: 120, high: 60 },
-  { date: "Feb 21", all: 610, low: 410, medium: 140, high: 60 },
-];
-
-const USER_GROWTH = [
-  { month: "Sep", totalUsers: 1200, newUsers: 180, activeUsers: 890 },
-  { month: "Oct", totalUsers: 1450, newUsers: 220, activeUsers: 1050 },
-  { month: "Nov", totalUsers: 1720, newUsers: 250, activeUsers: 1220 },
-  { month: "Dec", totalUsers: 2100, newUsers: 320, activeUsers: 1580 },
-  { month: "Jan", totalUsers: 2480, newUsers: 280, activeUsers: 1890 },
-  { month: "Feb", totalUsers: 2850, newUsers: 350, activeUsers: 2210 },
-];
 
 export default function Dashboard() {
   const { getDashboardSummary } = useGetDashboardSummary();
@@ -100,9 +79,8 @@ export default function Dashboard() {
         <div className="analytics-page-header flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">Analytics & Reports</h1>
           <p className="text-base-content/70 text-sm max-w-xl">
-            View bus utilization, route performance, driver assignments,
-            occupancy trends, notifications, and user growth. Print any report
-            to PDF.
+            View bus utilization, route performance, driver assignments, and
+            occupancy trends. Print any report to PDF.
           </p>
         </div>
 
@@ -110,8 +88,6 @@ export default function Dashboard() {
         <RoutePerformanceReport />
         <TotalOccupancyPerRouteReport />
         <Top5BusesAndRoutesReport />
-        <NotificationVolumeReport data={NOTIFICATION_VOLUME} />
-        <UserGrowthReport data={USER_GROWTH} />
       </div>
     </>
   );
