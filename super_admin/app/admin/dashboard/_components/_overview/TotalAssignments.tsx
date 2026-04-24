@@ -5,15 +5,15 @@ export type TodayAssignmentsData = {
   cancelled: number;
 };
 
-type TodayAssignmentsProps = {
+type TotalAssignmentsProps = {
   data: TodayAssignmentsData;
   title?: string;
 };
 
-export function TodayAssignments({
+export function TotalAssignments({
   data,
   title = "Total bus assignments",
-}: TodayAssignmentsProps) {
+}: TotalAssignmentsProps) {
   return (
     <section>
       <h2 className="text-lg font-semibold mb-3">{title}</h2>

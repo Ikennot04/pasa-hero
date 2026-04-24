@@ -16,6 +16,12 @@ export type DashboardSummaryStats = {
     idle?: number;
     maintenance?: number;
   };
+  total_bus_assignments?: {
+    scheduled?: number;
+    active?: number;
+    completed?: number;
+    cancelled?: number;
+  };
 };
 
 type OverviewStatsProps = {

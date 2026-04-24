@@ -6,7 +6,7 @@ import {
   OverviewStats,
   LiveBusCount,
   RecentAlerts,
-  TodayAssignments,
+  TotalAssignments,
 } from "./_components/_overview";
 import type { DashboardSummaryStats } from "./_components/_overview";
 import { useGetDashboardSummary } from "./_hooks/useGetDashboardSummary";
@@ -39,13 +39,6 @@ const ALERTS = [
     priority: "low" as const,
   },
 ];
-
-const TODAY_ASSIGNMENTS = {
-  scheduled: 28,
-  active: 18,
-  completed: 8,
-  cancelled: 2,
-};
 
 // Analytics & Reports ==================================================================
 const ACTIVE_BUSES_PER_ROUTE = [
@@ -136,6 +129,12 @@ export default function Dashboard() {
     idle: dashboardSummary?.live_bus_counts?.idle ?? 0,
     maintenance: dashboardSummary?.live_bus_counts?.maintenance ?? 0,
   };
+  const totalAssignmentsData = {
+    scheduled: dashboardSummary?.total_bus_assignments?.scheduled ?? 0,
+    active: dashboardSummary?.total_bus_assignments?.active ?? 0,
+    completed: dashboardSummary?.total_bus_assignments?.completed ?? 0,
+    cancelled: dashboardSummary?.total_bus_assignments?.cancelled ?? 0,
+  };
 
   useEffect(() => {
     const fetchDashboardSummary = async () => {
@@ -157,7 +156,7 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <RecentAlerts alerts={ALERTS} />
-          <TodayAssignments data={TODAY_ASSIGNMENTS} />
+          <TotalAssignments data={totalAssignmentsData} />
         </div>
       </div>
       {/* Analytics & Reports */}
