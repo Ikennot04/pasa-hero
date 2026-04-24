@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 
+import { useAuthToken } from "../useAuthToken.hook";
 import { useLogin } from "./_hooks/useLogin";
 
 const loginSchema = yup.object({
@@ -21,8 +23,22 @@ const loginSchema = yup.object({
 type LoginFormData = yup.InferType<typeof loginSchema>;
 
 export default function Login() {
+  const router = useRouter();
+  const { authToken } = useAuthToken();
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const { handleLogin, error: serverError } = useLogin();
+
+  useEffect(() => {
+    void (async () => {
+      const result = await authToken();
+      if (result?.user) {
+        router.replace("/admin/dashboard");
+        return;
+      }
+      setIsCheckingSession(false);
+    })();
+  }, [authToken, router]);
 
   const {
     register,
@@ -43,6 +59,14 @@ export default function Login() {
     "border-red-400 dark:border-red-500 focus:ring-red-400/50 dark:focus:ring-red-500/50";
   const inputNormal =
     "border-slate-200 dark:border-slate-600 focus:ring-[#0062CA]/30 dark:focus:ring-[#0062CA]/30 focus:border-[#0062CA] dark:focus:border-[#0062CA]";
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <p className="text-4xl font-bold text-slate-500 dark:text-slate-400">Loading…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-linear-to-br from-slate-50 via-[#0062CA]/6 to-slate-100 dark:from-slate-900 dark:via-slate-900 dark:to-[#0062CA]/10 p-4">
