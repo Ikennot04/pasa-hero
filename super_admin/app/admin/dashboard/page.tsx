@@ -36,26 +36,26 @@ const ROUTE_PERFORMANCE = [
   {
     routeId: "R1",
     routeName: "Route A",
-    avgDelayMinutes: 4,
-    skippedStopsCount: 2,
+    totalDelayCount: 4,
+    totalFullCount: 2,
   },
   {
     routeId: "R2",
     routeName: "Route B",
-    avgDelayMinutes: 7,
-    skippedStopsCount: 5,
+    totalDelayCount: 7,
+    totalFullCount: 5,
   },
   {
     routeId: "R3",
     routeName: "Route C",
-    avgDelayMinutes: 2,
-    skippedStopsCount: 0,
+    totalDelayCount: 2,
+    totalFullCount: 0,
   },
   {
     routeId: "R4",
     routeName: "Route D",
-    avgDelayMinutes: 12,
-    skippedStopsCount: 8,
+    totalDelayCount: 12,
+    totalFullCount: 8,
   },
 ];
 

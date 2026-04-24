@@ -8,8 +8,8 @@ import { ReportSection } from "./ReportSection";
 export type RoutePerformanceRecord = {
   routeId: string;
   routeName: string;
-  avgDelayMinutes: number;
-  skippedStopsCount: number;
+  totalDelayCount: number;
+  totalFullCount: number;
 };
 
 const chartOptions: ChartOptions<"bar"> = {
@@ -20,7 +20,7 @@ const chartOptions: ChartOptions<"bar"> = {
     legend: { position: "top" },
   },
   scales: {
-    x: { stacked: false, title: { display: true, text: "Minutes / Count" } },
+    x: { stacked: false, title: { display: true, text: "Count" } },
   },
 };
 
@@ -33,16 +33,16 @@ export function RoutePerformanceReport({ data }: Props) {
     labels: data.map((d) => d.routeName),
     datasets: [
       {
-        label: "Avg delay (min)",
-        data: data.map((d) => d.avgDelayMinutes),
+        label: "Total delay count",
+        data: data.map((d) => d.totalDelayCount),
         backgroundColor: "rgba(255, 85, 38, 0.6)",
         borderColor: "rgba(255, 85, 38, 1)",
         borderWidth: 1.5,
         borderRadius: 5,
       },
       {
-        label: "Skipped stops",
-        data: data.map((d) => d.skippedStopsCount),
+        label: "Total full count",
+        data: data.map((d) => d.totalFullCount),
         backgroundColor: "rgba(57, 201, 170, 0.6)",
         borderColor: "rgba(57, 201, 170, 1)",
         borderWidth: 1.5,
@@ -54,7 +54,7 @@ export function RoutePerformanceReport({ data }: Props) {
   return (
     <ReportSection
       title="Route performance report"
-      description="Average delays and skipped stops frequency per route"
+      description="Total delay count and total full count per route"
     >
       <div className="h-64 mb-4">
         <Bar data={chartData} options={chartOptions} />
@@ -64,16 +64,16 @@ export function RoutePerformanceReport({ data }: Props) {
           <thead>
             <tr>
               <th>Route</th>
-              <th>Avg delay (min)</th>
-              <th>Skipped stops</th>
+              <th>Total delay count</th>
+              <th>Total full count</th>
             </tr>
           </thead>
           <tbody>
             {data.map((d) => (
               <tr key={d.routeId}>
                 <td>{d.routeName}</td>
-                <td>{d.avgDelayMinutes}</td>
-                <td>{d.skippedStopsCount}</td>
+                <td>{d.totalDelayCount}</td>
+                <td>{d.totalFullCount}</td>
               </tr>
             ))}
           </tbody>
