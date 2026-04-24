@@ -24,15 +24,6 @@ import {
 
 // Analytics & Reports ==================================================================
 
-const TOTAL_OCCUPANCY_PER_ROUTE = [
-  { routeCode: "R1", routeName:"Sample route name 1", totalAccupancy: 62 },
-  { routeCode: "R2", routeName:"Sample route name 2", totalAccupancy: 58 },
-  { routeCode: "R3", routeName:"Sample route name 3", totalAccupancy: 71 },
-  { routeCode: "R4", routeName:"Sample route name 4", totalAccupancy: 69 },
-  { routeCode: "R5", routeName:"Sample route name 5", totalAccupancy: 69 },
-  { routeCode: "R6", routeName:"Sample route name 6", totalAccupancy: 69 },
-];
-
 const TOP_SUBSCRIBED_ROUTES = [
   { label: "Route A", subscriptions: 520 },
   { label: "Route C", subscriptions: 445 },
@@ -133,7 +124,7 @@ export default function Dashboard() {
 
         <ActiveBusPerRouteReport />
         <RoutePerformanceReport />
-        <TotalOccupancyPerRouteReport data={TOTAL_OCCUPANCY_PER_ROUTE} />
+        <TotalOccupancyPerRouteReport />
         <Top5BusesAndRoutesReport routes={TOP_SUBSCRIBED_ROUTES} buses={TOP_SUBSCRIBED_BUSES} />
         <NotificationVolumeReport data={NOTIFICATION_VOLUME} />
         <UserGrowthReport data={USER_GROWTH} />
