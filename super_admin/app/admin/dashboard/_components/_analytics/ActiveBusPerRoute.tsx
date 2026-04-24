@@ -3,13 +3,15 @@
 import "./chart-register";
 import { Bar } from "react-chartjs-2";
 import type { ChartOptions } from "chart.js";
+import { useEffect, useState } from "react";
 import { ReportSection } from "./ReportSection";
+import { useGetActiveBusPerRoute } from "../../_hooks/useGetActiveBusPerRoute";
 
 export type ActiveBusPerRouteRecord = {
-  routeId: string;
-  routeCode?: string;
-  routeName: string;
-  activeBusCount: number;
+  route_id: string;
+  route_code?: string;
+  route_name: string;
+  active_buses_count: number;
 };
 
 const chartOptions: ChartOptions<"bar"> = {
@@ -25,17 +27,32 @@ const chartOptions: ChartOptions<"bar"> = {
   },
 };
 
-type Props = {
-  data: ActiveBusPerRouteRecord[];
-};
+export function ActiveBusPerRouteReport() {
+  const { getActiveBusPerRoute, error } = useGetActiveBusPerRoute();
+  const [data, setData] = useState<ActiveBusPerRouteRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-export function ActiveBusPerRouteReport({ data }: Props) {
+  useEffect(() => {
+    const fetchActiveBusPerRoute = async () => {
+      setIsLoading(true);
+      const response = await getActiveBusPerRoute();
+      
+      if(response?.success){
+        console.log(response.data);
+        setData(response.data);
+        setIsLoading(false);
+      }
+    };
+
+    fetchActiveBusPerRoute();
+  }, [getActiveBusPerRoute]);
+
   const chartData = {
-    labels: data.map((d) => d.routeName),
+    labels: data.map((d) => d.route_code),
     datasets: [
       {
         label: "Active Buses",
-        data: data.map((d) => d.activeBusCount),
+        data: data.map((d) => d.active_buses_count),
         backgroundColor: "rgb(28, 0, 167, 0.6)",
         borderColor: "rgb(28, 0, 167)",
         borderWidth: 1.5,
@@ -49,14 +66,21 @@ export function ActiveBusPerRouteReport({ data }: Props) {
       title="Active buses per route report"
       description="Number of active buses per route over the selected period"
     >
+      {isLoading ? (
+        <p className="text-sm text-base-content/70">Loading active buses per route...</p>
+      ) : error ? (
+        <p className="text-sm text-error">{error}</p>
+      ) : data.length === 0 ? (
+        <p className="text-sm text-base-content/70">No active bus route data found.</p>
+      ) : (
       <div className="space-y-4">
         <div className="h-64">
           <Bar data={chartData} options={chartOptions} />
         </div>
 
-        <div className="overflow-x-auto rounded-lg">
-          <table className="table">
-            <thead>
+        <div className="max-h-56 overflow-x-auto overflow-y-auto rounded-lg">
+          <table className="table table-zebra">
+            <thead className="sticky top-0 z-1 bg-base-100">
               <tr>
                 <th>Route code</th>
                 <th>Route name</th>
@@ -64,15 +88,16 @@ export function ActiveBusPerRouteReport({ data }: Props) {
             </thead>
             <tbody>
               {data.map((route) => (
-                <tr key={route.routeId} className="border-t">
-                  <td className="px-4 py-2">{route.routeCode ?? route.routeId}</td>
-                  <td className="px-4 py-2">{route.routeName}</td>
+                <tr key={route.route_id} className="border-t">
+                  <td className="px-4 py-2">{route.route_code}</td>
+                  <td className="px-4 py-2">{route.route_name}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+      )}
     </ReportSection>
   );
 }

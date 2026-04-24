@@ -23,15 +23,6 @@ import {
 } from "./_components/_analytics";
 
 // Analytics & Reports ==================================================================
-const ACTIVE_BUSES_PER_ROUTE = [
-  { routeId: "R1", routeName: "Route A", activeBusCount: 4 },
-  { routeId: "R2", routeName: "Route B", activeBusCount: 3 },
-  { routeId: "R3", routeName: "Route C", activeBusCount: 5 },
-  { routeId: "R4", routeName: "Route D", activeBusCount: 2 },
-  { routeId: "R5", routeName: "Route E", activeBusCount: 3 },
-  { routeId: "R6", routeName: "Route F", activeBusCount: 7 },
-];
-
 const ROUTE_PERFORMANCE = [
   {
     routeId: "R1",
@@ -166,7 +157,7 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <ActiveBusPerRouteReport data={ACTIVE_BUSES_PER_ROUTE} />
+        <ActiveBusPerRouteReport />
         <RoutePerformanceReport data={ROUTE_PERFORMANCE} />
         <TotalOccupancyPerRouteReport data={TOTAL_OCCUPANCY_PER_ROUTE} />
         <Top5BusesAndRoutesReport routes={TOP_SUBSCRIBED_ROUTES} buses={TOP_SUBSCRIBED_BUSES} />
