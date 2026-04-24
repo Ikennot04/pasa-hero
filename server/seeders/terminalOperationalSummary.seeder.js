@@ -18,6 +18,7 @@ import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
 import Bus from "../modules/bus/bus.model.js";
 import Driver from "../modules/driver/driver.model.js";
 import User from "../modules/user/user.model.js";
+import { syncBusOccupancyForCompletedTrips } from "./allSchema.seeder.js";
 
 /** April 21, 2026 — UTC (matches ?date=2026-04-21 on the API). */
 function utc2026_04_21(hour, minute = 0) {
@@ -358,6 +359,8 @@ async function seedOperationalSummaryDemo() {
     },
     // CEB-008 / a8: scheduled only — no logs
   ]);
+
+  await syncBusOccupancyForCompletedTrips();
 
   const totalSmAssignments = smAssignments.length + extraSpecs.length;
 
