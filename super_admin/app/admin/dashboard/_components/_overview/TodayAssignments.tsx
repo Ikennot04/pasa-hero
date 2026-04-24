@@ -12,7 +12,7 @@ type TodayAssignmentsProps = {
 
 export function TodayAssignments({
   data,
-  title = "Today's bus assignments",
+  title = "Total bus assignments",
 }: TodayAssignmentsProps) {
   return (
     <section>

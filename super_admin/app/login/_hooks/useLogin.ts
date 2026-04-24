@@ -55,7 +55,6 @@ export const useLogin = () => {
           if (role) {
             localStorage.setItem(PROFILE_ROLE_KEY, role);
           }
-          console.log(res.data);
           router.push("/admin/dashboard");
           return;
         }
