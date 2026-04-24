@@ -9,7 +9,7 @@ export const useGetBusses = () => {
   const getBusses = useCallback(async () => {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.get(`${baseUrl}/api/busses`);
+      const { data: response } = await axios.get(`${baseUrl}/api/buses`);
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {

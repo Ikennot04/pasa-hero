@@ -46,9 +46,9 @@ function getOccupancyStatus(occupancyCount, capacity) {
   return "empty";
 }
 
-/** Seeded bus status row: out-of-service buses are always empty. */
+/** Seeded bus status row: out-of-service and maintenance buses are always empty. */
 function busStatusPayloadForSeedBus(bus, index) {
-  if (bus.status === "out of service") {
+  if (bus.status === "out of service" || bus.status === "maintenance") {
     return {
       bus_id: String(bus._id),
       occupancy_count: 0,
@@ -126,10 +126,12 @@ export async function syncBusOccupancyForCompletedTrips() {
     }
   }
 
-  const outOfService = await Bus.find({ status: "out of service" })
+  const emptyOccupancyBuses = await Bus.find({
+    status: { $in: ["out of service", "maintenance"] },
+  })
     .select("_id")
     .lean();
-  for (const b of outOfService) {
+  for (const b of emptyOccupancyBuses) {
     await BusStatus.updateOne(
       { bus_id: String(b._id) },
       { $set: { occupancy_count: 0, occupancy_status: "empty" } },

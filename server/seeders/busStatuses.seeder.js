@@ -24,7 +24,7 @@ function getOccupancyStatus(occupancyCount, capacity) {
 }
 
 function busStatusRowForBus(bus, index) {
-  if (bus.status === "out of service") {
+  if (bus.status === "out of service" || bus.status === "maintenance") {
     return {
       bus_id: String(bus._id),
       occupancy_count: 0,

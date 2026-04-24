@@ -44,13 +44,32 @@ export const BusService = {
   },
   // GET BUS BY ID ===================================================================
   async getBusById(id) {
-    const bus = await Bus.findOne({ _id: id, });
+    const bus = await Bus.findOne({ _id: id }).lean();
     if (!bus) {
       const error = new Error("Bus not found.");
       error.statusCode = 404;
       throw error;
     }
-    return bus;
+    const busIdStr = String(bus._id);
+
+    const [statusDoc, assignments] = await Promise.all([
+      BusStatus.findOne({
+        bus_id: busIdStr,
+        is_deleted: false,
+      }).lean(),
+      BusAssignment.find({ bus_id: bus._id })
+        .populate({ path: "route_id", select: "route_name route_code" })
+        .populate({ path: "driver_id", select: "f_name l_name" })
+        .populate({ path: "operator_user_id", select: "f_name l_name email" })
+        .sort({ updatedAt: -1 })
+        .lean(),
+    ]);
+
+    return {
+      ...bus,
+      bus_status: statusDoc ?? null,
+      assignments: assignments ?? [],
+    };
   },
   // CREATE BUS ===================================================================
   async createBus(busData) {
