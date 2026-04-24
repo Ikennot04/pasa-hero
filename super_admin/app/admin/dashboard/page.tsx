@@ -24,22 +24,6 @@ import {
 
 // Analytics & Reports ==================================================================
 
-const TOP_SUBSCRIBED_ROUTES = [
-  { label: "Route A", subscriptions: 520 },
-  { label: "Route C", subscriptions: 445 },
-  { label: "Route F", subscriptions: 398 },
-  { label: "Route B", subscriptions: 372 },
-  { label: "Route D", subscriptions: 291 },
-];
-
-const TOP_SUBSCRIBED_BUSES = [
-  { label: "Bus 12", subscriptions: 342 },
-  { label: "Bus 08", subscriptions: 298 },
-  { label: "Bus 15", subscriptions: 276 },
-  { label: "Bus 05", subscriptions: 251 },
-  { label: "Bus 22", subscriptions: 228 },
-];
-
 const NOTIFICATION_VOLUME = [
   { date: "Feb 15", all: 420, low: 280, medium: 90, high: 50 },
   { date: "Feb 16", all: 510, low: 340, medium: 110, high: 60 },
@@ -125,7 +109,7 @@ export default function Dashboard() {
         <ActiveBusPerRouteReport />
         <RoutePerformanceReport />
         <TotalOccupancyPerRouteReport />
-        <Top5BusesAndRoutesReport routes={TOP_SUBSCRIBED_ROUTES} buses={TOP_SUBSCRIBED_BUSES} />
+        <Top5BusesAndRoutesReport />
         <NotificationVolumeReport data={NOTIFICATION_VOLUME} />
         <UserGrowthReport data={USER_GROWTH} />
       </div>
