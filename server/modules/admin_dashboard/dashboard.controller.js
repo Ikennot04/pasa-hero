@@ -39,3 +39,13 @@ export const getRoutePerformanceReport = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const getTopSubscribedRoutesAndBuses = async (req, res) => {
+  try {
+    const data = await DashboardService.getTopSubscribedRoutesAndBuses();
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};

@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Bus from "../bus/bus.model.js";
 import Route from "../route/route.model.js";
 import Terminal from "../terminal/terminal.model.js";
@@ -5,6 +6,7 @@ import Driver from "../driver/driver.model.js";
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import Notification from "../notification/notification.model.js";
 import BusStatus from "../bus_status/bus_status.model.js";
+import UserSubscription from "../user_subscription/user_subscription.model.js";
 
 export const DashboardService = {
   async getDashboardCounts() {
@@ -152,6 +154,73 @@ export const DashboardService = {
       total_occupancy_count:
         totalOccupancyByRouteId.get(String(route._id)) ?? 0,
     }));
+  },
+
+  async getTopSubscribedRoutesAndBuses() {
+    const limit = 5;
+
+    const [topRoutes, topBuses] = await Promise.all([
+      UserSubscription.aggregate([
+        { $match: { route_id: { $nin: [null, ""] } } },
+        { $group: { _id: "$route_id", subscription_count: { $sum: 1 } } },
+        { $sort: { subscription_count: -1 } },
+        { $limit: limit },
+      ]),
+      UserSubscription.aggregate([
+        { $match: { bus_id: { $nin: [null, ""] } } },
+        { $group: { _id: "$bus_id", subscription_count: { $sum: 1 } } },
+        { $sort: { subscription_count: -1 } },
+        { $limit: limit },
+      ]),
+    ]);
+
+    const routeObjectIds = topRoutes
+      .map((row) => row._id)
+      .filter((id) => mongoose.Types.ObjectId.isValid(String(id)))
+      .map((id) => new mongoose.Types.ObjectId(String(id)));
+
+    const busObjectIds = topBuses
+      .map((row) => row._id)
+      .filter((id) => mongoose.Types.ObjectId.isValid(String(id)))
+      .map((id) => new mongoose.Types.ObjectId(String(id)));
+
+    const [routeDocs, busDocs] = await Promise.all([
+      routeObjectIds.length
+        ? Route.find({ _id: { $in: routeObjectIds } })
+            .select("_id route_name route_code")
+            .lean()
+        : [],
+      busObjectIds.length
+        ? Bus.find({ _id: { $in: busObjectIds } })
+            .select("_id bus_number plate_number")
+            .lean()
+        : [],
+    ]);
+
+    const routeById = new Map(routeDocs.map((r) => [String(r._id), r]));
+    const busById = new Map(busDocs.map((b) => [String(b._id), b]));
+
+    const top_routes = topRoutes.map((row) => {
+      const r = routeById.get(String(row._id));
+      return {
+        route_id: row._id,
+        route_name: r?.route_name ?? null,
+        route_code: r?.route_code ?? null,
+        subscription_count: row.subscription_count,
+      };
+    });
+
+    const top_buses = topBuses.map((row) => {
+      const b = busById.get(String(row._id));
+      return {
+        bus_id: row._id,
+        bus_number: b?.bus_number ?? null,
+        plate_number: b?.plate_number ?? null,
+        subscription_count: row.subscription_count,
+      };
+    });
+
+    return { top_routes, top_buses };
   },
 
   async getRoutePerformanceReport() {
