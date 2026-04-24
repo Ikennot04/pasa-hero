@@ -4,6 +4,7 @@ import Terminal from "../terminal/terminal.model.js";
 import Driver from "../driver/driver.model.js";
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import Notification from "../notification/notification.model.js";
+import BusStatus from "../bus_status/bus_status.model.js";
 
 export const DashboardService = {
   async getDashboardCounts() {
@@ -97,6 +98,59 @@ export const DashboardService = {
       route_name: route.route_name,
       route_code: route.route_code,
       active_buses_count: activeCountByRouteId.get(String(route._id)) ?? 0,
+    }));
+  },
+
+  async getTotalOccupancyCountPerRoute() {
+    const [activeRoutes, busesByRoute] = await Promise.all([
+      Route.find({ status: "active" }).select("_id route_name route_code").lean(),
+      BusAssignment.aggregate([
+        {
+          $match: {
+            assignment_status: "active",
+            assignment_result: "pending",
+          },
+        },
+        { $group: { _id: "$route_id", busIds: { $addToSet: "$bus_id" } } },
+      ]),
+    ]);
+
+    const allBusIds = [
+      ...new Set(
+        busesByRoute.flatMap((row) => row.busIds.map((id) => String(id))),
+      ),
+    ];
+
+    const occupancyByBusId = new Map();
+    if (allBusIds.length > 0) {
+      const statuses = await BusStatus.find({
+        bus_id: { $in: allBusIds },
+        is_deleted: false,
+      })
+        .select("bus_id occupancy_count")
+        .lean();
+
+      for (const s of statuses) {
+        occupancyByBusId.set(String(s.bus_id), s.occupancy_count ?? 0);
+      }
+    }
+
+    const totalOccupancyByRouteId = new Map(
+      busesByRoute.map((row) => {
+        const total = row.busIds.reduce(
+          (sum, busId) => sum + (occupancyByBusId.get(String(busId)) ?? 0),
+          0,
+        );
+        return [String(row._id), total];
+      }),
+    );
+
+    return activeRoutes.map((route) => ({
+      route_id: route._id,
+      route_name: route.route_name,
+      route_code: route.route_code,
+      total_occupancy_count:
+        totalOccupancyByRouteId.get(String(route._id)) ?? 0,
     }));
   },
 
