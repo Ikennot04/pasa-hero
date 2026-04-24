@@ -70,6 +70,7 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     operator_user_id: "op1",
     route_id: "r1",
     driver_name: "Juan Dela Cruz",
+    operator_name: "Carlos Reyes",
     bus_number: "BUS-101",
     route_name: "EDSA – Monumento to PITX",
     assignment_status: "active",
@@ -83,9 +84,10 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     id: "a2",
     bus_id: "b2",
     driver_id: "2",
-    operator_user_id: "op1",
+    operator_user_id: "op2",
     route_id: "r2",
     driver_name: "Maria Santos",
+    operator_name: "Elena Torres",
     bus_number: "BUS-102",
     route_name: "Commonwealth – Fairview to SM North",
     assignment_status: "active",
@@ -99,9 +101,10 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     id: "a3",
     bus_id: "b3",
     driver_id: "3",
-    operator_user_id: "op1",
+    operator_user_id: "op3",
     route_id: "r1",
     driver_name: "Pedro Reyes",
+    operator_name: "Miguel Santos",
     bus_number: "BUS-103",
     route_name: "EDSA – Monumento to PITX",
     assignment_status: "active",
@@ -115,9 +118,10 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     id: "a4",
     bus_id: "b4",
     driver_id: "4",
-    operator_user_id: "op1",
+    operator_user_id: "op2",
     route_id: "r3",
     driver_name: "Ana Garcia",
+    operator_name: "Elena Torres",
     bus_number: "BUS-104",
     route_name: "Quezon Ave – QC Circle to Quiapo",
     assignment_status: "inactive",
@@ -134,6 +138,7 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     operator_user_id: "op1",
     route_id: "r2",
     driver_name: "Roberto Mendoza",
+    operator_name: "Carlos Reyes",
     bus_number: "BUS-105",
     route_name: "Commonwealth – Fairview to SM North",
     assignment_status: "active",
@@ -179,7 +184,7 @@ export default function Driver() {
     return ASSIGNMENTS_STATIC.filter((a) => {
       const matchSearch =
         !q ||
-        a.driver_name.toLowerCase().includes(q) ||
+        a.operator_name.toLowerCase().includes(q) ||
         a.bus_number.toLowerCase().includes(q) ||
         a.route_name.toLowerCase().includes(q);
       const matchStatus =
@@ -226,7 +231,7 @@ export default function Driver() {
         <div className="form-control w-64">
           <input
             type="text"
-            placeholder="Search driver, bus, route..."
+            placeholder="Search operator, bus, route..."
             className="input input-bordered w-full"
             value={assignmentSearch}
             onChange={(e) => setAssignmentSearch(e.target.value)}

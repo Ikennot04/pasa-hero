@@ -13,6 +13,7 @@ export type AssignmentProps = {
   route_id: string;
   // Display fields (from populated refs or join)
   driver_name: string;
+  operator_name: string;
   bus_number: string;
   route_name: string;
   assignment_status: AssignmentStatus;

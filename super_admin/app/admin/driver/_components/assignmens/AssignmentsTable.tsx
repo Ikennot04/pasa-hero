@@ -51,7 +51,7 @@ export default function AssignmentsTable({
         <thead>
           <tr>
             <th className="w-10">#</th>
-            <th>Driver</th>
+            <th>Operator</th>
             <th>Bus</th>
             <th>Route</th>
             <th>Status</th>
@@ -72,7 +72,7 @@ export default function AssignmentsTable({
             assignments.map((a, i) => (
               <tr key={a.id}>
                 <th>{i + 1}</th>
-                <td className="font-medium">{a.driver_name}</td>
+                <td className="font-medium">{a.operator_name}</td>
                 <td>{a.bus_number}</td>
                 <td>{a.route_name}</td>
                 <td>
