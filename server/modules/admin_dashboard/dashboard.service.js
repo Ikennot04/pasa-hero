@@ -99,4 +99,54 @@ export const DashboardService = {
       active_buses_count: activeCountByRouteId.get(String(route._id)) ?? 0,
     }));
   },
+
+  async getRoutePerformanceReport() {
+    const [activeRoutes, notificationCountsByRoute] = await Promise.all([
+      Route.find({ status: "active" }).select("_id route_name").lean(),
+      Notification.aggregate([
+        {
+          $match: {
+            route_id: { $ne: null },
+            notification_type: { $in: ["delay", "full"] },
+          },
+        },
+        {
+          $group: {
+            _id: "$route_id",
+            total_delay_count: {
+              $sum: {
+                $cond: [{ $eq: ["$notification_type", "delay"] }, 1, 0],
+              },
+            },
+            total_full_count: {
+              $sum: {
+                $cond: [{ $eq: ["$notification_type", "full"] }, 1, 0],
+              },
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const performanceByRouteId = new Map(
+      notificationCountsByRoute.map((row) => [
+        String(row._id),
+        {
+          total_delay_count: row.total_delay_count ?? 0,
+          total_full_count: row.total_full_count ?? 0,
+        },
+      ]),
+    );
+
+    return activeRoutes.map((route) => {
+      const routePerformance = performanceByRouteId.get(String(route._id));
+
+      return {
+        route_id: route._id,
+        route_name: route.route_name,
+        total_delay_count: routePerformance?.total_delay_count ?? 0,
+        total_full_count: routePerformance?.total_full_count ?? 0,
+      };
+    });
+  },
 };
