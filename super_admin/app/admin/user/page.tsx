@@ -1,16 +1,46 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import CreateOperator from "./_components/CreateOperator";
 import CreateTerminalAdmin from "./_components/CreateTerminalAdmin";
-import UserTable from "./_components/UserTable";
+import UserTable, { type UserRow } from "./_components/UserTable";
 import { useGetUsers } from "./_hooks/useGetUsers";
 
 const ROLES = ["user", "super admin", "operator", "terminal admin"] as const;
 const STATUSES = ["active", "inactive", "suspended"] as const;
 
+type ApiUser = {
+  _id: string;
+  f_name: string;
+  l_name: string;
+  email: string;
+  role: string;
+  status: string;
+};
+
 export default function Users() {
-  const { users, loading, error, refetch } = useGetUsers();
+  const { getUsers, error } = useGetUsers();
+  const [users, setUsers] = useState<ApiUser[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const res = await getUsers();
+      if (cancelled) return;
+      if (res?.success === true && Array.isArray(res.data)) {
+        setUsers(res.data);
+      } else {
+        setUsers([]);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getUsers]);
+
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -28,8 +58,26 @@ export default function Users() {
     });
   }, [users, roleFilter, statusFilter, searchQuery]);
 
+  const tableRows: UserRow[] = useMemo(
+    () =>
+      filteredUsers.map((u) => ({
+        id: String(u._id),
+        f_name: u.f_name,
+        l_name: u.l_name,
+        email: u.email,
+        role: u.role,
+        status: u.status,
+      })),
+    [filteredUsers],
+  );
+
   return (
     <div className="space-y-4 pt-6">
+      {error ? (
+        <div role="alert" className="alert alert-error text-sm">
+          {error}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-end gap-4">
           <div className="form-control w-64">
@@ -43,62 +91,49 @@ export default function Users() {
           </div>
           <div className="form-control w-32">
             <select
-            className="select select-bordered w-full max-w-xs"
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-          >
-            <option value="all">All roles</option>
-            {ROLES.map((role) => (
-              <option key={role} value={role}>
-                {role}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-control w-40">
-          <select
-            className="select select-bordered w-full max-w-xs"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">All statuses</option>
-            {STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-end pb-2">
-          <span className="text-sm text-base-content/70">
-            {loading
-              ? "Loading users…"
-              : `Showing ${filteredUsers.length} of ${users.length} users`}
-          </span>
-        </div>
+              className="select select-bordered w-full max-w-xs"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            >
+              <option value="all">All roles</option>
+              {ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-control w-40">
+            <select
+              className="select select-bordered w-full max-w-xs"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All statuses</option>
+              {STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-end pb-2">
+            <span className="text-sm text-base-content/70">
+              Showing {filteredUsers.length} of {users.length} users
+            </span>
+          </div>
         </div>
         <div className="flex items-end gap-2">
           <CreateOperator />
           <CreateTerminalAdmin />
         </div>
       </div>
-      {error ? (
-        <div className="alert alert-error">
-          <span>{error}</span>
-          <button type="button" className="btn btn-sm" onClick={() => void refetch()}>
-            Retry
-          </button>
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <span className="loading loading-spinner loading-lg text-primary" />
         </div>
-      ) : null}
-      {loading && !users.length ? (
-        <div className="flex justify-center py-12">
-          <span className="loading loading-spinner loading-lg" />
-        </div>
-      ) : error && !users.length ? null : (
-        <UserTable
-          key={`${roleFilter}-${statusFilter}-${searchQuery}`}
-          users={filteredUsers}
-        />
+      ) : (
+        <UserTable users={tableRows} />
       )}
     </div>
   );
