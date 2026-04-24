@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { LiaBarsSolid } from "react-icons/lia";
 import {
@@ -14,15 +15,32 @@ import {
   FaSignOutAlt,
 } from "react-icons/fa";
 import { TbSteeringWheelFilled } from "react-icons/tb";
-import { FaGear, FaMapLocationDot } from "react-icons/fa6";
+import { FaGear, FaMapLocationDot, FaUserShield } from "react-icons/fa6";
 
-const routes = [
+import { useAuthToken } from "../useAuthToken.hook";
+
+const SUPER_ADMIN_ROLE = "super admin";
+
+type NavRoute = {
+  path: string;
+  icon: ReactNode;
+  label: string;
+  superAdminOnly?: boolean;
+};
+
+const routes: NavRoute[] = [
   {
     path: "/admin/dashboard",
     icon: <FaChartLine className="size-6" />,
     label: "Dashboard",
   },
   { path: "/admin/user", icon: <FaUsers className="size-6" />, label: "Users" },
+  {
+    path: "/admin/admin-users",
+    icon: <FaUserShield className="size-6" />,
+    label: "Admin users",
+    superAdminOnly: true,
+  },
   { path: "/admin/bus", icon: <FaBus className="size-6" />, label: "Buses" },
   {
     path: "/admin/driver",
@@ -53,6 +71,7 @@ const routes = [
 
 const AUTH_TOKEN_KEY = "super_admin_auth_token";
 const PROFILE_NAME_KEY = "super_admin_f_name";
+const PROFILE_ROLE_KEY = "super_admin_role";
 
 export default function AdminShell({
   children,
@@ -61,16 +80,38 @@ export default function AdminShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { authToken } = useAuthToken();
   const [profileName, setProfileName] = useState<string>("");
+  const [userRole, setUserRole] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : localStorage.getItem(PROFILE_ROLE_KEY),
+  );
 
   useEffect(() => {
     const name = localStorage.getItem(PROFILE_NAME_KEY) ?? "";
     queueMicrotask(() => setProfileName(name));
   }, []);
 
+  useEffect(() => {
+    void (async () => {
+      const result = await authToken();
+      const role = result?.user?.role;
+      if (typeof role === "string") {
+        setUserRole(role);
+        localStorage.setItem(PROFILE_ROLE_KEY, role);
+      }
+    })();
+  }, [authToken]);
+
+  const visibleRoutes = useMemo(() => {
+    return routes.filter(
+      (r) => !r.superAdminOnly || userRole === SUPER_ADMIN_ROLE,
+    );
+  }, [userRole]);
+
   const handleLogout = () => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(PROFILE_NAME_KEY);
+    localStorage.removeItem(PROFILE_ROLE_KEY);
     router.replace("/login");
   };
 
@@ -114,7 +155,7 @@ export default function AdminShell({
         />
         <div className="flex min-h-full flex-col items-start bg-base-200 is-drawer-close:w-16 is-drawer-open:w-64 pt-2">
           <ul className="menu w-full grow gap-3 text-base font-semibold">
-            {routes.map((route) => {
+            {visibleRoutes.map((route) => {
               const isActive = pathname === route.path;
               return (
                 <li

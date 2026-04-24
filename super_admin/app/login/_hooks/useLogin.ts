@@ -20,6 +20,7 @@ type SignInResponse = {
 };
 
 const AUTH_TOKEN_KEY = "super_admin_auth_token";
+const PROFILE_ROLE_KEY = "super_admin_role";
 
 const ALLOWED_ROLES = new Set(["super admin", "admin"]);
 
@@ -50,6 +51,9 @@ export const useLogin = () => {
           localStorage.setItem(AUTH_TOKEN_KEY, res.token);
           if (res.data?.f_name) {
             localStorage.setItem("super_admin_f_name", res.data.f_name);
+          }
+          if (role) {
+            localStorage.setItem(PROFILE_ROLE_KEY, role);
           }
           console.log(res.data);
           router.push("/admin/dashboard");
