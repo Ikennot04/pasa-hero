@@ -45,7 +45,7 @@ export const DashboardService = {
         .sort({ createdAt: -1 })
         .limit(5)
         .select(
-          "title notification_type",
+          "title priority",
         )
         .lean(),
     ]);

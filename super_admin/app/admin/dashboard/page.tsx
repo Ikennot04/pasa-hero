@@ -8,7 +8,7 @@ import {
   RecentAlerts,
   TotalAssignments,
 } from "./_components/_overview";
-import type { DashboardSummaryStats } from "./_components/_overview";
+import type { AlertItem, DashboardSummaryStats } from "./_components/_overview";
 import { useGetDashboardSummary } from "./_hooks/useGetDashboardSummary";
 
 // Analytics
@@ -21,24 +21,6 @@ import {
   NotificationVolumeReport,
   UserGrowthReport,
 } from "./_components/_analytics";
-
-const ALERTS = [
-  {
-    id: 1,
-    message: "Bus #12 delayed on Route 7 – traffic",
-    priority: "high" as const,
-  },
-  {
-    id: 2,
-    message: "Terminal North: gate sensor offline",
-    priority: "medium" as const,
-  },
-  {
-    id: 3,
-    message: "Driver shift #5 started 15 min late",
-    priority: "low" as const,
-  },
-];
 
 // Analytics & Reports ==================================================================
 const ACTIVE_BUSES_PER_ROUTE = [
@@ -135,6 +117,20 @@ export default function Dashboard() {
     completed: dashboardSummary?.total_bus_assignments?.completed ?? 0,
     cancelled: dashboardSummary?.total_bus_assignments?.cancelled ?? 0,
   };
+  const recentAlertsData: AlertItem[] = (dashboardSummary?.latest_alerts ?? []).map(
+    (alert, index) => {
+      const priority: AlertItem["priority"] =
+        alert.priority === "high" || alert.priority === "medium" || alert.priority === "low"
+          ? alert.priority
+          : "low";
+
+      return {
+        _id: alert._id ?? `alert-${index}`,
+        title: alert.title ?? "Untitled alert",
+        priority,
+      };
+    },
+  );
 
   useEffect(() => {
     const fetchDashboardSummary = async () => {
@@ -155,7 +151,7 @@ export default function Dashboard() {
         <LiveBusCount data={liveBusData} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <RecentAlerts alerts={ALERTS} />
+          <RecentAlerts alerts={recentAlertsData} />
           <TotalAssignments data={totalAssignmentsData} />
         </div>
       </div>

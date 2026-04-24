@@ -22,6 +22,11 @@ export type DashboardSummaryStats = {
     completed?: number;
     cancelled?: number;
   };
+  latest_alerts?: Array<{
+    _id?: string;
+    title?: string;
+    priority?: "high" | "medium" | "low";
+  }>;
 };
 
 type OverviewStatsProps = {
