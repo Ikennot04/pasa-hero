@@ -11,6 +11,11 @@ export type DashboardSummaryStats = {
   active_routes?: number;
   active_terminals?: number;
   active_drivers?: number;
+  live_bus_counts?: {
+    on_road?: number;
+    idle?: number;
+    maintenance?: number;
+  };
 };
 
 type OverviewStatsProps = {

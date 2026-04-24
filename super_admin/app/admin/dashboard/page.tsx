@@ -22,8 +22,6 @@ import {
   UserGrowthReport,
 } from "./_components/_analytics";
 
-const LIVE_BUS = { onRoad: 19, idle: 4, maintenance: 4 };
-
 const ALERTS = [
   {
     id: 1,
@@ -133,6 +131,11 @@ const USER_GROWTH = [
 export default function Dashboard() {
   const { getDashboardSummary } = useGetDashboardSummary();
   const [dashboardSummary, setDashboardSummary] = useState<DashboardSummaryStats | null>(null);
+  const liveBusData = {
+    onRoad: dashboardSummary?.live_bus_counts?.on_road ?? 0,
+    idle: dashboardSummary?.live_bus_counts?.idle ?? 0,
+    maintenance: dashboardSummary?.live_bus_counts?.maintenance ?? 0,
+  };
 
   useEffect(() => {
     const fetchDashboardSummary = async () => {
@@ -150,7 +153,7 @@ export default function Dashboard() {
       {/* Overview stats */}
       <div className="space-y-6 pb-6">
         <OverviewStats summary={dashboardSummary} />
-        <LiveBusCount data={LIVE_BUS} />
+        <LiveBusCount data={liveBusData} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <RecentAlerts alerts={ALERTS} />
