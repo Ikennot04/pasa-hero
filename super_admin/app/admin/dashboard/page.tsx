@@ -1,14 +1,9 @@
-import { FaBus, FaRoute } from "react-icons/fa";
-import { TbSteeringWheelFilled } from "react-icons/tb";
-import { FaMapLocationDot } from "react-icons/fa6";
-
 import {
   OverviewStats,
   LiveBusCount,
   RecentAlerts,
   TodayAssignments,
 } from "./_components/_overview";
-import type { StatItem } from "./_components/_overview";
 
 // Analytics
 import "./_components/_analytics/chart-register";
@@ -20,24 +15,6 @@ import {
   NotificationVolumeReport,
   UserGrowthReport,
 } from "./_components/_analytics";
-
-// Overview stats ==================================================================
-const STATS: StatItem[] = [
-  { label: "Active Buses", value: 24, icon: FaBus, color: "text-blue-600" },
-  { label: "Routes", value: 12, icon: FaRoute, color: "text-green-600" },
-  {
-    label: "Terminals",
-    value: 8,
-    icon: FaMapLocationDot,
-    color: "text-amber-600",
-  },
-  {
-    label: "Drivers",
-    value: 32,
-    icon: TbSteeringWheelFilled,
-    color: "text-purple-600",
-  },
-];
 
 const LIVE_BUS = { onRoad: 19, idle: 4, maintenance: 4 };
 
@@ -152,7 +129,7 @@ export default function Dashboard() {
     <>
       {/* Overview stats */}
       <div className="space-y-6 pb-6">
-        <OverviewStats stats={STATS} />
+        <OverviewStats />
         <LiveBusCount data={LIVE_BUS} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
