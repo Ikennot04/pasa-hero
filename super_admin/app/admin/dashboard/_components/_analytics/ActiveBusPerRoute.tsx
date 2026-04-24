@@ -7,6 +7,7 @@ import { ReportSection } from "./ReportSection";
 
 export type ActiveBusPerRouteRecord = {
   routeId: string;
+  routeCode?: string;
   routeName: string;
   activeBusCount: number;
 };
@@ -48,8 +49,29 @@ export function ActiveBusPerRouteReport({ data }: Props) {
       title="Active buses per route report"
       description="Number of active buses per route over the selected period"
     >
-      <div className="h-64">
-        <Bar data={chartData} options={chartOptions} />
+      <div className="space-y-4">
+        <div className="h-64">
+          <Bar data={chartData} options={chartOptions} />
+        </div>
+
+        <div className="overflow-x-auto rounded-lg">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Route code</th>
+                <th>Route name</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((route) => (
+                <tr key={route.routeId} className="border-t">
+                  <td className="px-4 py-2">{route.routeCode ?? route.routeId}</td>
+                  <td className="px-4 py-2">{route.routeName}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </ReportSection>
   );
