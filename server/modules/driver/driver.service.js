@@ -5,7 +5,7 @@ import Driver from "./driver.model.js";
 export const DriverService = {
   // GET ALL DRIVERS ===================================================================
   async getAllDrivers() {
-    const drivers = await Driver.find({ is_deleted: false });
+    const drivers = await Driver.find({ is_deleted: false }).lean();
     return drivers;
   },
   // GET DRIVER BY ID ===================================================================
