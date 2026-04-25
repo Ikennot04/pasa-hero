@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   TerminalProps,
   TerminalLogProps,
@@ -11,52 +11,30 @@ import {
 import TerminalTable from "./_components/TerminalTable";
 import TerminalLogTable from "./_components/TerminalLogTable";
 import AddTerminalModal from "./_components/AddTerminal";
+import { useGetTerminals } from "./_hooks/useGetTerminals";
 
-// Static data for terminals (matches backend terminal.model.js)
-const TERMINALS_STATIC: TerminalProps[] = [
-  {
-    id: "1",
-    terminal_name: "PITX (Parañaque Integrated Terminal Exchange)",
-    location_lat: 14.5547,
-    location_lng: 120.9842,
-    status: "active",
-  },
-  {
-    id: "2",
-    terminal_name: "SM North EDSA",
-    location_lat: 14.6568,
-    location_lng: 121.0312,
-    status: "active",
-  },
-  {
-    id: "3",
-    terminal_name: "Monumento",
-    location_lat: 14.6548,
-    location_lng: 120.9845,
-    status: "active",
-  },
-  {
-    id: "4",
-    terminal_name: "Fairview",
-    location_lat: 14.7333,
-    location_lng: 121.0500,
-    status: "active",
-  },
-  {
-    id: "5",
-    terminal_name: "Tamiya Terminal",
-    location_lat: 10.3157,
-    location_lng: 123.8854,
-    status: "active",
-  },
-  {
-    id: "6",
-    terminal_name: "Pacific Terminal",
-    location_lat: 10.3128,
-    location_lng: 123.8912,
-    status: "inactive",
-  },
-];
+type ApiTerminal = {
+  _id: string;
+  terminal_name: string;
+  location_lat: number;
+  location_lng: number;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+function mapApiTerminalToProps(t: ApiTerminal): TerminalProps {
+  const status: TerminalStatus = t.status === "inactive" ? "inactive" : "active";
+  return {
+    id: String(t._id),
+    terminal_name: t.terminal_name,
+    location_lat: Number(t.location_lat),
+    location_lng: Number(t.location_lng),
+    status,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+}
 
 const TERMINAL_STATUS_OPTIONS: TerminalStatus[] = ["active", "inactive"];
 
@@ -143,6 +121,9 @@ const LOG_STATUS_OPTIONS: TerminalLogStatus[] = [
 ];
 
 export default function Terminal() {
+  const { getTerminals, error: terminalsError } = useGetTerminals();
+  const [terminals, setTerminals] = useState<TerminalProps[]>([]);
+  const [terminalsLoading, setTerminalsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<TerminalStatus | "all">("all");
   const [logSearchQuery, setLogSearchQuery] = useState("");
@@ -153,9 +134,27 @@ export default function Terminal() {
     TerminalLogStatus | "all"
   >("all");
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setTerminalsLoading(true);
+      const res = await getTerminals();
+      if (cancelled) return;
+      if (res?.success === true && Array.isArray(res.data)) {
+        setTerminals((res.data as ApiTerminal[]).map(mapApiTerminalToProps));
+      } else {
+        setTerminals([]);
+      }
+      setTerminalsLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getTerminals]);
+
   const filteredTerminals = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return TERMINALS_STATIC.filter((t) => {
+    return terminals.filter((t) => {
       const matchSearch =
         !q ||
         t.terminal_name.toLowerCase().includes(q) ||
@@ -165,7 +164,7 @@ export default function Terminal() {
         statusFilter === "all" || t.status === statusFilter;
       return matchSearch && matchStatus;
     });
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, terminals]);
 
   const filteredLogs = useMemo(() => {
     const q = logSearchQuery.trim().toLowerCase();
@@ -186,6 +185,11 @@ export default function Terminal() {
 
   return (
     <div className="space-y-4 pt-6">
+      {terminalsError ? (
+        <div role="alert" className="alert alert-error text-sm">
+          {terminalsError}
+        </div>
+      ) : null}
       <div className="text-xl font-bold">Terminal Management Table</div>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-end gap-4">
@@ -215,13 +219,18 @@ export default function Terminal() {
             </select>
           </div>
           <span className="text-sm text-base-content/70">
-            Showing {filteredTerminals.length} of {TERMINALS_STATIC.length}{" "}
-            terminals
+            Showing {filteredTerminals.length} of {terminals.length} terminals
           </span>
         </div>
         <AddTerminalModal />
       </div>
-      <TerminalTable terminals={filteredTerminals} />
+      {terminalsLoading ? (
+        <div className="flex justify-center py-16">
+          <span className="loading loading-spinner loading-lg text-primary" />
+        </div>
+      ) : (
+        <TerminalTable terminals={filteredTerminals} />
+      )}
       <div className="text-xl font-bold mt-10">Terminal Logs</div>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-end gap-4">
