@@ -12,14 +12,11 @@ export type TerminalProps = {
 
 // Terminal log (matches backend terminal_log.model.js)
 export type TerminalLogEventType =
-  | "arrival_reported"
-  | "arrival_confirmed"
-  | "departure_reported"
-  | "departure_confirmed"
-  | "auto_detected";
+  | "arrival"
+  | "departure";
 
 export type TerminalLogStatus =
-  | "pending_confirmation"
+  | "pending"
   | "confirmed"
   | "rejected";
 

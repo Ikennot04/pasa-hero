@@ -4,7 +4,7 @@ import { TerminalLogProps } from "../TerminalProps";
 
 function LogStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    pending_confirmation: "badge-warning",
+    pending: "badge-warning",
     confirmed: "badge-success",
     rejected: "badge-error",
   };
@@ -17,11 +17,8 @@ function LogStatusBadge({ status }: { status: string }) {
 
 function EventTypeBadge({ eventType }: { eventType: string }) {
   const map: Record<string, string> = {
-    arrival_reported: "badge-info",
-    arrival_confirmed: "badge-success",
-    departure_reported: "badge-info",
-    departure_confirmed: "badge-success",
-    auto_detected: "badge-ghost",
+    arrival: "badge-info",
+    departure: "badge-success",
   };
   return (
     <span className={`badge ${map[eventType] ?? "badge-ghost"}`}>
