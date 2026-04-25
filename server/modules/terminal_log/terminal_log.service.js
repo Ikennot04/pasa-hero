@@ -10,31 +10,15 @@ export const TerminalLogService = {
       TerminalLog.find()
         .populate({
           path: "terminal_id",
-          select: "terminal_name location_lat location_lng status",
+          select: "terminal_name",
         })
         .populate({
           path: "bus_id",
-          select: "bus_number plate_number capacity status",
+          select: "bus_number",
         })
-        .populate({
-          path: "bus_assignment_id",
-          select: "scheduled_arrival_at route_id operator_user_id",
-          populate: [
-            { path: "route_id", select: "route_name route_code status" },
-            {
-              path: "operator_user_id",
-              select: "f_name l_name email role status",
-            },
-          ],
-        })
-        .populate({
-          path: "reported_by",
-          select: "f_name l_name email role status",
-        })
-        .populate({
-          path: "confirmed_by",
-          select: "f_name l_name email role status",
-        })
+        .select(
+          "_id terminal_id bus_id event_type status event_time confirmation_time"
+        )
         .sort({ createdAt: -1 }),
       TerminalLog.aggregate([
         { $group: { _id: "$status", count: { $sum: 1 } } },
@@ -56,7 +40,17 @@ export const TerminalLogService = {
       rejected: byStatus.rejected,
     };
 
-    return { terminalLogs, counts };
+    const formattedTerminalLogs = terminalLogs.map((terminalLog) => ({
+      _id: terminalLog._id,
+      terminal_name: terminalLog.terminal_id?.terminal_name ?? null,
+      bus_number: terminalLog.bus_id?.bus_number ?? null,
+      event_type: terminalLog.event_type,
+      status: terminalLog.status,
+      event_time: terminalLog.event_time,
+      confirmation_time: terminalLog.confirmation_time,
+    }));
+
+    return { terminalLogs: formattedTerminalLogs, counts };
   },
 
   // GET TERMINAL LOG BY ID ============================================================
