@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'dart:ui' as ui;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
@@ -35,6 +37,7 @@ class _RouteScreenState extends State<RouteScreen> {
   final BusStopIconService _busStopIconService = BusStopIconService.instance;
   GoogleMapController? _mapController;
   BitmapDescriptor? _operatorIcon;
+  BitmapDescriptor? _userIcon;
   String? _mapStyleJson;
   bool _isLoading = true;
   Position? _currentPosition;
@@ -54,6 +57,7 @@ class _RouteScreenState extends State<RouteScreen> {
     super.initState();
     _initialCameraPosition = _initialCameraOverBusStops;
     _loadOperatorIcon();
+    _loadUserIcon();
     _loadMapStyle();
     _loadRouteId();
     _watchUserLocations();
@@ -122,8 +126,9 @@ class _RouteScreenState extends State<RouteScreen> {
             markerId: MarkerId('user_${doc.id}'),
             position: pos,
             zIndexInt: 5,
-            anchor: const Offset(0.5, 1),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            anchor: const Offset(0.5, 0.5),
+            icon: _userIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
             infoWindow: InfoWindow(title: 'Rider', snippet: email),
           ),
         );
@@ -238,7 +243,7 @@ class _RouteScreenState extends State<RouteScreen> {
   Future<void> _loadOperatorIcon() async {
     try {
       final icon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(104, 104)),
+        const ImageConfiguration(size: Size(128, 128)),
         'assets/images/buspic.png',
       );
       if (mounted) {
@@ -254,6 +259,45 @@ class _RouteScreenState extends State<RouteScreen> {
     } catch (e) {
       print('⚠️ [RouteScreen] Failed to load operator icon: $e');
     }
+  }
+
+  Future<void> _loadUserIcon() async {
+    try {
+      final icon = await _loadResizedMarkerIcon(
+        assetPath: 'assets/images/user_picture.png',
+        width: 28,
+        height: 28,
+      );
+      if (mounted) {
+        setState(() {
+          _userIcon = icon;
+        });
+      }
+    } catch (e) {
+      print('⚠️ [RouteScreen] Failed to load user marker icon: $e');
+    }
+  }
+
+  Future<BitmapDescriptor> _loadResizedMarkerIcon({
+    required String assetPath,
+    required int width,
+    required int height,
+  }) async {
+    final ByteData data = await rootBundle.load(assetPath);
+    final Uint8List bytes = data.buffer.asUint8List();
+    final ui.Codec codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: width,
+      targetHeight: height,
+    );
+    final ui.FrameInfo frame = await codec.getNextFrame();
+    final ByteData? resized = await frame.image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    if (resized == null) {
+      throw Exception('Could not resize marker icon: $assetPath');
+    }
+    return BitmapDescriptor.bytes(resized.buffer.asUint8List());
   }
 
   /// Initializes location services and gets operator's current position.
@@ -503,8 +547,8 @@ class _RouteScreenState extends State<RouteScreen> {
                   onPressed: _isLocationRequestInProgress
                       ? null
                       : () => _initializeLocation(forceRefresh: true),
-                  child: const Icon(Icons.my_location),
                   tooltip: 'Center on my location',
+                  child: const Icon(Icons.my_location),
                 ),
               ),
               if (showFreeRideBadge)
@@ -540,7 +584,7 @@ class _RouteScreenState extends State<RouteScreen> {
                 ),
               if (_routeId != null && _routeId!.isNotEmpty)
                 Positioned(
-                  top: showFreeRideBadge ? 64 : 16,
+                  bottom: 16,
                   left: 16,
                   child: Material(
                     elevation: 3,

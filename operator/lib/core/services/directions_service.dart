@@ -55,7 +55,7 @@ class DirectionsService {
   ) async {
     final key = await _getApiKey();
     if (key.isEmpty) {
-      print('⚠️ [Directions] No API key available');
+     
       return null;
     }
     

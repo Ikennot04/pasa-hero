@@ -125,7 +125,7 @@ class RouteCatalogService {
   static Future<List<RouteInfo>> fetchAvailableRoutes() async {
     final byCode = <String, RouteInfo>{};
 
-    // 1) Primary source: backend routes API (non-hardcoded live route list).
+    // Only source: published backend routes API.
     try {
       final uri = Uri.parse(_routesApiUrl);
       final response = await http.get(uri).timeout(const Duration(seconds: 12));
@@ -152,49 +152,9 @@ class RouteCatalogService {
           }
         }
       }
-    } catch (_) {}
-
-    // If API has data, use it directly for route choices.
-    if (byCode.isNotEmpty) {
-      final list = byCode.values.toList();
-      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      return list;
+    } catch (_) {
+      // Return empty when API is unavailable; operator routes are API-only.
     }
-
-    // 2) Fallback: existing Firestore flow.
-    await ensureRouteCodeSeededFromRoutes();
-
-    try {
-      final snap = await FirebaseFirestore.instance.collection(_routeCodeCollection).get();
-      for (final doc in snap.docs) {
-        final m = doc.data();
-        final code = ((m['routeCode'] as String?)?.trim().isNotEmpty ?? false)
-            ? (m['routeCode'] as String).trim()
-            : doc.id.trim();
-        _put(
-          byCode,
-          codeRaw: code,
-          nameRaw: m['name'] as String?,
-          descriptionRaw: m['description'] as String?,
-        );
-      }
-    } catch (_) {}
-
-    try {
-      final snap = await FirebaseFirestore.instance.collection(_routesCollection).get();
-      for (final doc in snap.docs) {
-        final m = doc.data();
-        final code = ((m['code'] as String?)?.trim().isNotEmpty ?? false)
-            ? (m['code'] as String).trim()
-            : doc.id.trim();
-        _put(
-          byCode,
-          codeRaw: code,
-          nameRaw: m['name'] as String?,
-          descriptionRaw: m['description'] as String?,
-        );
-      }
-    } catch (_) {}
 
     final list = byCode.values.toList();
     list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));

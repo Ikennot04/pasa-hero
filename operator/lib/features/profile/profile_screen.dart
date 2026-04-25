@@ -19,6 +19,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _currentRouteCode;
   List<RouteInfo> _routeOptions = const [];
   bool _isLoading = true;
+  bool _isUpdatingRoute = false;
 
   @override
   void initState() {
@@ -131,7 +132,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       stream: DriverStatusService.instance.freeRideDetailsStream(routeId),
       builder: (context, snapshot) {
         final details = snapshot.data;
-        final isActive = details?.isActive ?? false;
+        final freeRideValue = details?.freeRideValue ?? 0;
+        final isActive = freeRideValue == 1;
+        final buttonText = isActive ? 'Stop the free ride' : 'Strat free ride';
         return Card(
           elevation: 2,
           child: Padding(
@@ -160,8 +163,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: isActive
-                            ? Colors.green.shade400
-                            : Colors.red.shade400,
+                            ? Colors.red.shade400
+                            : Colors.blue.shade500,
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: [
                           BoxShadow(
@@ -174,14 +177,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            isActive ? Icons.check_circle : Icons.cancel,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                          const SizedBox(width: 10),
+                          if (isActive) ...[
+                            const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 10),
+                          ],
                           Text(
-                            isActive ? 'ON' : 'OFF',
+                            buttonText,
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -222,6 +227,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final endStr = details.endTime != null
         ? _formatDateTime(details.endTime!)
         : '—';
+    final durationText = details.durationMinutes != null
+        ? '${details.durationMinutes} minute(s)'
+        : (details.startTime != null && details.endTime != null)
+            ? '${details.endTime!.difference(details.startTime!).inMinutes} minute(s)'
+            : '—';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -232,6 +242,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 4),
         Text(
           'Ends: $endStr',
+          style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Duration: $durationText',
           style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
         ),
       ],
@@ -264,9 +279,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
       if (confirm == true && mounted) {
+        final operatorId = FirebaseAuth.instance.currentUser?.uid;
+        if (operatorId == null || operatorId.isEmpty) return;
         await DriverStatusService.instance.setFreeRideStatus(
           routeId,
           isFreeRide: false,
+          operatorId: operatorId,
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -370,7 +388,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: endTime != null
                       ? () => Navigator.of(ctx).pop(endTime)
                       : null,
-                  child: const Text('Start Free Ride'),
+                  child: const Text('Strat free ride'),
                 ),
               ],
             );
@@ -378,9 +396,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
       if (picked != null && mounted) {
+        final operatorId = FirebaseAuth.instance.currentUser?.uid;
+        if (operatorId == null || operatorId.isEmpty) return;
         await DriverStatusService.instance.setFreeRideStatus(
           routeId,
           isFreeRide: true,
+          operatorId: operatorId,
           freeRideUntil: picked,
           freeRideFrom: now,
         );
@@ -421,6 +442,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _showRouteSelection() async {
+    if (_isUpdatingRoute) return;
     final latestOptions = await RouteCatalogService.fetchAvailableRoutes();
     if (!mounted) return;
     String? selectedRouteCode = _currentRouteCode;
@@ -473,7 +495,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (result != null && result != _currentRouteCode) {
-      setState(() => _isLoading = true);
+      setState(() => _isUpdatingRoute = true);
       final success = await ProfileDataService.updateOperatorRouteCode(result);
       if (success) {
         await OperatorLocationSyncService.instance
@@ -481,7 +503,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _isUpdatingRoute = false;
           if (success) {
             _currentRouteCode = result;
             _routeOptions = options;
@@ -566,8 +588,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ? '${_routeNameForCode(_currentRouteCode)} (Code: $_currentRouteCode)'
                               : 'Not set - Tap to select',
                         ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: _showRouteSelection,
+                        trailing: _isUpdatingRoute
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.chevron_right),
+                        onTap: _isUpdatingRoute ? null : _showRouteSelection,
                       ),
                     ),
                     const SizedBox(height: 16),

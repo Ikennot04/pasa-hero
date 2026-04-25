@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/services/location_service.dart';
@@ -38,6 +40,7 @@ class _MapScreenState extends State<MapScreen> {
   final BusStopIconService _busStopIconService = BusStopIconService.instance;
   GoogleMapController? _mapController;
   BitmapDescriptor? _operatorIcon;
+  BitmapDescriptor? _userIcon;
   bool _isLoading = true;
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
@@ -48,13 +51,6 @@ class _MapScreenState extends State<MapScreen> {
   String? _activeRouteCode;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _userLocationsSub;
   StreamSubscription<Position>? _positionStreamSub;
-  int _debugUserDocsTotal = 0;
-  int _debugUserDocsRoleMatched = 0;
-  int _debugUserDocsWithCoords = 0;
-  String _debugUserStreamStatus = 'waiting';
-  String? _debugUserStreamError;
-  DateTime? _debugLastUserSnapshotAt;
-  bool _showDebugPanel = true;
   /// When true, GoogleMap shows the OS "my location" dot (backup if custom marker fails).
   bool _myLocationLayerEnabled = false;
 
@@ -66,6 +62,7 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _initialCameraPosition = _initialCameraOverBusStops;
     _loadOperatorIcon();
+    _loadUserIcon();
     // Load bus stop sign icon and dynamic route stops from Firestore.
     _loadBusStopsFromDatabaseAndShow();
     _watchUserLocations();
@@ -169,35 +166,22 @@ class _MapScreenState extends State<MapScreen> {
 
   void _watchUserLocations() {
     _userLocationsSub?.cancel();
-    if (mounted) {
-      setState(() {
-        _debugUserStreamStatus = 'subscribing';
-        _debugUserStreamError = null;
-      });
-    }
     _userLocationsSub = FirebaseFirestore.instance
         .collection(_userLocationsCollection)
         .snapshots()
         .listen((snapshot) {
       if (!mounted) return;
       final userMarkers = <Marker>{};
-      int roleMatched = 0;
-      int withCoords = 0;
       for (final doc in snapshot.docs) {
         final data = doc.data();
         // Mirror the user app behavior: if a live location doc has coordinates,
         // render it instead of dropping by role/status mismatches.
         final isOffline = _userLocDocExplicitlyOffline(data);
-        final isRiderLike = _userLocMatchesRiderRole(data);
-        if (!isOffline && isRiderLike) {
-          roleMatched++;
-        }
-
+        _userLocMatchesRiderRole(data);
         final pos = _latLngFromUserLocData(data);
         if (pos == null) continue;
         // Keep filtering out explicit offline docs only.
         if (isOffline) continue;
-        withCoords++;
 
         final email = data['email']?.toString() ?? 'Rider';
         userMarkers.add(
@@ -205,8 +189,9 @@ class _MapScreenState extends State<MapScreen> {
             markerId: MarkerId('user_${doc.id}'),
             position: pos,
             zIndexInt: _zRiderMarker,
-            anchor: const Offset(0.5, 1),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            anchor: const Offset(0.5, 0.5),
+            icon: _userIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
             infoWindow: InfoWindow(
               title: 'Rider',
               snippet: email,
@@ -218,21 +203,10 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _userMarkers = userMarkers;
         _markers = _mergeWithUserMarkers(_markers);
-        _debugUserDocsTotal = snapshot.docs.length;
-        _debugUserDocsRoleMatched = roleMatched;
-        _debugUserDocsWithCoords = withCoords;
-        _debugUserStreamStatus = 'active';
-        _debugUserStreamError = null;
-        _debugLastUserSnapshotAt = DateTime.now();
       });
       print('✅ [MapScreen] Live users visible: ${userMarkers.length}');
     }, onError: (e) {
       print('⚠️ [MapScreen] user_locations stream error: $e');
-      if (!mounted) return;
-      setState(() {
-        _debugUserStreamStatus = 'error';
-        _debugUserStreamError = e.toString();
-      });
     });
   }
 
@@ -297,7 +271,7 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _loadOperatorIcon() async {
     try {
       final icon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(104, 104)),
+        const ImageConfiguration(size: Size(128, 128)),
         'assets/images/buspic.png',
       );
       if (mounted) {
@@ -313,6 +287,45 @@ class _MapScreenState extends State<MapScreen> {
     } catch (e) {
       print('⚠️ [MapScreen] Failed to load operator icon: $e');
     }
+  }
+
+  Future<void> _loadUserIcon() async {
+    try {
+      final icon = await _loadResizedMarkerIcon(
+        assetPath: 'assets/images/user_picture.png',
+        width: 28,
+        height: 28,
+      );
+      if (mounted) {
+        setState(() {
+          _userIcon = icon;
+        });
+      }
+    } catch (e) {
+      print('⚠️ [MapScreen] Failed to load user marker icon: $e');
+    }
+  }
+
+  Future<BitmapDescriptor> _loadResizedMarkerIcon({
+    required String assetPath,
+    required int width,
+    required int height,
+  }) async {
+    final ByteData data = await rootBundle.load(assetPath);
+    final Uint8List bytes = data.buffer.asUint8List();
+    final ui.Codec codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: width,
+      targetHeight: height,
+    );
+    final ui.FrameInfo frame = await codec.getNextFrame();
+    final ByteData? resized = await frame.image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    if (resized == null) {
+      throw Exception('Could not resize marker icon: $assetPath');
+    }
+    return BitmapDescriptor.bytes(resized.buffer.asUint8List());
   }
 
   /// Loads the operator's route code from Firestore and highlights the route if set.
@@ -834,68 +847,6 @@ class _MapScreenState extends State<MapScreen> {
             const Center(
               child: CircularProgressIndicator(),
             ),
-          Positioned(
-            top: 12,
-            left: 12,
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _showDebugPanel = !_showDebugPanel;
-                });
-              },
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 280),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.72),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: _showDebugPanel
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            'USER LOCATION DEBUG',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text('stream: $_debugUserStreamStatus',
-                              style: const TextStyle(color: Colors.white, fontSize: 11)),
-                          Text('docs total: $_debugUserDocsTotal',
-                              style: const TextStyle(color: Colors.white, fontSize: 11)),
-                          Text('role match: $_debugUserDocsRoleMatched',
-                              style: const TextStyle(color: Colors.white, fontSize: 11)),
-                          Text('with coords: $_debugUserDocsWithCoords',
-                              style: const TextStyle(color: Colors.white, fontSize: 11)),
-                          Text('markers now: ${_userMarkers.length}',
-                              style: const TextStyle(color: Colors.white, fontSize: 11)),
-                          Text(
-                            'last snapshot: ${_debugLastUserSnapshotAt?.toIso8601String() ?? '-'}',
-                            style: const TextStyle(color: Colors.white, fontSize: 11),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (_debugUserStreamError != null)
-                            Text(
-                              'error: $_debugUserStreamError',
-                              style: const TextStyle(color: Colors.redAccent, fontSize: 11),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
-                      )
-                    : const Text(
-                        'Show debug',
-                        style: TextStyle(color: Colors.white, fontSize: 11),
-                      ),
-              ),
-            ),
-          ),
         ],
       ),
     );

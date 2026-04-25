@@ -35,7 +35,7 @@ class LocationApiService {
       print('   Accuracy: ${position.accuracy}m');
       print('   Timestamp: ${position.timestamp}');
       
-      // TODO: Replace with your actual API endpoint
+    
       // Example implementation:
       /*
       final response = await http.post(
@@ -94,7 +94,7 @@ class LocationApiService {
     try {
       print('🌐 [LocationApiService] Getting last saved location from server...');
       
-      // TODO: Replace with your actual API endpoint
+      
       // Example:
       /*
       final response = await http.get(

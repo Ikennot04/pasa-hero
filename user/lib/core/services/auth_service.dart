@@ -70,7 +70,7 @@ class AuthService {
     // Web OAuth Client ID from Firebase Console
     // This is required for Android/iOS Google Sign-In to work properly
     // The Web Client ID is used as serverClientId for mobile platforms
-    const String? webClientId = '464857061623-ohoa4afqj73bka9l3mn4rv7mdrpe0ra0.apps.googleusercontent.com';
+    const String webClientId = '464857061623-ohoa4afqj73bka9l3mn4rv7mdrpe0ra0.apps.googleusercontent.com';
     
     return webClientId;
   }
@@ -241,7 +241,7 @@ class AuthService {
             throw Exception('Google Sign-In failed. Please try again.');
           }
           rethrow;
-        };
+        }
       } else {
         // For mobile platforms, use regular signIn
         googleUser = await googleSignIn.signIn();

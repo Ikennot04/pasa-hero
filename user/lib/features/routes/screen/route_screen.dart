@@ -31,7 +31,7 @@ class _RouteScreenState extends State<RouteScreen> {
 
   List<OperatorRouteOption> _routes = [];
   Map<String, int> _activeByRoute = {};
-  Set<String> _followingRouteCodes = {};
+  final Set<String> _followingRouteCodes = {};
   bool _loading = true;
   bool _submittingFollow = false;
   String _search = '';
