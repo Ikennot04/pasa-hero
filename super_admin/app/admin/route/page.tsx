@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { RouteProps, type RouteStatus } from "./RouteProps";
 import RouteTable from "./_components/RouteTable";
 import AddRouteModal from "./_components/AddRoute";
-import { useGetRoutes } from "./_route/useGetRoutes";
+import { useGetRoutes } from "./_hooks/useGetRoutes";
 
 type ApiTerminalRef = {
   _id?: string;
