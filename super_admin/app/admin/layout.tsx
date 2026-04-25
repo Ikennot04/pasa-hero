@@ -1,3 +1,4 @@
+import AdminAuthGate from "./AdminAuthGate";
 import AdminShell from "./AdminShell";
 
 export default function AdminLayout({
@@ -5,5 +6,9 @@ export default function AdminLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return <AdminShell>{children}</AdminShell>;
+  return (
+    <AdminAuthGate>
+      <AdminShell>{children}</AdminShell>
+    </AdminAuthGate>
+  );
 }

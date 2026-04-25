@@ -1,3 +1,8 @@
+"use client";
+
+import { useState } from "react";
+import { useConfirmTerminalLog } from "../_hooks/useConfirmTerminalLog";
+
 type PendingConfirmationType = {
   terminal_log_id: string;
   bus_number: string;
@@ -9,6 +14,8 @@ type PendingConfirmationProps = {
   pendingTotal: number;
   pendingArrival: PendingConfirmationType[];
   pendingDeparture: PendingConfirmationType[];
+  onConfirmSuccess?: () => void | Promise<void>;
+  onConfirmToast?: (message: string) => void;
 };
 
 const formatTime = (time: string) => {
@@ -19,7 +26,46 @@ export default function PendingConfirmation({
   pendingTotal,
   pendingArrival,
   pendingDeparture,
+  onConfirmSuccess,
+  onConfirmToast,
 }: PendingConfirmationProps) {
+  const { confirmTerminalLog } = useConfirmTerminalLog();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
+
+  const handleConfirm = async (terminalLogId: string) => {
+    setConfirmingId(terminalLogId);
+    setLastError(null);
+    try {
+      const res = await confirmTerminalLog(terminalLogId);
+      if (
+        res &&
+        typeof res === "object" &&
+        "success" in res &&
+        res.success === true
+      ) {
+        await onConfirmSuccess?.();
+        const successMsg =
+          "message" in res &&
+          typeof (res as { message?: unknown }).message === "string"
+            ? (res as { message: string }).message
+            : "Event confirmed";
+        onConfirmToast?.(successMsg);
+      } else {
+        const msg =
+          res &&
+          typeof res === "object" &&
+          "message" in res &&
+          typeof (res as { message?: unknown }).message === "string"
+            ? (res as { message: string }).message
+            : "Could not confirm";
+        setLastError(msg);
+      }
+    } finally {
+      setConfirmingId(null);
+    }
+  };
+
   return (
     <div className="max-h-180 min-h-80 overflow-auto rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
@@ -28,6 +74,12 @@ export default function PendingConfirmation({
           {pendingTotal} waiting
         </span>
       </div>
+
+      {lastError ? (
+        <div className="alert alert-error mt-3 py-2 text-sm" role="alert">
+          {lastError}
+        </div>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="rounded-lg border border-base-200 p-3 bg-base-100">
@@ -44,15 +96,17 @@ export default function PendingConfirmation({
               </thead>
               <tbody>
                 {pendingArrival.length ? (
-                  pendingArrival.map((r, i) => (
-                    <tr key={i}>
+                  pendingArrival.map((r) => (
+                    <tr key={r.terminal_log_id}>
                       <td className="font-semibold">{r.bus_number}</td>
                       <td>{r.route_name}</td>
                       <td>{r.event_time ? formatTime(r.event_time) : "-"}</td>
                       <td className="text-right">
                         <button
-                          className="btn btn-sm bg-[#0062CA] text-white"
-
+                          type="button"
+                          className={`btn btn-sm bg-[#0062CA] text-white ${confirmingId === r.terminal_log_id ? "loading" : ""}`}
+                          disabled={confirmingId !== null}
+                          onClick={() => handleConfirm(r.terminal_log_id)}
                         >
                           Confirm
                         </button>
@@ -88,14 +142,17 @@ export default function PendingConfirmation({
               </thead>
               <tbody>
                 {pendingDeparture.length ? (
-                  pendingDeparture.map((r, i) => (
-                    <tr key={i}>
+                  pendingDeparture.map((r) => (
+                    <tr key={r.terminal_log_id}>
                       <td className="font-semibold">{r.bus_number}</td>
                       <td>{r.route_name}</td>
                       <td>{r.event_time ? formatTime(r.event_time) : "-"}</td>
                       <td className="text-right">
                         <button
-                          className="btn btn-sm bg-[#0062CA] text-white"
+                          type="button"
+                          className={`btn btn-sm bg-[#0062CA] text-white ${confirmingId === r.terminal_log_id ? "loading" : ""}`}
+                          disabled={confirmingId !== null}
+                          onClick={() => handleConfirm(r.terminal_log_id)}
                         >
                           Confirm
                         </button>

@@ -85,7 +85,7 @@ export default function EditBusModal({ bus, modalId, onCloseModal }: EditBusProp
     <>
       <button
         type="button"
-        className="btn"
+        className="btn btn-sm "
         onClick={openModal}
       >
         <MdOutlineEdit className="w-5 h-5" />

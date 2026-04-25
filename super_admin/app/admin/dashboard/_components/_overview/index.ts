@@ -1,9 +1,10 @@
 export { OverviewStats } from "./OverviewStats";
 export { LiveBusCount } from "./LiveBusCount";
 export { RecentAlerts } from "./RecentAlerts";
-export { TodayAssignments } from "./TodayAssignments";
+export { TotalAssignments } from "./TotalAssignments";
 export { StatCard } from "./StatCard";
 export type { StatItem } from "./StatCard";
+export type { DashboardSummaryStats } from "./OverviewStats";
 export type { LiveBusCountData } from "./LiveBusCount";
 export type { AlertItem } from "./RecentAlerts";
-export type { TodayAssignmentsData } from "./TodayAssignments";
+export type { TodayAssignmentsData } from "./TotalAssignments";

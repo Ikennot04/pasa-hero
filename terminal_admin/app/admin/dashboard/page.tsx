@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -153,7 +153,9 @@ export default function Dashboard() {
     // Terminal Summary
     const fetchTerminalSummary = async () => {
       const data = await fetchSummaryRef.current();
-      setTerminalSummary(data.data);
+      if (data?.success) {
+        setTerminalSummary(data?.data);
+      }
     };
     fetchTerminalSummary();
 
@@ -219,6 +221,30 @@ export default function Dashboard() {
     const t = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  const refreshAfterTerminalConfirm = useCallback(async () => {
+    const [pendingData, summaryData, opsData] = await Promise.all([
+      getPendingConfirmation(),
+      getTerminalSummary(),
+      getOperationalList(),
+    ]);
+    if (pendingData.success) {
+      setPendingArrivals(pendingData.data.pending_arrivals);
+      setPendingDepartures(pendingData.data.pending_departures);
+      setPendingCount(pendingData.data.pending_confirmations);
+    }
+    if (summaryData?.success) {
+      setTerminalSummary(summaryData.data);
+    }
+    if (opsData.success) {
+      setBusesPresent(opsData.data.buses_present);
+      setBusesDeparted(opsData.data.not_confirmed_departed_buses);
+    }
+  }, [
+    getPendingConfirmation,
+    getTerminalSummary,
+    getOperationalList,
+  ]);
 
   return (
     <div className="space-y-6 pb-6 pt-4">
@@ -324,6 +350,8 @@ export default function Dashboard() {
           pendingTotal={pendingCount}
           pendingArrival={pendingArrivals}
           pendingDeparture={pendingDepartures}
+          onConfirmSuccess={refreshAfterTerminalConfirm}
+          onConfirmToast={(msg) => setToast(msg)}
         />
 
         <Notifications notifications={notifications} />

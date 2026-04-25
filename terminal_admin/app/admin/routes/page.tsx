@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AddRoute from "./_components/AddRoute";
 import Routes, { type RouteRow, type RouteStatus } from "./_components/Routes";
 import { useGetRoutes } from "./_hooks/useGetRoutes";
@@ -67,18 +67,19 @@ export default function RoutesPage() {
   const [routes, setRoutes] = useState<RouteRow[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadRoutes = async () => {
-      const data = await fetchRoutesRef.current();
-      if (data?.success && data.counts) {
-        setRouteSummaryCounts(data.counts);
-      }
-      if (data?.success && Array.isArray(data.data)) {
-        setRoutes((data.data as ApiRouteDoc[]).map(mapApiRouteToRow));
-      }
-    };
-    loadRoutes();
+  const loadRoutes = useCallback(async () => {
+    const data = await fetchRoutesRef.current();
+    if (data?.success && data.counts) {
+      setRouteSummaryCounts(data.counts);
+    }
+    if (data?.success && Array.isArray(data.data)) {
+      setRoutes((data.data as ApiRouteDoc[]).map(mapApiRouteToRow));
+    }
   }, []);
+
+  useEffect(() => {
+    loadRoutes();
+  }, [loadRoutes]);
 
   return (
     <div className="space-y-6 pb-6 pt-4">
@@ -92,7 +93,12 @@ export default function RoutesPage() {
             routes for terminal operations.
           </p>
         </div>
-        <AddRoute routes={routes} setRoutes={setRoutes} setToast={setToast} />
+        <AddRoute
+          routes={routes}
+          setRoutes={setRoutes}
+          setToast={setToast}
+          onCreated={loadRoutes}
+        />
       </div>
 
       {toast ? (
