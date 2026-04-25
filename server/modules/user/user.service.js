@@ -82,11 +82,17 @@ export const UserService = {
       throw error;
     }
 
+    if (user.assigned_terminal) {
+      await user.populate({ path: "assigned_terminal", select: "terminal_name" });
+    }
+
     const token = jwt.sign(
       {
         userId: user._id,
         email: user.email,
         assigned_terminal: user.assigned_terminal,
+        f_name: user.f_name,
+        role: user.role,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES || "7d" },

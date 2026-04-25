@@ -158,6 +158,7 @@ export default function Management() {
   >([]);
 
   const [statusFilter, setStatusFilter] = useState<BusDayStatus | "all">("all");
+  const [toast, setToast] = useState<string | null>(null);
 
   const loadTerminalManagement = useCallback(async () => {
     const response = await getTerminalManagementRef.current();
@@ -182,10 +183,28 @@ export default function Management() {
     void loadTerminalManagement();
   }, [loadTerminalManagement]);
 
-  const confirmArrival = () => {};
-  const rejectArrival = () => {};
-  const confirmDeparture = () => {};
-  const rejectDeparture = () => {};
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const confirmArrival = useCallback((id: string) => {
+    void id;
+    void loadTerminalManagement();
+  }, [loadTerminalManagement]);
+  const rejectArrival = useCallback((id: string) => {
+    void id;
+    void loadTerminalManagement();
+  }, [loadTerminalManagement]);
+  const confirmDeparture = useCallback((id: string) => {
+    void id;
+    void loadTerminalManagement();
+  }, [loadTerminalManagement]);
+  const rejectDeparture = useCallback((id: string) => {
+    void id;
+    void loadTerminalManagement();
+  }, [loadTerminalManagement]);
 
   return (
     <div className="space-y-6 pb-6 pt-4">
@@ -201,6 +220,12 @@ export default function Management() {
         </div>
         <span className="badge badge-outline">Terminal Operations</span>
       </div>
+
+      {toast ? (
+        <div className="alert bg-blue-900 text-base text-white">
+          <span>{toast}</span>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
@@ -247,12 +272,14 @@ export default function Management() {
         <ArrivalConfirmation
           pendingArrivals={pendingArrivalRows}
           onConfirmArrival={confirmArrival}
+          onConfirmToast={(msg) => setToast(msg)}
           onRejectArrival={rejectArrival}
         />
 
         <DepartureConfirmation
           pendingDepartures={pendingDepartureRows}
           onConfirmDeparture={confirmDeparture}
+          onConfirmToast={(msg) => setToast(msg)}
           onRejectDeparture={rejectDeparture}
         />
       </div>

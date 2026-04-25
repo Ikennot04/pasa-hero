@@ -69,6 +69,13 @@ export const TerminalService = {
     const terminals = await Terminal.find();
     return terminals;
   },
+  // GET ALL TERMINAL NAMES (id + name, sorted by name) ==================================
+  async getAllTerminalNames() {
+    return Terminal.find()
+      .select("terminal_name")
+      .sort({ terminal_name: 1 })
+      .lean();
+  },
   // CREATE TERMINAL ===================================================================
   async createTerminal(terminalData) {
     const existingTerminal = await Terminal.findOne({ terminal_name: terminalData.terminal_name });
@@ -365,8 +372,7 @@ export const TerminalService = {
 
   /**
    * Terminal management: today's scheduled arrivals for this terminal (by route end_terminal_id),
-   * pending confirmations (one row per bus assignment, aligned with operational flags),
-   * and aggregate counts.
+   * all pending arrival/departure terminal logs for this terminal, and aggregate counts.
    * @param {string} terminalId
    * @param {{ date?: string }} [options] date as YYYY-MM-DD (UTC); defaults to current UTC day
    */
@@ -451,10 +457,6 @@ export const TerminalService = {
       };
     });
 
-    const pending_arrival_confirmations = [];
-    const pending_departure_confirmations = [];
-    let currently_present_at_terminal = 0;
-
     const logToPendingRow = (log) => {
       const ba = log.bus_assignment_id;
       const routeName =
@@ -467,33 +469,25 @@ export const TerminalService = {
       };
     };
 
+    const pending_arrival_confirmations = logs
+      .filter((l) => l.event_type === "arrival" && l.status === "pending")
+      .map(logToPendingRow)
+      .sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+
+    const pending_departure_confirmations = logs
+      .filter((l) => l.event_type === "departure" && l.status === "pending")
+      .map(logToPendingRow)
+      .sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+
+    let currently_present_at_terminal = 0;
     for (const [, assignmentLogs] of byAssignment) {
       const flags = deriveFlagsFromLogs(assignmentLogs);
       if (flags.present) currently_present_at_terminal += 1;
-
-      if (flags.pendingArrival) {
-        const arrivals = assignmentLogs
-          .filter((l) => l.event_type === "arrival")
-          .sort((a, b) => new Date(b.event_time) - new Date(a.event_time));
-        const lastArr = arrivals[0];
-        if (lastArr) pending_arrival_confirmations.push(logToPendingRow(lastArr));
-      }
-
-      if (flags.pendingDeparture) {
-        const deps = assignmentLogs
-          .filter((l) => l.event_type === "departure")
-          .sort((a, b) => new Date(b.event_time) - new Date(a.event_time));
-        const lastDep = deps[0];
-        if (lastDep) pending_departure_confirmations.push(logToPendingRow(lastDep));
-      }
     }
-
-    pending_arrival_confirmations.sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-    pending_departure_confirmations.sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
 
     const confirmationHistory = logs
       .filter((l) => {

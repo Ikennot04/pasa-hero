@@ -23,6 +23,25 @@ function getOccupancyStatus(occupancyCount, capacity) {
   return "empty";
 }
 
+function busStatusRowForBus(bus, index) {
+  if (bus.status === "out of service" || bus.status === "maintenance") {
+    return {
+      bus_id: String(bus._id),
+      occupancy_count: 0,
+      occupancy_status: "empty",
+    };
+  }
+  const occupancyCount = Math.min(
+    bus.capacity,
+    Math.floor((bus.capacity * ((index % 5) + 1)) / 5),
+  );
+  return {
+    bus_id: String(bus._id),
+    occupancy_count: occupancyCount,
+    occupancy_status: getOccupancyStatus(occupancyCount, bus.capacity),
+  };
+}
+
 const seedBusStatuses = async () => {
   try {
     await ensureDbConnected();
@@ -34,18 +53,9 @@ const seedBusStatuses = async () => {
 
     await BusStatus.deleteMany({});
 
-    const statusesPayload = buses.map((bus, index) => {
-      const occupancyCount = Math.min(
-        bus.capacity,
-        Math.floor((bus.capacity * ((index % 5) + 1)) / 5),
-      );
-
-      return {
-        bus_id: String(bus._id),
-        occupancy_count: occupancyCount,
-        occupancy_status: getOccupancyStatus(occupancyCount, bus.capacity),
-      };
-    });
+    const statusesPayload = buses.map((bus, index) =>
+      busStatusRowForBus(bus, index),
+    );
 
     const statuses = await BusStatus.insertMany(statusesPayload);
     console.log(`✅ Created ${statuses.length} bus statuses`);

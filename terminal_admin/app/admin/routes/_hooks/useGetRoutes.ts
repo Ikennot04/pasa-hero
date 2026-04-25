@@ -7,9 +7,10 @@ export const useGetRoutes = () => {
   const [error, setError] = useState<string | null>(null);
 
   const getRoutes = async () => {
+    const terminalId = localStorage?.getItem("assigned_terminal");
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.get(`${baseUrl}/api/routes`);
+      const { data: response } = await axios.get(`${baseUrl}/api/routes/terminal/${terminalId}`);
 
       return response;
     } catch (error) {

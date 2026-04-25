@@ -46,9 +46,122 @@ function getOccupancyStatus(occupancyCount, capacity) {
   return "empty";
 }
 
-/** April 17, 2026 — UTC (matches ?date=2026-04-17 on the API). */
-function utc2026_04_12(hour, minute = 0) {
-  return new Date(Date.UTC(2026, 3, 17, hour, minute, 0));
+/** Seeded bus status row: out-of-service and maintenance buses are always empty. */
+function busStatusPayloadForSeedBus(bus, index) {
+  if (bus.status === "out of service" || bus.status === "maintenance") {
+    return {
+      bus_id: String(bus._id),
+      occupancy_count: 0,
+      occupancy_status: "empty",
+    };
+  }
+  const occupancyCount = Math.min(
+    bus.capacity,
+    Math.floor((bus.capacity * ((index % 5) + 1)) / 5),
+  );
+  return {
+    bus_id: String(bus._id),
+    occupancy_count: occupancyCount,
+    occupancy_status: getOccupancyStatus(occupancyCount, bus.capacity),
+  };
+}
+
+/**
+ * Drop assignments for out-of-service buses; maintenance buses get cancelled (inactive).
+ */
+function normalizeSeedBusAssignment(doc, busById) {
+  const id = String(doc.bus_id);
+  const bus = busById.get(id);
+  if (!bus) return doc;
+  if (bus.status === "out of service") return null;
+  if (bus.status === "maintenance") {
+    return {
+      ...doc,
+      assignment_status: "inactive",
+      assignment_result: "cancelled",
+    };
+  }
+  return doc;
+}
+
+/**
+ * Set each BusAssignment.latest_terminal_log_id to the TerminalLog with the latest
+ * event_time for that assignment (tie-break _id). Call after seeding TerminalLog rows.
+ */
+export async function syncLatestTerminalLogIdsFromSeedLogs() {
+  const rows = await TerminalLog.aggregate([
+    { $sort: { event_time: 1, _id: 1 } },
+    { $group: { _id: "$bus_assignment_id", latestLogId: { $last: "$_id" } } },
+  ]);
+  if (!rows.length) return;
+  await Promise.all(
+    rows.map((row) =>
+      BusAssignment.updateOne(
+        { _id: row._id },
+        { $set: { latest_terminal_log_id: row.latestLogId } },
+      ),
+    ),
+  );
+}
+
+/**
+ * Buses with a completed trip and no active+pending assignment get empty occupancy.
+ * CEB-017 (multi-assignment demo: completed + cancelled + pending) gets partial occupancy.
+ */
+export async function syncBusOccupancyForCompletedTrips() {
+  const assignments = await BusAssignment.find({})
+    .select("bus_id assignment_status assignment_result")
+    .lean();
+  const activePendingByBus = new Set();
+  for (const a of assignments) {
+    if (a.assignment_status === "active" && a.assignment_result === "pending") {
+      activePendingByBus.add(String(a.bus_id));
+    }
+  }
+  for (const a of assignments) {
+    if (a.assignment_result !== "completed") continue;
+    const busId = String(a.bus_id);
+    if (activePendingByBus.has(busId)) continue;
+    await BusStatus.updateOne(
+      { bus_id: busId },
+      { $set: { occupancy_count: 0, occupancy_status: "empty" } },
+    );
+  }
+
+  const multiBus = await Bus.findOne({ bus_number: "CEB-017" });
+  if (multiBus) {
+    const forBus = await BusAssignment.find({ bus_id: multiBus._id }).lean();
+    const hasCompleted = forBus.some((x) => x.assignment_result === "completed");
+    const hasCancelled = forBus.some((x) => x.assignment_result === "cancelled");
+    const hasActivePending = forBus.some(
+      (x) => x.assignment_status === "active" && x.assignment_result === "pending",
+    );
+    if (hasCompleted && hasCancelled && hasActivePending) {
+      const cap = multiBus.capacity || 50;
+      const occ = Math.min(18, Math.max(0, cap - 1));
+      await BusStatus.updateOne(
+        { bus_id: String(multiBus._id) },
+        { $set: { occupancy_count: occ, occupancy_status: getOccupancyStatus(occ, cap) } },
+      );
+    }
+  }
+
+  const emptyOccupancyBuses = await Bus.find({
+    status: { $in: ["out of service", "maintenance"] },
+  })
+    .select("_id")
+    .lean();
+  for (const b of emptyOccupancyBuses) {
+    await BusStatus.updateOne(
+      { bus_id: String(b._id) },
+      { $set: { occupancy_count: 0, occupancy_status: "empty" } },
+    );
+  }
+}
+
+/** April 21, 2026 — UTC (matches ?date=2026-04-21 on the API). */
+function utc2026_04_21(hour, minute = 0) {
+  return new Date(Date.UTC(2026, 3, 21, hour, minute, 0));
 }
 
 /** Extra SM assignments use these buses (not the main-seed CEB-003 / CEB-011 pair we keep for logs). */
@@ -127,6 +240,7 @@ export async function seedOperationalSummaryDemo() {
   });
 
   await TerminalLog.deleteMany({});
+  await BusAssignment.updateMany({}, { $set: { latest_terminal_log_id: null } });
 
   const smAssignments = await BusAssignment.find({
     route_id: { $in: smRouteIds },
@@ -139,7 +253,7 @@ export async function seedOperationalSummaryDemo() {
       { _id: smAssignments[i]._id },
       {
         $set: {
-          scheduled_arrival_at: utc2026_04_12(h, (i % 4) * 15),
+          scheduled_arrival_at: utc2026_04_21(h, (i % 4) * 15),
         },
       },
     );
@@ -158,17 +272,33 @@ export async function seedOperationalSummaryDemo() {
     [8, true, 17, 30],
   ];
 
-  const extraPayload = extraSpecs.map(([busIdx, use06F, h, m]) => ({
-    bus_id: demoBuses[busIdx]._id,
-    driver_id: drivers[busIdx]._id,
-    operator_user_id: operator._id,
-    route_id: use06F ? route06F._id : route03C._id,
-    assignment_status: "active",
-    assignment_result: "pending",
-    scheduled_arrival_at: utc2026_04_12(h, m),
-  }));
+  const extraPayload = extraSpecs
+    .map(([busIdx, use06F, h, m]) => {
+      const bus = demoBuses[busIdx];
+      if (bus.status === "out of service") return null;
+      const base = {
+        bus_id: bus._id,
+        driver_id: drivers[busIdx]._id,
+        operator_user_id: operator._id,
+        route_id: use06F ? route06F._id : route03C._id,
+        assignment_status: "active",
+        assignment_result: "pending",
+        scheduled_arrival_at: utc2026_04_21(h, m),
+      };
+      if (bus.status === "maintenance") {
+        return {
+          ...base,
+          assignment_status: "inactive",
+          assignment_result: "cancelled",
+        };
+      }
+      return base;
+    })
+    .filter(Boolean);
 
   await BusAssignment.insertMany(extraPayload);
+
+  await syncBusOccupancyForCompletedTrips();
 
   const findAssign = (bus, route) =>
     BusAssignment.findOne({ bus_id: bus._id, route_id: route._id });
@@ -210,8 +340,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b3._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(8, 0),
-      confirmation_time: utc2026_04_12(8, 5),
+      event_time: utc2026_04_21(8, 0),
+      confirmation_time: utc2026_04_21(8, 5),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -222,8 +352,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b3._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_12(12, 0),
-      confirmation_time: utc2026_04_12(12, 10),
+      event_time: utc2026_04_21(12, 0),
+      confirmation_time: utc2026_04_21(12, 10),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -234,8 +364,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[0]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(6, 15),
-      confirmation_time: utc2026_04_12(6, 18),
+      event_time: utc2026_04_21(6, 15),
+      confirmation_time: utc2026_04_21(6, 18),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -246,8 +376,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[0]._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_12(7, 25),
-      confirmation_time: utc2026_04_12(7, 28),
+      event_time: utc2026_04_21(7, 25),
+      confirmation_time: utc2026_04_21(7, 28),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -258,8 +388,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[8]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(16, 0),
-      confirmation_time: utc2026_04_12(16, 5),
+      event_time: utc2026_04_21(16, 0),
+      confirmation_time: utc2026_04_21(16, 5),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -270,8 +400,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[8]._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_12(16, 45),
-      confirmation_time: utc2026_04_12(16, 48),
+      event_time: utc2026_04_21(16, 45),
+      confirmation_time: utc2026_04_21(16, 48),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -283,8 +413,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b11._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(10, 0),
-      confirmation_time: utc2026_04_12(10, 3),
+      event_time: utc2026_04_21(10, 0),
+      confirmation_time: utc2026_04_21(10, 3),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -295,8 +425,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[1]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(13, 10),
-      confirmation_time: utc2026_04_12(13, 14),
+      event_time: utc2026_04_21(13, 10),
+      confirmation_time: utc2026_04_21(13, 14),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -307,8 +437,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[7]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(14, 50),
-      confirmation_time: utc2026_04_12(14, 55),
+      event_time: utc2026_04_21(14, 50),
+      confirmation_time: utc2026_04_21(14, 55),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -320,7 +450,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[3]._id,
       event_type: "arrival",
       status: "pending",
-      event_time: utc2026_04_12(9, 20),
+      event_time: utc2026_04_21(9, 20),
       confirmation_time: null,
       reported_by: operator._id,
       auto_detected: false,
@@ -331,7 +461,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[2]._id,
       event_type: "arrival",
       status: "pending",
-      event_time: utc2026_04_12(8, 40),
+      event_time: utc2026_04_21(8, 40),
       confirmation_time: null,
       reported_by: operator._id,
       auto_detected: false,
@@ -343,8 +473,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[5]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(11, 0),
-      confirmation_time: utc2026_04_12(11, 4),
+      event_time: utc2026_04_21(11, 0),
+      confirmation_time: utc2026_04_21(11, 4),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -355,7 +485,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[5]._id,
       event_type: "departure",
       status: "pending",
-      event_time: utc2026_04_12(11, 45),
+      event_time: utc2026_04_21(11, 45),
       confirmation_time: null,
       reported_by: operator._id,
       auto_detected: false,
@@ -366,8 +496,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[4]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_12(12, 5),
-      confirmation_time: utc2026_04_12(12, 8),
+      event_time: utc2026_04_21(12, 5),
+      confirmation_time: utc2026_04_21(12, 8),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -378,7 +508,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[4]._id,
       event_type: "departure",
       status: "pending",
-      event_time: utc2026_04_12(12, 55),
+      event_time: utc2026_04_21(12, 55),
       confirmation_time: null,
       reported_by: operator._id,
       auto_detected: false,
@@ -386,14 +516,16 @@ export async function seedOperationalSummaryDemo() {
     // CEB-008 / a8: scheduled only — no logs
   ]);
 
+  await syncLatestTerminalLogIdsFromSeedLogs();
+
   const totalSmAssignments = smAssignments.length + extraSpecs.length;
 
-  console.log("\n✅ Terminal operational summary demo (2026-04-17 UTC)");
+  console.log("\n✅ Terminal operational summary demo (2026-04-21 UTC)");
   console.log("   Terminal:", smTerminal.terminal_name, `(${smTerminal._id})`);
-  console.log("   Date: 04/17/2026 (UTC)");
+  console.log("   Date: 04/21/2026 (UTC)");
   console.log("   TerminalLog events:", logs.length);
   console.log("   SM assignments (scheduled that day):", totalSmAssignments);
-  console.log("\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=2026-04-17");
+  console.log("\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=2026-04-21");
   console.log("   Expected ≈ scheduled: 11, present: 3, departed_today: 3, pending: 4 (2+2)\n");
 }
 
@@ -774,6 +906,94 @@ export async function seedTerminalNotificationTimeline() {
       message: "Terminal admin confirmed final late departure for CEB-001.",
       type: "departure_confirmed",
       minutes: 51,
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus3,
+      route: route03C,
+      title: "Route 03C Traffic Delay Advisory",
+      message:
+        "Route 03C is experiencing corridor congestion near JY Square with an estimated 7-minute delay.",
+      type: "delay",
+      minutes: 66,
+      priority: "medium",
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus11,
+      route: route06F,
+      title: "Route 06F Near Capacity Alert",
+      message:
+        "High passenger demand detected on Route 06F. Current trip is at full standing capacity.",
+      type: "full",
+      minutes: 63,
+      priority: "high",
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus9,
+      route: route02B,
+      title: "Route 02B Dispatch Delay",
+      message:
+        "Dispatch on Route 02B is delayed by about 5 minutes due to temporary loading congestion.",
+      type: "delay",
+      minutes: 60,
+      priority: "medium",
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus4,
+      route: route04D,
+      title: "Route 04D Full Load Advisory",
+      message:
+        "Inbound Route 04D bus reached full seated and standing capacity before final boarding.",
+      type: "full",
+      minutes: 57,
+      priority: "medium",
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus1,
+      route: route01A,
+      title: "Route 01A Delay Near Fuente",
+      message:
+        "Route 01A is moving slowly near Fuente Osmena due to lane restrictions with an estimated 4-minute delay.",
+      type: "delay",
+      minutes: 49,
+      priority: "medium",
+    }),
+    makeTerminalEvent({
+      sender: operator1,
+      bus: bus2,
+      route: route03C,
+      title: "Route 03C Full Capacity Notice",
+      message:
+        "Current Route 03C trip reached full capacity before final pickup at SM City Cebu.",
+      type: "full",
+      minutes: 47,
+      priority: "high",
+    }),
+    makeTerminalEvent({
+      sender: operator2,
+      bus: bus9,
+      route: route02B,
+      title: "Route 02B Minor Delay Update",
+      message:
+        "Route 02B outbound service is delayed around 3 minutes because of curbside congestion.",
+      type: "delay",
+      minutes: 45,
+      priority: "low",
+    }),
+    makeTerminalEvent({
+      sender: terminalAdmin1,
+      bus: bus11,
+      route: route06F,
+      title: "Route 06F Full Standing Load",
+      message:
+        "Another Route 06F trip reported full standing load at the terminal queue.",
+      type: "full",
+      minutes: 43,
+      priority: "medium",
     }),
     {
       sender_id: String(superAdmin._id),
@@ -1437,23 +1657,80 @@ const seedData = async () => {
         capacity: 50,
         status: "active",
       },
+      {
+        bus_number: "CEB-014",
+        plate_number: "CEB-9014",
+        capacity: 46,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-015",
+        plate_number: "CEB-9015",
+        capacity: 52,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-016",
+        plate_number: "CEB-9016",
+        capacity: 44,
+        status: "maintenance",
+      },
+      {
+        bus_number: "CEB-017",
+        plate_number: "CEB-9017",
+        capacity: 49,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-018",
+        plate_number: "CEB-9018",
+        capacity: 50,
+        status: "out of service",
+      },
+      {
+        bus_number: "CEB-019",
+        plate_number: "CEB-9019",
+        capacity: 48,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-020",
+        plate_number: "CEB-9020",
+        capacity: 53,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-021",
+        plate_number: "CEB-9021",
+        capacity: 47,
+        status: "maintenance",
+      },
+      {
+        bus_number: "CEB-022",
+        plate_number: "CEB-9022",
+        capacity: 45,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-023",
+        plate_number: "CEB-9023",
+        capacity: 50,
+        status: "active",
+      },
+      {
+        bus_number: "CEB-024",
+        plate_number: "CEB-9024",
+        capacity: 46,
+        status: "out of service",
+      },
     ]);
 
     console.log(`✅ Created ${buses.length} buses`);
 
-    const busStatuses = await BusStatus.insertMany(
-      buses.map((bus, index) => {
-        const occupancyCount = Math.min(
-          bus.capacity,
-          Math.floor((bus.capacity * ((index % 5) + 1)) / 5),
-        );
+    const busById = new Map(buses.map((b) => [String(b._id), b]));
 
-        return {
-          bus_id: String(bus._id),
-          occupancy_count: occupancyCount,
-          occupancy_status: getOccupancyStatus(occupancyCount, bus.capacity),
-        };
-      }),
+    const busStatuses = await BusStatus.insertMany(
+      buses.map((bus, index) => busStatusPayloadForSeedBus(bus, index)),
     );
 
     console.log(`✅ Created ${busStatuses.length} bus statuses`);
@@ -1472,6 +1749,17 @@ const seedData = async () => {
       bus11,
       bus12,
       bus13,
+      bus14,
+      bus15,
+      bus16,
+      bus17,
+      bus18,
+      bus19,
+      bus20,
+      bus21,
+      bus22,
+      bus23,
+      bus24,
     ] = buses;
 
     // ==========================================
@@ -1598,153 +1886,215 @@ const seedData = async () => {
     // ==========================================
     // 8. CREATE BUS ASSIGNMENTS
     // ==========================================
-    const today = new Date(2026, 3, 17);
+    const today = new Date(2026, 3, 21);
     today.setHours(0, 0, 0, 0);
 
-    const assignments = await BusAssignment.insertMany([
+    const assignmentSeedRows = [
+      // CEB-001: multiple assignments (past completed / cancelled + current pending)
+      {
+        bus_id: bus1._id,
+        driver_id: driver2._id,
+        operator_user_id: operator1._id,
+        route_id: route01A._id,
+        assignment_status: "inactive",
+        assignment_result: "completed",
+        scheduled_arrival_at: new Date(today.getTime() - 6 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus1._id,
+        driver_id: driver3._id,
+        operator_user_id: operator1._id,
+        route_id: route03C._id,
+        assignment_status: "inactive",
+        assignment_result: "cancelled",
+        scheduled_arrival_at: new Date(today.getTime() - 2 * 60 * 60 * 1000),
+      },
       {
         bus_id: bus1._id,
         driver_id: driver1._id,
         operator_user_id: operator1._id,
         route_id: route01A._id,
-        assignment_date: today,
-        scheduled_departure_time: new Date(
-          today.getTime() + 8 * 60 * 60 * 1000,
-        ), // 8:00 AM
+        assignment_status: "active",
+        assignment_result: "pending",
         scheduled_arrival_at: new Date(
           today.getTime() + 8.75 * 60 * 60 * 1000,
-        ), // 8:45 AM
-        status: "active",
-        actual_departure_time: new Date(today.getTime() + 8.1 * 60 * 60 * 1000), // 8:06 AM (6 min delay)
-        total_stops: 5,
-        stops_completed: 3,
-        is_delayed: true,
-        departure_delay_minutes: 6,
+        ),
       },
       {
         bus_id: bus2._id,
         driver_id: driver2._id,
         operator_user_id: operator1._id,
         route_id: route02B._id,
-        assignment_date: today,
-        scheduled_departure_time: new Date(
-          today.getTime() + 9 * 60 * 60 * 1000,
-        ), // 9:00 AM
+        assignment_status: "active",
+        assignment_result: "pending",
         scheduled_arrival_at: new Date(
           today.getTime() + 9.5 * 60 * 60 * 1000,
-        ), // 9:30 AM
-        status: "scheduled",
-        total_stops: 5,
-        stops_completed: 0,
+        ),
       },
       {
         bus_id: bus3._id,
         driver_id: driver3._id,
         operator_user_id: operator2._id,
         route_id: route03C._id,
-        assignment_date: today,
-        scheduled_departure_time: new Date(
-          today.getTime() + 7 * 60 * 60 * 1000,
-        ), // 7:00 AM
+        assignment_status: "inactive",
+        assignment_result: "completed",
         scheduled_arrival_at: new Date(
           today.getTime() + 7.58 * 60 * 60 * 1000,
-        ), // 7:35 AM
-        status: "completed",
-        actual_departure_time: new Date(today.getTime() + 7 * 60 * 60 * 1000),
-        actual_arrival_time: new Date(today.getTime() + 7.62 * 60 * 60 * 1000), // 7:37 AM (2 min delay)
-        completed_at: new Date(today.getTime() + 7.62 * 60 * 60 * 1000),
-        total_stops: 4,
-        stops_completed: 4,
-        total_duration_minutes: 37,
-        arrival_delay_minutes: 2,
+        ),
       },
       {
         bus_id: bus4._id,
         driver_id: driver4._id,
         operator_user_id: operator1._id,
         route_id: route04D._id,
-        assignment_date: today,
-        scheduled_departure_time: new Date(
-          today.getTime() + 10 * 60 * 60 * 1000,
-        ), // 10:00 AM
+        assignment_status: "active",
+        assignment_result: "pending",
         scheduled_arrival_at: new Date(
           today.getTime() + 10.42 * 60 * 60 * 1000,
-        ), // 10:25 AM
-        status: "arrival_pending",
-        actual_departure_time: new Date(today.getTime() + 10 * 60 * 60 * 1000),
-        total_stops: 4,
-        stops_completed: 3,
+        ),
       },
       {
         bus_id: bus6._id,
         driver_id: driver5._id,
         operator_user_id: operator2._id,
         route_id: route05E._id,
-        assignment_date: today,
-        scheduled_departure_time: new Date(
-          today.getTime() + 11 * 60 * 60 * 1000,
-        ), // 11:00 AM
+        assignment_status: "active",
+        assignment_result: "pending",
         scheduled_arrival_at: new Date(
           today.getTime() + 11.67 * 60 * 60 * 1000,
-        ), // 11:40 AM
-        status: "scheduled",
-        total_stops: 4,
-        stops_completed: 0,
+        ),
       },
       {
         bus_id: bus11._id,
         driver_id: driver8._id,
         operator_user_id: operator1._id,
         route_id: route06F._id,
-        assignment_date: today,
-        scheduled_departure_time: new Date(
-          today.getTime() + 12 * 60 * 60 * 1000,
-        ),
+        assignment_status: "active",
+        assignment_result: "pending",
         scheduled_arrival_at: new Date(
           today.getTime() + 12.83 * 60 * 60 * 1000,
         ),
-        status: "scheduled",
-        total_stops: 4,
-        stops_completed: 0,
       },
       {
         bus_id: bus12._id,
         driver_id: driver9._id,
         operator_user_id: operator2._id,
         route_id: route07G._id,
-        assignment_date: today,
-        scheduled_departure_time: new Date(
-          today.getTime() + 6.5 * 60 * 60 * 1000,
-        ),
+        assignment_status: "active",
+        assignment_result: "pending",
         scheduled_arrival_at: new Date(
           today.getTime() + 6.83 * 60 * 60 * 1000,
         ),
-        status: "active",
-        actual_departure_time: new Date(
-          today.getTime() + 6.52 * 60 * 60 * 1000,
-        ),
-        total_stops: 4,
-        stops_completed: 2,
-        is_delayed: true,
-        departure_delay_minutes: 2,
       },
       {
         bus_id: bus9._id,
         driver_id: driver6._id,
         operator_user_id: operator1._id,
         route_id: route02B._id,
-        assignment_date: new Date(today.getTime() + 24 * 60 * 60 * 1000),
-        scheduled_departure_time: new Date(
-          today.getTime() + 24 * 60 * 60 * 1000 + 14 * 60 * 60 * 1000,
-        ),
+        assignment_status: "active",
+        assignment_result: "pending",
         scheduled_arrival_at: new Date(
           today.getTime() + 24 * 60 * 60 * 1000 + 14.5 * 60 * 60 * 1000,
         ),
-        status: "scheduled",
-        total_stops: 5,
-        stops_completed: 0,
       },
-    ]);
+      {
+        bus_id: bus13._id,
+        driver_id: driver4._id,
+        operator_user_id: operator2._id,
+        route_id: route01A._id,
+        assignment_status: "inactive",
+        assignment_result: "completed",
+        scheduled_arrival_at: new Date(today.getTime() - 2 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus14._id,
+        driver_id: driver5._id,
+        operator_user_id: operator1._id,
+        route_id: route05E._id,
+        assignment_status: "active",
+        assignment_result: "pending",
+        scheduled_arrival_at: new Date(today.getTime() + 2.25 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus15._id,
+        driver_id: driver6._id,
+        operator_user_id: operator2._id,
+        route_id: route06F._id,
+        assignment_status: "inactive",
+        assignment_result: "pending",
+        scheduled_arrival_at: new Date(today.getTime() + 26 * 60 * 60 * 1000),
+      },
+      // CEB-017: one bus, multiple assignments (past completed, cancelled, current pending)
+      {
+        bus_id: bus17._id,
+        driver_id: driver1._id,
+        operator_user_id: operator1._id,
+        route_id: route01A._id,
+        assignment_status: "inactive",
+        assignment_result: "completed",
+        scheduled_arrival_at: new Date(today.getTime() - 4 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus17._id,
+        driver_id: driver2._id,
+        operator_user_id: operator1._id,
+        route_id: route02B._id,
+        assignment_status: "inactive",
+        assignment_result: "cancelled",
+        scheduled_arrival_at: new Date(today.getTime() - 2 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus17._id,
+        driver_id: driver3._id,
+        operator_user_id: operator1._id,
+        route_id: route03C._id,
+        assignment_status: "active",
+        assignment_result: "pending",
+        scheduled_arrival_at: new Date(today.getTime() + 1.5 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus19._id,
+        driver_id: driver3._id,
+        operator_user_id: operator2._id,
+        route_id: route04D._id,
+        assignment_status: "active",
+        assignment_result: "pending",
+        scheduled_arrival_at: new Date(today.getTime() + 3.5 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus20._id,
+        driver_id: driver1._id,
+        operator_user_id: operator1._id,
+        route_id: route02B._id,
+        assignment_status: "inactive",
+        assignment_result: "completed",
+        scheduled_arrival_at: new Date(today.getTime() - 3.5 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus22._id,
+        driver_id: driver8._id,
+        operator_user_id: operator2._id,
+        route_id: route07G._id,
+        assignment_status: "inactive",
+        assignment_result: "pending",
+        scheduled_arrival_at: new Date(today.getTime() + 30 * 60 * 60 * 1000),
+      },
+      {
+        bus_id: bus23._id,
+        driver_id: driver9._id,
+        operator_user_id: operator1._id,
+        route_id: route01A._id,
+        assignment_status: "inactive",
+        assignment_result: "cancelled",
+        scheduled_arrival_at: new Date(today.getTime() + 7 * 60 * 60 * 1000),
+      },
+    ];
+
+    const assignments = await BusAssignment.insertMany(
+      assignmentSeedRows
+        .map((row) => normalizeSeedBusAssignment(row, busById))
+        .filter(Boolean),
+    );
 
     console.log(`✅ Created ${assignments.length} bus assignments`);
 

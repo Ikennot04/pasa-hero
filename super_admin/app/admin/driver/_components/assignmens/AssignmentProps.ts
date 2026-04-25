@@ -5,6 +5,16 @@ export type AssignmentResult = "pending" | "completed" | "cancelled";
 export type ArrivalStatus = "arrival_pending" | "arrived";
 export type DepartureStatus = "departure_pending" | "departed";
 
+export type TerminalLogEventType = "arrival" | "departure";
+export type TerminalLogStatus = "pending" | "confirmed" | "rejected";
+
+export type LastTerminalLogSummary = {
+  event_type: TerminalLogEventType;
+  event_time: string;
+  terminal_name: string;
+  log_status?: TerminalLogStatus;
+};
+
 export type AssignmentProps = {
   id: string;
   bus_id: string;
@@ -13,6 +23,7 @@ export type AssignmentProps = {
   route_id: string;
   // Display fields (from populated refs or join)
   driver_name: string;
+  operator_name: string;
   bus_number: string;
   route_name: string;
   assignment_status: AssignmentStatus;
@@ -21,6 +32,7 @@ export type AssignmentProps = {
   departure_status: DepartureStatus;
   arrival_confirmed_at: string | null;
   departure_confirmed_at: string | null;
+  last_terminal_log: LastTerminalLogSummary | null;
   createdAt?: string;
   updatedAt?: string;
 };

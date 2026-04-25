@@ -20,17 +20,112 @@ function populateBusAssignmentRefs(query) {
     })
     .populate({
       path: "latest_terminal_log_id",
-      select: "terminal_id bus_id",
+      select:
+        "terminal_id bus_id event_type event_time status auto_detected confirmation_time",
+      populate: { path: "terminal_id", select: "terminal_name" },
+    });
+}
+
+function formatOperatorName(user) {
+  if (!user || typeof user !== "object") return "—";
+  const n = `${user.f_name ?? ""} ${user.l_name ?? ""}`.trim();
+  return n || "—";
+}
+
+function mapLastTerminalLog(log) {
+  if (!log || typeof log !== "object") return null;
+  const term = log.terminal_id;
+  const terminal_id =
+    term && typeof term === "object"
+      ? { _id: term._id, terminal_name: term.terminal_name ?? null }
+      : log.terminal_id != null
+        ? { _id: log.terminal_id }
+        : null;
+  return {
+    _id: log._id,
+    terminal_id,
+    bus_id: log.bus_id ?? null,
+    event_type: log.event_type ?? null,
+    event_time: log.event_time ?? null,
+    status: log.status ?? null,
+    auto_detected: log.auto_detected ?? null,
+    confirmation_time: log.confirmation_time ?? null,
+  };
+}
+
+function refId(ref) {
+  if (ref != null && typeof ref === "object" && ref._id != null) {
+    return ref._id;
+  }
+  return ref ?? null;
+}
+
+/** Plain shape for GET /api/bus-assignments */
+function toBusAssignmentListRow(doc) {
+  const bus = doc.bus_id;
+  const route = doc.route_id;
+  const operator = doc.operator_user_id;
+
+  return {
+    _id: doc._id,
+    operator_name: formatOperatorName(operator),
+    bus_number:
+      bus && typeof bus === "object" && bus.bus_number != null
+        ? String(bus.bus_number)
+        : "—",
+    route_name:
+      route && typeof route === "object" && route.route_name != null
+        ? String(route.route_name)
+        : "—",
+    status: doc.assignment_status === "inactive" ? "inactive" : "active",
+    result:
+      doc.assignment_result === "completed" ||
+      doc.assignment_result === "cancelled"
+        ? doc.assignment_result
+        : "pending",
+    last_terminal_log: mapLastTerminalLog(doc.latest_terminal_log_id),
+    bus_id: refId(bus),
+    driver_id: refId(doc.driver_id),
+    route_id: refId(route),
+    operator_user_id: refId(operator),
+    createdAt: doc.createdAt ?? null,
+    updatedAt: doc.updatedAt ?? null,
+  };
+}
+
+function populateBusAssignmentListRefs(query) {
+  return query
+    .populate({
+      path: "bus_id",
+      select: "bus_number",
+    })
+    .populate({
+      path: "operator_user_id",
+      select: "f_name l_name",
+    })
+    .populate({
+      path: "route_id",
+      select: "route_name",
+    })
+    .populate({
+      path: "latest_terminal_log_id",
+      select:
+        "terminal_id bus_id event_type event_time status auto_detected confirmation_time",
+      populate: { path: "terminal_id", select: "terminal_name" },
     });
 }
 
 export const BusAssignmentService = {
   // GET ALL BUS ASSIGNMENTS ===================================================================
   async getAllBusAssignments() {
-    const assignments = await populateBusAssignmentRefs(
-      BusAssignment.find(),
-    ).sort({ createdAt: -1 });
-    return assignments;
+    const assignments = await populateBusAssignmentListRefs(
+      BusAssignment.find().select(
+        "bus_id driver_id operator_user_id route_id assignment_status assignment_result latest_terminal_log_id createdAt updatedAt",
+      ),
+    )
+      .sort({ createdAt: -1 })
+      .lean();
+    return assignments.map(toBusAssignmentListRow);
   },
 
   // GET BUS ASSIGNMENT BY ID ===================================================================

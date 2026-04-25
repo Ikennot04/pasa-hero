@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   NotificationProps,
   type NotificationType,
@@ -11,6 +11,7 @@ import NotificationTable from "./_components/NotificationTable";
 import AddNotificationModal from "./_components/AddNotification";
 import { SystemLogProps } from "./_components/SystemLogProps";
 import SystemLogTable from "./_components/SystemLogTable";
+import { useGetNotifications } from "./_hooks/useGetNotifications";
 
 // Static data for notifications (matches backend notification.model.js)
 const NOTIFICATIONS_STATIC: NotificationProps[] = [
@@ -129,6 +130,7 @@ const NOTIFICATION_TYPE_OPTIONS: NotificationType[] = [
 ];
 const PRIORITY_OPTIONS: NotificationPriority[] = ["high", "medium", "low"];
 const SCOPE_OPTIONS: NotificationScope[] = ["bus", "route", "terminal", "system"];
+const NOTIFICATIONS_PER_PAGE = 10;
 
 // Static data for system logs (view logs from all users with action type and description)
 const SYSTEM_LOGS_STATIC: SystemLogProps[] = [
@@ -155,10 +157,29 @@ export default function Notification() {
   const [scopeFilter, setScopeFilter] = useState<NotificationScope | "all">(
     "all"
   );
+  const [requestedPage, setRequestedPage] = useState(1);
   const [logSearchQuery, setLogSearchQuery] = useState("");
   const [logActionFilter, setLogActionFilter] = useState<string>("all");
+  const { getNotifications, error: notificationsError, isLoading } =
+    useGetNotifications();
 
   const [logs, setLogs] = useState<SystemLogProps[]>(SYSTEM_LOGS_STATIC);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchNotifications = async () => {
+      const data = await getNotifications();
+      if (!isMounted) return;
+      setNotifications(data);
+    };
+
+    fetchNotifications();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getNotifications]);
 
   const onBulkDelete = useCallback((ids: string[]) => {
     setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
@@ -207,6 +228,27 @@ export default function Notification() {
     });
   }, [logs, logSearchQuery, logActionFilter]);
 
+  const totalNotificationPages = Math.max(
+    1,
+    Math.ceil(filteredNotifications.length / NOTIFICATIONS_PER_PAGE),
+  );
+  const currentPage = Math.min(requestedPage, totalNotificationPages);
+
+  const paginatedNotifications = useMemo(() => {
+    const start = (currentPage - 1) * NOTIFICATIONS_PER_PAGE;
+    const end = start + NOTIFICATIONS_PER_PAGE;
+    return filteredNotifications.slice(start, end);
+  }, [filteredNotifications, currentPage]);
+
+  const paginationStart =
+    filteredNotifications.length === 0
+      ? 0
+      : (currentPage - 1) * NOTIFICATIONS_PER_PAGE + 1;
+  const paginationEnd = Math.min(
+    currentPage * NOTIFICATIONS_PER_PAGE,
+    filteredNotifications.length,
+  );
+
   return (
     <div className="space-y-4 pt-6">
       <div className="text-xl font-bold">Notification Management Table</div>
@@ -218,16 +260,20 @@ export default function Notification() {
               placeholder="Search by title, message, bus, route..."
               className="input input-bordered w-full"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setRequestedPage(1);
+              }}
             />
           </div>
           <div className="form-control w-40">
             <select
               className="select select-bordered w-full"
               value={typeFilter}
-              onChange={(e) =>
-                setTypeFilter(e.target.value as NotificationType | "all")
-              }
+              onChange={(e) => {
+                setTypeFilter(e.target.value as NotificationType | "all");
+                setRequestedPage(1);
+              }}
             >
               <option value="all">All types</option>
               {NOTIFICATION_TYPE_OPTIONS.map((t) => (
@@ -241,9 +287,10 @@ export default function Notification() {
             <select
               className="select select-bordered w-full"
               value={priorityFilter}
-              onChange={(e) =>
-                setPriorityFilter(e.target.value as NotificationPriority | "all")
-              }
+              onChange={(e) => {
+                setPriorityFilter(e.target.value as NotificationPriority | "all");
+                setRequestedPage(1);
+              }}
             >
               <option value="all">All priority</option>
               {PRIORITY_OPTIONS.map((p) => (
@@ -257,9 +304,10 @@ export default function Notification() {
             <select
               className="select select-bordered w-full"
               value={scopeFilter}
-              onChange={(e) =>
-                setScopeFilter(e.target.value as NotificationScope | "all")
-              }
+              onChange={(e) => {
+                setScopeFilter(e.target.value as NotificationScope | "all");
+                setRequestedPage(1);
+              }}
             >
               <option value="all">All scope</option>
               {SCOPE_OPTIONS.map((s) => (
@@ -270,16 +318,51 @@ export default function Notification() {
             </select>
           </div>
           <span className="text-sm text-base-content/70">
-            Showing {filteredNotifications.length} of {notifications.length}{" "}
-            notifications
+            Showing {paginationStart}-{paginationEnd} of{" "}
+            {filteredNotifications.length} filtered ({notifications.length} total)
           </span>
         </div>
         <AddNotificationModal />
       </div>
       <NotificationTable
-        notifications={filteredNotifications}
+        notifications={paginatedNotifications}
         onBulkDelete={onBulkDelete}
       />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <span className="text-sm text-base-content/70">
+          Page {currentPage} of {totalNotificationPages}
+        </span>
+        <div className="join">
+          <button
+            type="button"
+            className="btn join-item btn-sm"
+            onClick={() => setRequestedPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            className="btn join-item btn-sm"
+            onClick={() =>
+              setRequestedPage((prev) =>
+                Math.min(totalNotificationPages, prev + 1),
+              )
+            }
+            disabled={currentPage === totalNotificationPages}
+          >
+            Next
+          </button>
+        </div>
+      </div>
+      {isLoading && (
+        <div className="text-sm text-base-content/70">
+          Loading notifications...
+        </div>
+      )}
+      {!isLoading && notificationsError && (
+        <div className="text-sm text-error">{notificationsError}</div>
+      )}
 
       <div className="text-xl font-bold mt-10">System Logs</div>
       <p className="text-sm text-base-content/70">

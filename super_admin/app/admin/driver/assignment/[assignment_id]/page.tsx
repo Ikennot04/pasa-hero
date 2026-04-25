@@ -18,6 +18,7 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     operator_user_id: "op1",
     route_id: "r1",
     driver_name: "Juan Dela Cruz",
+    operator_name: "Carlos Reyes",
     bus_number: "BUS-101",
     route_name: "EDSA – Monumento to PITX",
     assignment_status: "active",
@@ -26,14 +27,21 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departed",
     arrival_confirmed_at: null,
     departure_confirmed_at: "2025-02-27T06:30:00",
+    last_terminal_log: {
+      event_type: "departure",
+      event_time: "2025-02-27T06:30:00",
+      terminal_name: "PITX",
+      log_status: "confirmed",
+    },
   },
   {
     id: "a2",
     bus_id: "b2",
     driver_id: "2",
-    operator_user_id: "op1",
+    operator_user_id: "op2",
     route_id: "r2",
     driver_name: "Maria Santos",
+    operator_name: "Elena Torres",
     bus_number: "BUS-102",
     route_name: "Commonwealth – Fairview to SM North",
     assignment_status: "active",
@@ -42,14 +50,21 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departure_pending",
     arrival_confirmed_at: "2025-02-27T07:15:00",
     departure_confirmed_at: null,
+    last_terminal_log: {
+      event_type: "arrival",
+      event_time: "2025-02-27T07:15:00",
+      terminal_name: "Fairview Terminal",
+      log_status: "confirmed",
+    },
   },
   {
     id: "a3",
     bus_id: "b3",
     driver_id: "3",
-    operator_user_id: "op1",
+    operator_user_id: "op3",
     route_id: "r1",
     driver_name: "Pedro Reyes",
+    operator_name: "Miguel Santos",
     bus_number: "BUS-103",
     route_name: "EDSA – Monumento to PITX",
     assignment_status: "active",
@@ -58,14 +73,21 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departed",
     arrival_confirmed_at: "2025-02-27T08:00:00",
     departure_confirmed_at: "2025-02-27T08:45:00",
+    last_terminal_log: {
+      event_type: "departure",
+      event_time: "2025-02-27T08:45:00",
+      terminal_name: "Monumento",
+      log_status: "confirmed",
+    },
   },
   {
     id: "a4",
     bus_id: "b4",
     driver_id: "4",
-    operator_user_id: "op1",
+    operator_user_id: "op2",
     route_id: "r3",
     driver_name: "Ana Garcia",
+    operator_name: "Elena Torres",
     bus_number: "BUS-104",
     route_name: "Quezon Ave – QC Circle to Quiapo",
     assignment_status: "inactive",
@@ -74,6 +96,7 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departure_pending",
     arrival_confirmed_at: null,
     departure_confirmed_at: null,
+    last_terminal_log: null,
   },
   {
     id: "a5",
@@ -82,6 +105,7 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     operator_user_id: "op1",
     route_id: "r2",
     driver_name: "Roberto Mendoza",
+    operator_name: "Carlos Reyes",
     bus_number: "BUS-105",
     route_name: "Commonwealth – Fairview to SM North",
     assignment_status: "active",
@@ -90,6 +114,7 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departure_pending",
     arrival_confirmed_at: null,
     departure_confirmed_at: null,
+    last_terminal_log: null,
   },
 ];
 
@@ -183,8 +208,8 @@ export default async function AssignmentDetailsPage({
                   Assignment {assignment.id}
                 </h1>
                 <p className="text-base text-base-content/60 mt-0.5">
-                  {assignment.driver_name} · {assignment.bus_number} ·{" "}
-                  {assignment.route_name}
+                  {assignment.driver_name} · {assignment.operator_name} ·{" "}
+                  {assignment.bus_number} · {assignment.route_name}
                 </p>
               </div>
             </div>
@@ -207,6 +232,7 @@ export default async function AssignmentDetailsPage({
           </div>
           <div className="space-y-0">
             <InfoRow label="Driver" value={assignment.driver_name} />
+            <InfoRow label="Operator" value={assignment.operator_name} />
             <InfoRow label="Bus" value={assignment.bus_number} />
             <InfoRow label="Route" value={assignment.route_name} />
           </div>

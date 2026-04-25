@@ -1,8 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
+
+import { useAuthToken } from "../useAuthToken.hook";
+import { useLogin } from "./_hooks/useLogin";
 
 const loginSchema = yup.object({
   email: yup
@@ -18,6 +23,23 @@ const loginSchema = yup.object({
 type LoginFormData = yup.InferType<typeof loginSchema>;
 
 export default function Login() {
+  const router = useRouter();
+  const { authToken } = useAuthToken();
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const { handleLogin, error: serverError } = useLogin();
+
+  useEffect(() => {
+    void (async () => {
+      const result = await authToken();
+      if (result?.user) {
+        router.replace("/admin/dashboard");
+        return;
+      }
+      setIsCheckingSession(false);
+    })();
+  }, [authToken, router]);
+
   const {
     register,
     handleSubmit,
@@ -27,9 +49,8 @@ export default function Login() {
     defaultValues: { email: "", password: "" },
   });
 
-  function onSubmit(data: LoginFormData) {
-    // TODO: wire to your auth API
-    console.log(data);
+  async function onSubmit(data: LoginFormData) {
+    await handleLogin({ email: data.email, password: data.password });
   }
 
   const inputBase =
@@ -38,6 +59,14 @@ export default function Login() {
     "border-red-400 dark:border-red-500 focus:ring-red-400/50 dark:focus:ring-red-500/50";
   const inputNormal =
     "border-slate-200 dark:border-slate-600 focus:ring-[#0062CA]/30 dark:focus:ring-[#0062CA]/30 focus:border-[#0062CA] dark:focus:border-[#0062CA]";
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <p className="text-4xl font-bold text-slate-500 dark:text-slate-400">Loading…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-linear-to-br from-slate-50 via-[#0062CA]/6 to-slate-100 dark:from-slate-900 dark:via-slate-900 dark:to-[#0062CA]/10 p-4">
@@ -107,13 +136,60 @@ export default function Login() {
               >
                 Password
               </label>
-              <input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                {...register("password")}
-                className={`${inputBase} ${errors.password ? inputError : inputNormal}`}
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  {...register("password")}
+                  className={`${inputBase} pr-12 ${errors.password ? inputError : inputNormal}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:text-slate-700 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0062CA]/40 transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </div>
               {errors.password && (
                 <p className="mt-1.5 text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
                   <span aria-hidden>•</span>
@@ -121,6 +197,15 @@ export default function Login() {
                 </p>
               )}
             </div>
+
+            {serverError && (
+              <p
+                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300"
+                role="alert"
+              >
+                {serverError}
+              </p>
+            )}
 
             <button
               type="submit"

@@ -1,20 +1,75 @@
 import Bus from "./bus.model.js";
+import BusStatus from "../bus_status/bus_status.model.js";
+import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 
 export const BusService = {
   // GET ALL BUSES ===================================================================
   async getAllBuses() {
-    const buses = await Bus.find();
-    return buses;
+    const buses = await Bus.find().lean();
+    if (buses.length === 0) return [];
+
+    const busIds = buses.map((b) => b._id);
+
+    const [statusDocs, assignments] = await Promise.all([
+      BusStatus.find({
+        bus_id: { $in: busIds.map((id) => String(id)) },
+        is_deleted: false,
+      }).lean(),
+      BusAssignment.find({ bus_id: { $in: busIds } })
+        .populate({ path: "route_id", select: "route_name route_code" })
+        .populate({ path: "driver_id", select: "f_name l_name" })
+        .populate({ path: "operator_user_id", select: "f_name l_name email" })
+        .sort({ updatedAt: -1 })
+        .lean(),
+    ]);
+
+    const statusByBusId = new Map(
+      statusDocs.map((s) => [String(s.bus_id), s]),
+    );
+    const assignmentsByBusId = new Map();
+    for (const a of assignments) {
+      const key = String(a.bus_id);
+      if (!assignmentsByBusId.has(key)) assignmentsByBusId.set(key, []);
+      assignmentsByBusId.get(key).push(a);
+    }
+
+    return buses.map((bus) => {
+      const id = String(bus._id);
+      return {
+        ...bus,
+        bus_status: statusByBusId.get(id) ?? null,
+        assignments: assignmentsByBusId.get(id) ?? [],
+      };
+    });
   },
   // GET BUS BY ID ===================================================================
   async getBusById(id) {
-    const bus = await Bus.findOne({ _id: id, });
+    const bus = await Bus.findOne({ _id: id }).lean();
     if (!bus) {
       const error = new Error("Bus not found.");
       error.statusCode = 404;
       throw error;
     }
-    return bus;
+    const busIdStr = String(bus._id);
+
+    const [statusDoc, assignments] = await Promise.all([
+      BusStatus.findOne({
+        bus_id: busIdStr,
+        is_deleted: false,
+      }).lean(),
+      BusAssignment.find({ bus_id: bus._id })
+        .populate({ path: "route_id", select: "route_name route_code" })
+        .populate({ path: "driver_id", select: "f_name l_name" })
+        .populate({ path: "operator_user_id", select: "f_name l_name email" })
+        .sort({ updatedAt: -1 })
+        .lean(),
+    ]);
+
+    return {
+      ...bus,
+      bus_status: statusDoc ?? null,
+      assignments: assignments ?? [],
+    };
   },
   // CREATE BUS ===================================================================
   async createBus(busData) {

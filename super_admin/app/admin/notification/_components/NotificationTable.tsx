@@ -144,7 +144,6 @@ export default function NotificationTable({
                 <th>Type</th>
                 <th>Priority</th>
                 <th>Scope</th>
-                <th>Target</th>
                 <th>Created</th>
                 {onBulkDelete && (
                   <th className="w-10">
@@ -177,19 +176,6 @@ export default function NotificationTable({
                   </td>
                   <td>
                     <ScopeBadge scope={n.scope} />
-                  </td>
-                  <td className="text-sm">
-                    {n.bus_number && <span>Bus: {n.bus_number}</span>}
-                    {n.route_name && (
-                      <span>{n.bus_number ? " · " : ""}Route: {n.route_name}</span>
-                    )}
-                    {n.terminal_name && (
-                      <span>
-                        {n.bus_number || n.route_name ? " · " : ""}Terminal:{" "}
-                        {n.terminal_name}
-                      </span>
-                    )}
-                    {!n.bus_number && !n.route_name && !n.terminal_name && "—"}
                   </td>
                   <td className="text-sm text-base-content/70">
                     {formatDate(n.createdAt)}

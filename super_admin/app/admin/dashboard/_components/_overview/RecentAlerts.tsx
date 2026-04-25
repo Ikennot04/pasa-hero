@@ -1,8 +1,8 @@
 import { FaCircleExclamation } from "react-icons/fa6";
 
 export type AlertItem = {
-  id: number;
-  message: string;
+  _id: string;
+  title: string;
   priority: "high" | "medium" | "low";
 };
 
@@ -25,11 +25,11 @@ export function RecentAlerts({ alerts, title = "Recent alerts" }: RecentAlertsPr
       <div className="rounded-xl border border-base-300 bg-base-100 shadow-sm overflow-hidden">
         <ul className="divide-y divide-base-300">
           {alerts.map((alert) => (
-            <li key={alert.id} className="px-4 py-3 flex items-start gap-3">
+            <li key={alert._id} className="px-4 py-3 flex items-start gap-3">
               <FaCircleExclamation
                 className={`size-5 shrink-0 mt-0.5 ${priorityClass(alert.priority)}`}
               />
-              <span className="text-sm">{alert.message}</span>
+              <span className="text-sm">{alert.title}</span>
             </li>
           ))}
         </ul>

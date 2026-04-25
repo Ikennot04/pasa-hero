@@ -128,7 +128,8 @@ export default function NotificationsPage() {
 
   const onCreated = (n: NotificationFields) => {
     setItems((prev) => [n, ...prev]);
-    setToast("Notification added (client preview — connect to your notifications API when ready).");
+    setToast("Notification created successfully.");
+    void loadNotifications();
   };
 
   return (
