@@ -85,6 +85,26 @@ function normalizeSeedBusAssignment(doc, busById) {
 }
 
 /**
+ * Set each BusAssignment.latest_terminal_log_id to the TerminalLog with the latest
+ * event_time for that assignment (tie-break _id). Call after seeding TerminalLog rows.
+ */
+export async function syncLatestTerminalLogIdsFromSeedLogs() {
+  const rows = await TerminalLog.aggregate([
+    { $sort: { event_time: 1, _id: 1 } },
+    { $group: { _id: "$bus_assignment_id", latestLogId: { $last: "$_id" } } },
+  ]);
+  if (!rows.length) return;
+  await Promise.all(
+    rows.map((row) =>
+      BusAssignment.updateOne(
+        { _id: row._id },
+        { $set: { latest_terminal_log_id: row.latestLogId } },
+      ),
+    ),
+  );
+}
+
+/**
  * Buses with a completed trip and no active+pending assignment get empty occupancy.
  * CEB-017 (multi-assignment demo: completed + cancelled + pending) gets partial occupancy.
  */
@@ -220,6 +240,7 @@ export async function seedOperationalSummaryDemo() {
   });
 
   await TerminalLog.deleteMany({});
+  await BusAssignment.updateMany({}, { $set: { latest_terminal_log_id: null } });
 
   const smAssignments = await BusAssignment.find({
     route_id: { $in: smRouteIds },
@@ -494,6 +515,8 @@ export async function seedOperationalSummaryDemo() {
     },
     // CEB-008 / a8: scheduled only — no logs
   ]);
+
+  await syncLatestTerminalLogIdsFromSeedLogs();
 
   const totalSmAssignments = smAssignments.length + extraSpecs.length;
 
