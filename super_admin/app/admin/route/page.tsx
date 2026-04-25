@@ -1,100 +1,125 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { RouteProps, type RouteStatus } from "./RouteProps";
 import RouteTable from "./_components/RouteTable";
 import AddRouteModal from "./_components/AddRoute";
+import { useGetRoutes } from "./_route/useGetRoutes";
 
-// Static data for routes (matches backend route.model.js; terminal ids align with terminal static data)
-const ROUTES_STATIC: RouteProps[] = [
-  {
-    id: "1",
-    route_name: "PITX — SM North EDSA",
-    route_code: "PITX-NEDSA",
-    start_terminal_id: "1",
-    end_terminal_id: "2",
-    start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)",
-    end_terminal_name: "SM North EDSA",
-    estimated_duration: 45,
-    status: "active",
-  },
-  {
-    id: "2",
-    route_name: "SM North EDSA — Monumento",
-    route_code: "NEDSA-MON",
-    start_terminal_id: "2",
-    end_terminal_id: "3",
-    start_terminal_name: "SM North EDSA",
-    end_terminal_name: "Monumento",
-    estimated_duration: 35,
-    status: "active",
-  },
-  {
-    id: "3",
-    route_name: "Monumento — Fairview",
-    route_code: "MON-FV",
-    start_terminal_id: "3",
-    end_terminal_id: "4",
-    start_terminal_name: "Monumento",
-    end_terminal_name: "Fairview",
-    estimated_duration: 55,
-    status: "active",
-  },
-  {
-    id: "4",
-    route_name: "PITX — Monumento",
-    route_code: "PITX-MON",
-    start_terminal_id: "1",
-    end_terminal_id: "3",
-    start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)",
-    end_terminal_name: "Monumento",
-    estimated_duration: 40,
-    status: "active",
-  },
-  {
-    id: "5",
-    route_name: "Fairview — SM North EDSA",
-    route_code: "FV-NEDSA",
-    start_terminal_id: "4",
-    end_terminal_id: "2",
-    start_terminal_name: "Fairview",
-    end_terminal_name: "SM North EDSA",
-    estimated_duration: 50,
-    status: "active",
-  },
-  {
-    id: "6",
-    route_name: "Tamiya — Pacific Terminal",
-    route_code: "TAM-PAC",
-    start_terminal_id: "5",
-    end_terminal_id: "6",
-    start_terminal_name: "Tamiya Terminal",
-    end_terminal_name: "Pacific Terminal",
-    estimated_duration: 15,
-    status: "active",
-  },
-  {
-    id: "7",
-    route_name: "PITX — Fairview (Express)",
-    route_code: "PITX-FV-X",
-    start_terminal_id: "1",
-    end_terminal_id: "4",
-    start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)",
-    end_terminal_name: "Fairview",
-    estimated_duration: 90,
-    status: "suspended",
-  },
-];
+type ApiTerminalRef = {
+  _id?: string;
+  id?: string;
+  terminal_name?: string;
+};
+
+type ApiRoute = {
+  _id: string;
+  route_name: string;
+  route_code: string;
+  start_terminal_id: string | ApiTerminalRef | null;
+  end_terminal_id: string | ApiTerminalRef | null;
+  estimated_duration?: number | null;
+  status?: string;
+  active_buses_count?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type RouteCounts = {
+  total_routes: number;
+  active_routes: number;
+  inactive_routes: number;
+  active_buses: number;
+};
+
+const DEFAULT_COUNTS: RouteCounts = {
+  total_routes: 0,
+  active_routes: 0,
+  inactive_routes: 0,
+  active_buses: 0,
+};
+
+function normalizeTerminalRef(ref: string | ApiTerminalRef | null | undefined) {
+  if (!ref) {
+    return { id: "", name: undefined as string | undefined };
+  }
+  if (typeof ref === "string") {
+    return { id: ref, name: undefined as string | undefined };
+  }
+  return {
+    id: String(ref._id ?? ref.id ?? ""),
+    name: ref.terminal_name,
+  };
+}
+
+function mapApiRouteToProps(route: ApiRoute): RouteProps {
+  const startTerminal = normalizeTerminalRef(route.start_terminal_id);
+  const endTerminal = normalizeTerminalRef(route.end_terminal_id);
+  const status: RouteStatus =
+    route.status === "inactive" || route.status === "suspended"
+      ? route.status
+      : "active";
+
+  return {
+    id: String(route._id),
+    route_name: route.route_name,
+    route_code: route.route_code,
+    start_terminal_id: startTerminal.id,
+    end_terminal_id: endTerminal.id,
+    start_terminal_name: startTerminal.name,
+    end_terminal_name: endTerminal.name,
+    estimated_duration:
+      typeof route.estimated_duration === "number" ? route.estimated_duration : null,
+    status,
+    createdAt: route.createdAt,
+    updatedAt: route.updatedAt,
+  };
+}
 
 const ROUTE_STATUS_OPTIONS: RouteStatus[] = ["active", "inactive", "suspended"];
 
 export default function Route() {
+  const { getRoutes, error } = useGetRoutes();
+  const [routes, setRoutes] = useState<RouteProps[]>([]);
+  const [routeCounts, setRouteCounts] = useState<RouteCounts>(DEFAULT_COUNTS);
+  const [routesLoading, setRoutesLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<RouteStatus | "all">("all");
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setRoutesLoading(true);
+      const res = await getRoutes();
+      if (cancelled) return;
+
+      if (res?.success === true && Array.isArray(res.data)) {
+        setRoutes((res.data as ApiRoute[]).map(mapApiRouteToProps));
+        setRouteCounts({
+          total_routes: Number(res.counts?.total_routes ?? res.data.length ?? 0),
+          active_routes: Number(res.counts?.active_routes ?? 0),
+          inactive_routes: Number(res.counts?.inactive_routes ?? 0),
+          active_buses: Number(res.counts?.active_buses ?? 0),
+        });
+      } else {
+        setRoutes([]);
+        setRouteCounts(DEFAULT_COUNTS);
+      }
+      setRoutesLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getRoutes]);
+
+  const routeSummaryCounts = useMemo(() => {
+    return routeCounts;
+  }, [routeCounts]);
+
   const filteredRoutes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return ROUTES_STATIC.filter((r) => {
+    return routes.filter((r) => {
       const matchSearch =
         !q ||
         r.route_name.toLowerCase().includes(q) ||
@@ -104,11 +129,62 @@ export default function Route() {
       const matchStatus = statusFilter === "all" || r.status === statusFilter;
       return matchSearch && matchStatus;
     });
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, routes]);
+
+  const summaryCards = [
+    {
+      key: "total_routes",
+      label: "total_routes",
+      value: routeSummaryCounts.total_routes,
+      accentClass: "from-primary/20 to-primary/5 border-primary/20",
+      valueClass: "text-primary",
+    },
+    {
+      key: "active_routes",
+      label: "active_routes",
+      value: routeSummaryCounts.active_routes,
+      accentClass: "from-success/20 to-success/5 border-success/20",
+      valueClass: "text-success",
+    },
+    {
+      key: "inactive_routes",
+      label: "inactive_routes",
+      value: routeSummaryCounts.inactive_routes,
+      accentClass: "from-warning/20 to-warning/5 border-warning/20",
+      valueClass: "text-warning",
+    },
+    {
+      key: "active_buses",
+      label: "active_buses",
+      value: routeSummaryCounts.active_buses,
+      accentClass: "from-info/20 to-info/5 border-info/20",
+      valueClass: "text-info",
+    },
+  ];
 
   return (
     <div className="space-y-4 pt-6">
+      {error ? (
+        <div role="alert" className="alert alert-error text-sm">
+          {error}
+        </div>
+      ) : null}
       <div className="text-xl font-bold">Route Management Table</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {summaryCards.map((card) => (
+          <div
+            key={card.key}
+            className={`card border bg-linear-to-br ${card.accentClass} shadow-sm transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md`}
+          >
+            <div className="card-body p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-base-content/60">
+                {card.label}
+              </div>
+              <div className={`text-3xl font-bold ${card.valueClass}`}>{card.value}</div>
+            </div>
+          </div>
+        ))}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-end gap-4">
           <div className="form-control w-64">
@@ -137,12 +213,18 @@ export default function Route() {
             </select>
           </div>
           <span className="text-sm text-base-content/70">
-            Showing {filteredRoutes.length} of {ROUTES_STATIC.length} routes
+            Showing {filteredRoutes.length} of {routes.length} routes
           </span>
         </div>
         <AddRouteModal />
       </div>
-      <RouteTable routes={filteredRoutes} />
+      {routesLoading ? (
+        <div className="flex justify-center py-16">
+          <span className="loading loading-spinner loading-lg text-primary" />
+        </div>
+      ) : (
+        <RouteTable routes={filteredRoutes} />
+      )}
     </div>
   );
 }
