@@ -27,6 +27,12 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departed",
     arrival_confirmed_at: null,
     departure_confirmed_at: "2025-02-27T06:30:00",
+    last_terminal_log: {
+      event_type: "departure",
+      event_time: "2025-02-27T06:30:00",
+      terminal_name: "PITX",
+      log_status: "confirmed",
+    },
   },
   {
     id: "a2",
@@ -44,6 +50,12 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departure_pending",
     arrival_confirmed_at: "2025-02-27T07:15:00",
     departure_confirmed_at: null,
+    last_terminal_log: {
+      event_type: "arrival",
+      event_time: "2025-02-27T07:15:00",
+      terminal_name: "Fairview Terminal",
+      log_status: "confirmed",
+    },
   },
   {
     id: "a3",
@@ -61,6 +73,12 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departed",
     arrival_confirmed_at: "2025-02-27T08:00:00",
     departure_confirmed_at: "2025-02-27T08:45:00",
+    last_terminal_log: {
+      event_type: "departure",
+      event_time: "2025-02-27T08:45:00",
+      terminal_name: "Monumento",
+      log_status: "confirmed",
+    },
   },
   {
     id: "a4",
@@ -78,6 +96,7 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departure_pending",
     arrival_confirmed_at: null,
     departure_confirmed_at: null,
+    last_terminal_log: null,
   },
   {
     id: "a5",
@@ -95,6 +114,7 @@ const ASSIGNMENTS_STATIC: AssignmentProps[] = [
     departure_status: "departure_pending",
     arrival_confirmed_at: null,
     departure_confirmed_at: null,
+    last_terminal_log: null,
   },
 ];
 
