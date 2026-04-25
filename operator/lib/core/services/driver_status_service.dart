@@ -20,11 +20,17 @@ class FreeRideDetails {
   final bool isActive;
   final DateTime? startTime;
   final DateTime? endTime;
+  final String? operatorId;
+  final int freeRideValue;
+  final int? durationMinutes;
 
   const FreeRideDetails({
     required this.isActive,
     this.startTime,
     this.endTime,
+    this.operatorId,
+    required this.freeRideValue,
+    this.durationMinutes,
   });
 }
 
@@ -35,6 +41,22 @@ class DriverStatusService {
   static final DriverStatusService instance = DriverStatusService._();
 
   StreamSubscription<QuerySnapshot>? _subscription;
+
+  bool _readFreeRideBool(Map<String, dynamic> data) {
+    final directBool = data['is_free_ride'];
+    if (directBool is bool) return directBool;
+    final numeric = data['free_ride'];
+    if (numeric is num) return numeric == 1;
+    return false;
+  }
+
+  int _readFreeRideValue(Map<String, dynamic> data) {
+    final numeric = data['free_ride'];
+    if (numeric is num) return numeric == 1 ? 1 : 0;
+    final asBool = data['is_free_ride'];
+    if (asBool is bool) return asBool ? 1 : 0;
+    return 0;
+  }
 
   /// Stream of free-ride-active state for the given [routeId].
   /// Listens to driver_status where route_id == [routeId]; uses first document
@@ -52,9 +74,12 @@ class DriverStatusService {
     return docRef.snapshots().map((snap) {
       if (!snap.exists) return null;
       final data = snap.data()!;
-      final isFreeRide = data['is_free_ride'] as bool?;
+      final isFreeRide = _readFreeRideBool(data);
+      final freeRideValue = _readFreeRideValue(data);
       final freeRideUntil = (data['free_ride_until'] as Timestamp?)?.toDate();
       final freeRideFrom = (data['free_ride_from'] as Timestamp?)?.toDate();
+      final operatorId = data['operator_id']?.toString();
+      final durationMinutes = (data['duration_minutes'] as num?)?.toInt();
       final active = isFreeRideActive(
         isFreeRide: isFreeRide,
         freeRideUntil: freeRideUntil,
@@ -63,6 +88,9 @@ class DriverStatusService {
         isActive: active,
         startTime: freeRideFrom,
         endTime: freeRideUntil,
+        operatorId: operatorId,
+        freeRideValue: freeRideValue,
+        durationMinutes: durationMinutes,
       );
     });
   }
@@ -81,9 +109,12 @@ class DriverStatusService {
         .get();
     if (!snap.exists) return null;
     final data = snap.data()!;
-    final isFreeRide = data['is_free_ride'] as bool?;
+    final isFreeRide = _readFreeRideBool(data);
+    final freeRideValue = _readFreeRideValue(data);
     final freeRideUntil = (data['free_ride_until'] as Timestamp?)?.toDate();
     final freeRideFrom = (data['free_ride_from'] as Timestamp?)?.toDate();
+    final operatorId = data['operator_id']?.toString();
+    final durationMinutes = (data['duration_minutes'] as num?)?.toInt();
     final active = isFreeRideActive(
       isFreeRide: isFreeRide,
       freeRideUntil: freeRideUntil,
@@ -92,6 +123,9 @@ class DriverStatusService {
       isActive: active,
       startTime: freeRideFrom,
       endTime: freeRideUntil,
+      operatorId: operatorId,
+      freeRideValue: freeRideValue,
+      durationMinutes: durationMinutes,
     );
   }
 
@@ -100,6 +134,7 @@ class DriverStatusService {
   Future<void> setFreeRideStatus(
     String routeId, {
     required bool isFreeRide,
+    required String operatorId,
     DateTime? freeRideUntil,
     DateTime? freeRideFrom,
   }) async {
@@ -109,19 +144,28 @@ class DriverStatusService {
     if (!isFreeRide) {
       await ref.set({
         'route_id': routeId,
+        'operator_id': operatorId,
+        'free_ride': 0,
         'is_free_ride': false,
+        'duration_minutes': 0,
         'free_ride_until': null,
         'free_ride_from': null,
+        'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       return;
     }
     final until = freeRideUntil ?? DateTime.now().add(const Duration(hours: 1));
     final from = freeRideFrom ?? DateTime.now();
+    final durationMinutes = until.difference(from).inMinutes;
     await ref.set({
       'route_id': routeId,
+      'operator_id': operatorId,
+      'free_ride': 1,
       'is_free_ride': true,
+      'duration_minutes': durationMinutes > 0 ? durationMinutes : 0,
       'free_ride_until': Timestamp.fromDate(until),
       'free_ride_from': Timestamp.fromDate(from),
+      'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 

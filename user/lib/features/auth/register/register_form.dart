@@ -156,7 +156,7 @@ class _RegisterFormState extends State<RegisterForm> {
             
             final viewInsets = MediaQuery.of(context).viewInsets;
             
-            return Container(
+            return SizedBox(
               height: double.infinity,
               child: Scrollbar(
                 controller: _scrollController,
@@ -201,9 +201,7 @@ class _RegisterFormState extends State<RegisterForm> {
                         return BlocBuilder<AuthBlocBloc, AuthBlocState>(
                           builder: (context, state) {
                             final errorMessage = _validationError ?? 
-                              (state.error != null 
-                                ? state.error.toString().replaceFirst('Exception: ', '')
-                                : null);
+                              (state.error?.toString().replaceFirst('Exception: ', ''));
                             
                             if (errorMessage != null) {
                               return Container(

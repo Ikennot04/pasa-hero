@@ -7,9 +7,8 @@ import 'auth_bloc_event.dart';
 class AuthBlocScreen extends StatefulWidget {
   const AuthBlocScreen({
     required AuthBlocBloc authBlocBloc,
-    Key? key,
-  })  : _authBlocBloc = authBlocBloc,
-        super(key: key);
+    super.key,
+  })  : _authBlocBloc = authBlocBloc;
 
   final AuthBlocBloc _authBlocBloc;
 
@@ -58,8 +57,8 @@ class AuthBlocScreenState extends State<AuthBlocScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                     ),
-                    child: Text('reload'),
                     onPressed: _load,
+                    child: Text('reload'),
                   ),
                 ),
               ],

@@ -7,7 +7,8 @@ class OperatorBusIconService {
   static final OperatorBusIconService instance = OperatorBusIconService._();
 
   static const String _assetPath = 'assets/images/logo/buspic.png';
-  static const double _widthLogicalPx = 80;
+  // Keep operator bus marker close to default user-pin visual size.
+  static const double _widthLogicalPx = 44;
 
   BitmapDescriptor? _descriptor;
   bool _loaded = false;

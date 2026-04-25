@@ -45,6 +45,10 @@ class _NearMeContentState extends State<_NearMeContent> {
   bool _showFreeRideDetails = false;
   double _sheetExtent = 0.38;
   bool _showFreeRide = true;
+  bool _hasActiveFreeRide = false;
+  /// From `driver_status` when an operator has free ride on (see `_subscribeFreeRideStatus`).
+  String? _freeRideRouteCode;
+  DateTime? _freeRideUntil;
   bool _showStopsContent = true;
   static const double _minSheetExtent = 0.10;
 
@@ -69,6 +73,7 @@ class _NearMeContentState extends State<_NearMeContent> {
 
   List<NearbyOperator> _nearbyOperators = [];
   StreamSubscription<List<NearbyOperator>>? _nearbyOperatorsSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _freeRideSub;
   Timer? _nearbyServerPoll;
   String? _operatorsFirestoreError;
 
@@ -109,6 +114,85 @@ class _NearMeContentState extends State<_NearMeContent> {
     });
   }
 
+  bool _isFreeRideActiveDoc(Map<String, dynamic> data) {
+    final freeRideValue = data['free_ride'];
+    final isFreeRideFlag = data['is_free_ride'];
+    final isEnabled = (freeRideValue is num && freeRideValue == 1) ||
+        (isFreeRideFlag is bool && isFreeRideFlag);
+    if (!isEnabled) return false;
+
+    final untilTs = data['free_ride_until'];
+    if (untilTs is! Timestamp) return true;
+    return untilTs.toDate().isAfter(DateTime.now());
+  }
+
+  /// Route code on `driver_status` (operator writes `route_id` = route code doc id).
+  String? _routeCodeFromDriverStatus(Map<String, dynamic> data) {
+    final rid = data['route_id']?.toString().trim();
+    if (rid != null && rid.isNotEmpty) return rid;
+    final rc = data['route_code'] ?? data['routeCode'];
+    final s = rc?.toString().trim();
+    if (s != null && s.isNotEmpty) return s;
+    return null;
+  }
+
+  String _routeDisplayNameForCode(String? code) {
+    if (code == null || code.trim().isEmpty) return '';
+    final key = code.trim().toUpperCase();
+    for (final o in _routeOptions) {
+      if (o.code.trim().toUpperCase() == key) return o.displayName;
+    }
+    return code.trim();
+  }
+
+  void _subscribeFreeRideStatus() {
+    _freeRideSub?.cancel();
+    Query<Map<String, dynamic>> query =
+        FirebaseFirestore.instance.collection('driver_status');
+
+    final selected = _selectedRouteCode?.trim();
+    if (selected != null && selected.isNotEmpty) {
+      query = query.where('route_id', isEqualTo: selected);
+    }
+
+    _freeRideSub = query.snapshots().listen((snapshot) {
+      QueryDocumentSnapshot<Map<String, dynamic>>? firstActive;
+      for (final doc in snapshot.docs) {
+        if (_isFreeRideActiveDoc(doc.data())) {
+          firstActive = doc;
+          break;
+        }
+      }
+      final hasActive = firstActive != null;
+      String? routeCode;
+      DateTime? until;
+      if (firstActive != null) {
+        final data = firstActive.data();
+        routeCode =
+            _routeCodeFromDriverStatus(data) ?? firstActive.id.trim();
+        final untilTs = data['free_ride_until'];
+        if (untilTs is Timestamp) until = untilTs.toDate();
+      }
+      if (!mounted) return;
+      setState(() {
+        _hasActiveFreeRide = hasActive;
+        _freeRideRouteCode = hasActive ? routeCode : null;
+        _freeRideUntil = hasActive ? until : null;
+        if (!hasActive) {
+          _showFreeRideDetails = false;
+        }
+      });
+    }, onError: (_, _) {
+      if (!mounted) return;
+      setState(() {
+        _hasActiveFreeRide = false;
+        _freeRideRouteCode = null;
+        _freeRideUntil = null;
+        _showFreeRideDetails = false;
+      });
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -120,6 +204,7 @@ class _NearMeContentState extends State<_NearMeContent> {
         _updateFromSheetExtent(_sheetController.size);
         // Listen to Firestore immediately so a slow route-catalog fetch never delays drivers.
         _subscribeNearbyOperators();
+        _subscribeFreeRideStatus();
         _loadRouteOptions();
         _loadTerminalCardsFromApi();
         // Try to load from cache first, then fetch if needed
@@ -539,6 +624,7 @@ class _NearMeContentState extends State<_NearMeContent> {
   void dispose() {
     _nearbyServerPoll?.cancel();
     _nearbyOperatorsSub?.cancel();
+    _freeRideSub?.cancel();
     _sheetController.dispose();
     _mapController = null;
     super.dispose();
@@ -637,7 +723,7 @@ class _NearMeContentState extends State<_NearMeContent> {
            // 🔹 Free Ride banner (floating above bottom sheet, follows sheet movement with fade animation)
           // Only show when sheet is visible (not at 0)
           // Use IgnorePointer to ensure it doesn't block sheet dragging
-          if (_sheetExtent > 0.0)
+          if (_sheetExtent > 0.0 && _hasActiveFreeRide)
             Positioned(
               left: 16,
               right: 16,
@@ -652,6 +738,10 @@ class _NearMeContentState extends State<_NearMeContent> {
                     ignoring: !_showFreeRide,
                     child: FreeRideBanner(
                       showDetails: _showFreeRideDetails,
+                      routeCode: _freeRideRouteCode,
+                      routeDisplayName:
+                          _routeDisplayNameForCode(_freeRideRouteCode),
+                      freeRideUntil: _freeRideUntil,
                       onViewTap: () {
                         setState(() {
                           _showFreeRideDetails = !_showFreeRideDetails;
@@ -770,7 +860,7 @@ class _NearMeContentState extends State<_NearMeContent> {
                                 )
                               else
                                 DropdownButtonFormField<String?>(
-                                  value: _selectedRouteCode,
+                                  initialValue: _selectedRouteCode,
                                   isExpanded: true,
                                   decoration: InputDecoration(
                                     prefixIcon: const Icon(Icons.directions_bus_outlined),
@@ -806,6 +896,7 @@ class _NearMeContentState extends State<_NearMeContent> {
                                   onChanged: (value) async {
                                     setState(() => _selectedRouteCode = value);
                                     _subscribeNearbyOperators();
+                                    _subscribeFreeRideStatus();
                                     if (value == null || value.isEmpty) {
                                       _pendingRouteFitBounds = null;
                                       setState(() => _routeCatalogHighlightPoints = null);

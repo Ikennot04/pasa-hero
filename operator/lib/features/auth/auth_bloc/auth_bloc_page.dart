@@ -5,6 +5,8 @@ import 'auth_bloc_screen.dart';
 class AuthBlocPage extends StatefulWidget {
   static const String routeName = '/authBloc';
 
+  const AuthBlocPage({super.key});
+
   @override
   _AuthBlocPageState createState() => _AuthBlocPageState();
 }

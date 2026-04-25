@@ -1,7 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 abstract class AuthBlocState extends Equatable {
-  AuthBlocState(this.version);
+  const AuthBlocState(this.version);
  
   /// notify change state without deep clone state
   final int version;
@@ -19,7 +19,7 @@ abstract class AuthBlocState extends Equatable {
 /// UnInitialized
 class UnAuthBlocState extends AuthBlocState {
 
-  UnAuthBlocState(int version) : super(version);
+  const UnAuthBlocState(super.version);
 
   @override
   String toString() => 'UnAuthBlocState';
@@ -38,7 +38,7 @@ class UnAuthBlocState extends AuthBlocState {
 /// Initialized
 class InAuthBlocState extends AuthBlocState {
   
-  InAuthBlocState(int version, this.hello) : super(version);
+  const InAuthBlocState(super.version, this.hello);
  
   final String hello;
 
@@ -60,7 +60,7 @@ class InAuthBlocState extends AuthBlocState {
 }
 
 class ErrorAuthBlocState extends AuthBlocState {
-  ErrorAuthBlocState(int version, this.errorMessage): super(version);
+  const ErrorAuthBlocState(super.version, this.errorMessage);
  
   final String errorMessage;
   
