@@ -89,7 +89,7 @@ export default function Profile() {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section>
           <div className="rounded-2xl bg-base-200 p-6 shadow-sm">
             <h2 className="text-lg font-semibold">Profile information</h2>
             {saveMessage ? (
@@ -157,31 +157,6 @@ export default function Profile() {
                 </div>
               </div>
             ) : null}
-          </div>
-
-          <div className="rounded-2xl bg-base-200 p-6 shadow-sm">
-            <h2 className="text-lg font-semibold">Admin overview</h2>
-            <p className="mt-1 text-sm text-base-content/70">
-              Quick account snapshot for your admin session.
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-base-100 p-4">
-                <p className="text-xs text-base-content/60">Managed module</p>
-                <p className="mt-1 font-semibold">System control</p>
-              </div>
-              <div className="rounded-xl bg-base-100 p-4">
-                <p className="text-xs text-base-content/60">Access level</p>
-                <p className="mt-1 font-semibold capitalize">{role}</p>
-              </div>
-              <div className="rounded-xl bg-base-100 p-4">
-                <p className="text-xs text-base-content/60">Last activity</p>
-                <p className="mt-1 font-semibold">Today</p>
-              </div>
-              <div className="rounded-xl bg-base-100 p-4">
-                <p className="text-xs text-base-content/60">Session</p>
-                <p className="mt-1 font-semibold text-success">Secure</p>
-              </div>
-            </div>
           </div>
         </section>
       </div>
