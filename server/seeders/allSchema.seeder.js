@@ -17,6 +17,7 @@ import SystemLog from "../modules/system_log/system_log.model.js";
 import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
 import seedHighPrioritySmTerminalNotifications from "./highPrioritySmTerminalNotifications.seeder.js";
 import { buildSystemLogDocuments } from "./systemLogs.seeder.js";
+import seedDevAdminUsers from "./devAdminUsers.seeder.js";
 
 async function ensureDbConnected() {
   if (mongoose.connection.readyState === 1) return;
@@ -1268,6 +1269,8 @@ const seedData = async () => {
       { email: "jenny.lim@email.com" },
       { $set: { assigned_terminal: ayalaTerminal._id } },
     );
+
+    await seedDevAdminUsers(smTerminal._id);
 
     // ==========================================
     // 3. CREATE ROUTES
@@ -2524,11 +2527,12 @@ const seedData = async () => {
     // ==========================================
     console.log("\n📊 SEED DATA SUMMARY:");
     console.log("=====================");
-    console.log(`Users: ${users.length}`);
-    console.log(`  - Super Admin: 1`);
-    console.log(`  - Operators: 2`);
-    console.log(`  - Terminal Admins: 2`);
-    console.log(`  - Regular Users: 8`);
+    const userTotal = await User.countDocuments();
+    console.log(`Users: ${userTotal}`);
+    console.log(`  - Super Admins: ${await User.countDocuments({ role: "super admin" })}`);
+    console.log(`  - Operators: ${await User.countDocuments({ role: "operator" })}`);
+    console.log(`  - Terminal Admins: ${await User.countDocuments({ role: "terminal admin" })}`);
+    console.log(`  - Regular Users: ${await User.countDocuments({ role: "user" })}`);
     console.log(`Terminals: ${terminals.length}`);
     console.log(`Routes: ${routes.length}`);
     console.log(`Route Stops: ${routeStops.length}`);
