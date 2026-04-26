@@ -71,3 +71,56 @@ export const verifyToken = async (req, res) => {
     res.status(401).json({ error: 'Invalid token', message: error.message });
   }
 };
+
+export const changeEmail = async (req, res) => {
+  try {
+    // Validate request body
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid request body',
+        message: 'Request body must be a valid JSON object'
+      });
+    }
+
+    const { uid, newEmail } = req.body;
+    
+    // Validate input presence
+    if (!uid || !newEmail) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'User ID (uid) and new email are required',
+        received: {
+          uid: !!uid,
+          newEmail: !!newEmail
+        }
+      });
+    }
+
+    // Log request (without sensitive data)
+    console.log(`📧 Email change request received`);
+    console.log(`   User ID: ${uid}`);
+    console.log(`   New Email: ${newEmail.substring(0, 3)}***${newEmail.substring(newEmail.indexOf('@'))}`);
+
+    const result = await UserFirebaseService.changeEmail(uid, newEmail);
+    
+    res.json({ 
+      success: true, 
+      message: result.message,
+      email: result.email
+    });
+  } catch (error) {
+    console.error('❌ Error changing email:', error);
+    if (error.message === 'Firebase Admin not configured') {
+      return res.status(503).json({ error: error.message });
+    }
+    if (error.message === 'User ID (uid) is required' || 
+        error.message === 'New email address is required' ||
+        error.message === 'Invalid email format' ||
+        error.message === 'User account not found' ||
+        error.message === 'This email is already in use by another account') {
+      return res.status(400).json({ error: error.message });
+    }
+    res.status(500).json({ error: 'Failed to change email', message: error.message });
+  }
+};

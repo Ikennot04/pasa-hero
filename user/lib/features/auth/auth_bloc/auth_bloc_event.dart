@@ -156,3 +156,57 @@ class ResetPasswordEvent extends AuthBlocEvent {
   @override
   String toString() => 'ResetPasswordEvent';
 }
+
+/// Re-authenticate user with current password (for email change)
+class ReauthenticateUserEvent extends AuthBlocEvent {
+  final String password;
+
+  ReauthenticateUserEvent({required this.password});
+
+  @override
+  String toString() => 'ReauthenticateUserEvent';
+}
+
+/// Send OTP to new email address
+class SendOTPToNewEmailEvent extends AuthBlocEvent {
+  final String newEmail;
+
+  SendOTPToNewEmailEvent({required this.newEmail});
+
+  @override
+  String toString() => 'SendOTPToNewEmailEvent';
+}
+
+/// Verify OTP for new email
+class VerifyOTPForNewEmailEvent extends AuthBlocEvent {
+  final String newEmail;
+  final String otpCode;
+
+  VerifyOTPForNewEmailEvent({
+    required this.newEmail,
+    required this.otpCode,
+  });
+
+  @override
+  String toString() => 'VerifyOTPForNewEmailEvent';
+}
+
+/// Update email after OTP verification
+class UpdateEmailEvent extends AuthBlocEvent {
+  final String newEmail;
+
+  UpdateEmailEvent({required this.newEmail});
+
+  @override
+  String toString() => 'UpdateEmailEvent';
+}
+
+/// Change password for logged-in user (after re-authentication)
+class ChangePasswordEvent extends AuthBlocEvent {
+  final String newPassword;
+
+  ChangePasswordEvent({required this.newPassword});
+
+  @override
+  String toString() => 'ChangePasswordEvent';
+}
