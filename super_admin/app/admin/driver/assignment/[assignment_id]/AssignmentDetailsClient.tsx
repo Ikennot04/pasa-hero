@@ -165,7 +165,7 @@ export default function AssignmentDetailsClient({
               </div>
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">
-                  Assignment {assignment.id}
+                  Assignment {assignment.bus_number}
                 </h1>
                 <p className="text-base text-base-content/60 mt-0.5">
                   {assignment.driver_name} · {assignment.operator_name} ·{" "}
