@@ -42,11 +42,10 @@ const userSchema = new mongoose.Schema(
 );
 
 // Pre-save hook to automatically set roleid based on role if not provided
-userSchema.pre('save', function(next) {
-  if (this.isModified('role') || !this.roleid) {
+userSchema.pre("save", function () {
+  if (this.isModified("role") || !this.roleid) {
     this.roleid = getRoleId(this.role);
   }
-  next();
 });
 
 export default mongoose.model("User", userSchema);

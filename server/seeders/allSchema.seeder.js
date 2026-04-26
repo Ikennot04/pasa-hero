@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import User from "../modules/user/user.model.js";
 import Bus from "../modules/bus/bus.model.js";
 import BusStatus from "../modules/bus_status/bus_status.model.js";
+import BusLocation from "../modules/bus_location/bus_location.model.js";
 import Route from "../modules/route/route.model.js";
 import Terminal from "../modules/terminal/terminal.model.js";
 import Driver from "../modules/driver/driver.model.js";
@@ -1030,6 +1031,7 @@ const seedData = async () => {
     await RouteStop.deleteMany({});
     await Bus.deleteMany({});
     await BusStatus.deleteMany({});
+    await BusLocation.deleteMany({});
     await Driver.deleteMany({});
     await BusAssignment.deleteMany({});
     await Notification.deleteMany({});
@@ -1748,6 +1750,20 @@ const seedData = async () => {
     );
 
     console.log(`✅ Created ${busStatuses.length} bus statuses`);
+
+    const busLocations = await BusLocation.insertMany(
+      buses.map((bus, index) => ({
+        bus_id: String(bus._id),
+        latitude: 10.3115 + index * 0.0012,
+        longitude: 123.9185 - index * 0.0011,
+        speed:
+          bus.status === "active"
+            ? 18 + (index % 5) * 3
+            : 0,
+      })),
+    );
+
+    console.log(`✅ Created ${busLocations.length} bus locations`);
 
     const [
       bus1,
@@ -2548,6 +2564,7 @@ const seedData = async () => {
     console.log(`Route Stops: ${routeStops.length}`);
     console.log(`Buses: ${buses.length}`);
     console.log(`Bus Statuses: ${busStatuses.length}`);
+    console.log(`Bus Locations: ${busLocations.length}`);
     console.log(`Drivers: ${drivers.length}`);
     console.log(`Bus Assignments: ${assignments.length}`);
     const notificationCount = await Notification.countDocuments();
