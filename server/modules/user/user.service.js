@@ -147,7 +147,8 @@ export const UserService = {
     return users;
   },
   // CREATE ADMIN USER ===============================================================
-  async createAdminUser(data, userImage) {
+  /** @param {import("mongoose").Types.ObjectId|string|null} [creatorUserId] - JWT user creating the record (for operators) */
+  async createAdminUser(data, userImage, creatorUserId = null) {
     let img_path;
     if (userImage) {
       img_path = path.join("images/user", userImage);
@@ -203,6 +204,74 @@ export const UserService = {
       );
     }
 
+    const payload = { ...data };
+    delete payload.created_by;
+
+    let created_by = null;
+    if (role === "operator") {
+      if (!payload.assigned_terminal) {
+        if (img_path) {
+          fs.unlink(img_path, (err) => {
+            if (err) throw err;
+            console.log("user img delete");
+          });
+        }
+        const err = new Error("Operator requires assigned_terminal");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (creatorUserId) {
+        const creator = await User.findById(creatorUserId).select(
+          "role assigned_terminal",
+        );
+        if (!creator) {
+          if (img_path) {
+            fs.unlink(img_path, (err) => {
+              if (err) throw err;
+              console.log("user img delete");
+            });
+          }
+          const err = new Error("Creator not found");
+          err.statusCode = 400;
+          throw err;
+        }
+        if (creator.role === "terminal admin") {
+          if (
+            !creator.assigned_terminal ||
+            String(creator.assigned_terminal) !==
+              String(payload.assigned_terminal)
+          ) {
+            if (img_path) {
+              fs.unlink(img_path, (err) => {
+                if (err) throw err;
+                console.log("user img delete");
+              });
+            }
+            const err = new Error(
+              "Operator must be assigned to the same terminal as the creating terminal admin",
+            );
+            err.statusCode = 403;
+            throw err;
+          }
+          created_by = creator._id;
+        } else if (creator.role === "super admin") {
+          created_by = creator._id;
+        } else {
+          if (img_path) {
+            fs.unlink(img_path, (err) => {
+              if (err) throw err;
+              console.log("user img delete");
+            });
+          }
+          const err = new Error(
+            "Only terminal admin or super admin can create operators",
+          );
+          err.statusCode = 403;
+          throw err;
+        }
+      }
+    }
+
     // Hash and Salt Password
     const salt = await bcrypt.genSalt(10);
     const hashPassword = await bcrypt.hash(data.password, salt);
@@ -212,11 +281,12 @@ export const UserService = {
 
     // Create Admin User
     const createUser = await User.create({
-      ...data,
+      ...payload,
       password: hashPassword,
       profile_image: userImage,
       role: role,
       roleid: roleid,
+      ...(role === "operator" ? { created_by } : {}),
     });
     return createUser;
   },

@@ -31,6 +31,12 @@ const userSchema = new mongoose.Schema(
       ref: "Terminal",
       default: null,
     },
+    /** User id of the terminal admin (or super admin) who created this operator */
+    created_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true },
 );
