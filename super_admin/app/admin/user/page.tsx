@@ -2,10 +2,13 @@
 
 import { useState, useMemo, useEffect } from "react";
 import CreateTerminalAdmin from "./_components/CreateTerminalAdmin";
-import UserTable, { type UserRow } from "./_components/UserTable";
+import UserTable, {
+  type UserRow,
+  USER_TABLE_EXCLUDED_ROLES,
+} from "./_components/UserTable";
 import { useGetUsers } from "./_hooks/useGetUsers";
 
-const ROLES = ["user", "super admin", "operator", "terminal admin"] as const;
+const ROLES = ["user", "operator", "terminal admin"] as const;
 const STATUSES = ["active", "inactive", "suspended"] as const;
 
 type ApiUser = {
@@ -44,9 +47,24 @@ export default function Users() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  useEffect(() => {
+    if (roleFilter === "all") return;
+    if (!(ROLES as readonly string[]).includes(roleFilter)) {
+      setRoleFilter("all");
+    }
+  }, [roleFilter]);
+
+  const listableUsers = useMemo(
+    () =>
+      users.filter(
+        (u) => !USER_TABLE_EXCLUDED_ROLES.has(u.role.trim().toLowerCase()),
+      ),
+    [users],
+  );
+
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return users.filter((user) => {
+    return listableUsers.filter((user) => {
       const matchRole = roleFilter === "all" || user.role === roleFilter;
       const matchStatus = statusFilter === "all" || user.status === statusFilter;
       const matchSearch =
@@ -55,7 +73,7 @@ export default function Users() {
         user.email.toLowerCase().includes(q);
       return matchRole && matchStatus && matchSearch;
     });
-  }, [users, roleFilter, statusFilter, searchQuery]);
+  }, [listableUsers, roleFilter, statusFilter, searchQuery]);
 
   const tableRows: UserRow[] = useMemo(
     () =>
@@ -118,7 +136,7 @@ export default function Users() {
           </div>
           <div className="flex items-end pb-2">
             <span className="text-sm text-base-content/70">
-              Showing {filteredUsers.length} of {users.length} users
+              Showing {filteredUsers.length} of {listableUsers.length} users
             </span>
           </div>
         </div>

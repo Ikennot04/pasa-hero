@@ -20,6 +20,9 @@ export type UserRow = {
 
 const DEFAULT_PAGE_SIZE = 10;
 
+/** Roles not shown in this table (matches API enum values). */
+export const USER_TABLE_EXCLUDED_ROLES = new Set(["super admin", "admin"]);
+
 type UserTableProps = {
   users: UserRow[];
   pageSize?: number;
@@ -32,13 +35,21 @@ export default function UserTable({
   const [userToSuspend, setUserToSuspend] = useState<UserRow | null>(null);
   const [page, setPage] = useState(1);
 
-  const totalPages = Math.max(1, Math.ceil(users.length / pageSize));
+  const visibleUsers = useMemo(
+    () =>
+      users.filter(
+        (u) => !USER_TABLE_EXCLUDED_ROLES.has(u.role.trim().toLowerCase()),
+      ),
+    [users],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(visibleUsers.length / pageSize));
   const activePage = Math.min(Math.max(1, page), totalPages);
 
   const pageUsers = useMemo(() => {
     const start = (activePage - 1) * pageSize;
-    return users.slice(start, start + pageSize);
-  }, [users, activePage, pageSize]);
+    return visibleUsers.slice(start, start + pageSize);
+  }, [visibleUsers, activePage, pageSize]);
 
   const openSuspendModal = (user: UserRow) => {
     setUserToSuspend(user);
@@ -101,11 +112,12 @@ export default function UserTable({
         </table>
       </div>
 
-      {users.length > 0 ? (
+      {visibleUsers.length > 0 ? (
         <div className="flex flex-col items-stretch gap-3 border-t border-base-content/10 bg-base-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-base-content/70">
             {(activePage - 1) * pageSize + 1}–
-            {Math.min(activePage * pageSize, users.length)} of {users.length}
+            {Math.min(activePage * pageSize, visibleUsers.length)} of{" "}
+            {visibleUsers.length}
           </p>
           <div className="join flex-wrap justify-center">
             <button

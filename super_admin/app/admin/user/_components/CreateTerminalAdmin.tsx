@@ -83,22 +83,8 @@ export default function CreateTerminalAdmin() {
   }
 
   async function onSubmit(data: CreateTerminalAdminFormData) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const formData = new FormData();
-      formData.append("data", JSON.stringify({ ...data, role: "terminal admin" }));
-      const res = await fetch(`${baseUrl}/user`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to create terminal admin");
-      }
-      closeModal();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to create terminal admin");
-    }
+    const formData = { ...data, role: "terminal admin" };
+    console.log("CreateTerminalAdmin form data", formData);
   }
 
   return (
