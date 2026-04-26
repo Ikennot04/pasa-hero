@@ -12,6 +12,15 @@ type ApiTerminalRef = {
   terminal_name?: string;
 };
 
+type ApiRouteStop = {
+  _id: string;
+  route_id: string;
+  stop_name: string;
+  stop_order: number;
+  latitude: number;
+  longitude: number;
+};
+
 type ApiRoute = {
   _id: string;
   route_name: string;
@@ -21,6 +30,7 @@ type ApiRoute = {
   estimated_duration?: number | null;
   status?: string;
   active_buses_count?: number;
+  route_stops?: ApiRouteStop[];
   createdAt?: string;
   updatedAt?: string;
 };
@@ -97,6 +107,7 @@ export default function RouteDetailsPage() {
   const { getRouteDetails, error: detailsError } = useGetRouteDetails();
   const [route, setRoute] = useState<RouteProps | null>(null);
   const [busCount, setBusCount] = useState(0);
+  const [routeStops, setRouteStops] = useState<ApiRouteStop[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -108,6 +119,7 @@ export default function RouteDetailsPage() {
       setLoading(true);
       setRoute(null);
       setBusCount(0);
+      setRouteStops([]);
 
       const res = (await getRouteDetails(routeId)) as RouteDetailsResponse | null;
       if (cancelled) return;
@@ -116,6 +128,10 @@ export default function RouteDetailsPage() {
         const raw = res.data;
         setRoute(mapApiRouteToProps(raw));
         setBusCount(Number(raw.active_buses_count ?? 0));
+        const stops = Array.isArray(raw.route_stops) ? raw.route_stops : [];
+        setRouteStops(
+          [...stops].sort((a, b) => (a.stop_order ?? 0) - (b.stop_order ?? 0)),
+        );
       } else {
         setRoute(null);
       }
@@ -272,6 +288,40 @@ export default function RouteDetailsPage() {
               </div>
             </dl>
           </div>
+        </div>
+      </div>
+
+      <div className="card card-bordered bg-base-100 shadow-sm">
+        <div className="card-body">
+          <h2 className="card-title text-xl">Route stops</h2>
+          {routeStops.length === 0 ? (
+            <p className="text-base-content/70">No stops configured for this route.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table table-zebra">
+                <thead>
+                  <tr>
+                    <th className="w-16">#</th>
+                    <th>Stop name</th>
+                    <th className="hidden sm:table-cell">Coordinates</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {routeStops.map((stop) => (
+                    <tr key={stop._id}>
+                      <td className="font-mono text-base-content/80">
+                        {stop.stop_order}
+                      </td>
+                      <td className="font-medium">{stop.stop_name}</td>
+                      <td className="hidden font-mono text-sm text-base-content/70 sm:table-cell">
+                        {stop.latitude.toFixed(5)}, {stop.longitude.toFixed(5)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

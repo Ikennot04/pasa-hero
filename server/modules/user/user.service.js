@@ -7,6 +7,20 @@ import path from "path";
 import User from "./user.model.js"; // Model
 import { getRoleId } from "../../utils/roleMapper.js";
 
+async function unlinkUserUploadQuietly(filePath) {
+  if (!filePath) return;
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (err) {
+    if (err?.code !== "ENOENT") {
+      console.error(
+        "Failed to remove uploaded user image:",
+        err?.message || err,
+      );
+    }
+  }
+}
+
 export const UserService = {
   // SIGNUP USER ===================================================================
   async signupUser(data, userImage) {
@@ -18,19 +32,13 @@ export const UserService = {
     // Validations
     if (!validator.isEmail(data.email)) {
       if (img_path) {
-        fs.unlink(img_path, (err) => {
-          if (err) throw err;
-          console.log("user img delete");
-        });
+        await unlinkUserUploadQuietly(img_path);
       }
       throw Error("Invalid Email Format");
     }
     if (!validator.isStrongPassword(data.password)) {
       if (img_path) {
-        fs.unlink(img_path, (err) => {
-          if (err) throw err;
-          console.log("user img delete");
-        });
+        await unlinkUserUploadQuietly(img_path);
       }
       throw Error(
         "Password must contains one capital letter and one special character",
@@ -40,10 +48,7 @@ export const UserService = {
     const checkEmail = await User.findOne({ email: data.email });
     if (checkEmail) {
       if (img_path) {
-        fs.unlink(img_path, (err) => {
-          if (err) throw err;
-          console.log("user img delete");
-        });
+        await unlinkUserUploadQuietly(img_path);
       }
 
       throw new Error("Email already exists");
@@ -135,7 +140,9 @@ export const UserService = {
   },
   // GET USER BY ID ===================================================================
   async getUserById(id) {
-    const user = await User.findById(id);
+    const user = await User.findById(id)
+      .populate({ path: "assigned_terminal", select: "terminal_name" })
+      .populate({ path: "created_by", select: "f_name l_name email role" });
     if (!user) {
       throw new Error("User not found");
     }
@@ -143,7 +150,9 @@ export const UserService = {
   },
   // GET ALL USERS ===================================================================
   async getAllUsers() {
-    const users = await User.find();
+    const users = await User.find()
+      .populate({ path: "assigned_terminal", select: "terminal_name" })
+      .populate({ path: "created_by", select: "f_name l_name email role" });
     return users;
   },
   // CREATE ADMIN USER ===============================================================
@@ -157,19 +166,13 @@ export const UserService = {
     // Validations
     if (!validator.isEmail(data.email)) {
       if (img_path) {
-        fs.unlink(img_path, (err) => {
-          if (err) throw err;
-          console.log("user img delete");
-        });
+        await unlinkUserUploadQuietly(img_path);
       }
       throw Error("Invalid Email Format");
     }
     if (!validator.isStrongPassword(data.password)) {
       if (img_path) {
-        fs.unlink(img_path, (err) => {
-          if (err) throw err;
-          console.log("user img delete");
-        });
+        await unlinkUserUploadQuietly(img_path);
       }
       throw Error(
         "Password must contains one capital letter and one special character",
@@ -179,10 +182,7 @@ export const UserService = {
     const checkEmail = await User.findOne({ email: data.email });
     if (checkEmail) {
       if (img_path) {
-        fs.unlink(img_path, (err) => {
-          if (err) throw err;
-          console.log("user img delete");
-        });
+        await unlinkUserUploadQuietly(img_path);
       }
       const error = new Error("Email already exists");
       error.statusCode = 400;
@@ -194,10 +194,7 @@ export const UserService = {
     const role = data?.role || "user";
     if (!validAdminRoles.includes(role)) {
       if (img_path) {
-        fs.unlink(img_path, (err) => {
-          if (err) throw err;
-          console.log("user img delete");
-        });
+        await unlinkUserUploadQuietly(img_path);
       }
       throw Error(
         "Invalid admin role. Must be one of: super admin, operator, terminal admin",
@@ -211,10 +208,7 @@ export const UserService = {
     if (role === "operator") {
       if (!payload.assigned_terminal) {
         if (img_path) {
-          fs.unlink(img_path, (err) => {
-            if (err) throw err;
-            console.log("user img delete");
-          });
+          await unlinkUserUploadQuietly(img_path);
         }
         const err = new Error("Operator requires assigned_terminal");
         err.statusCode = 400;
@@ -226,10 +220,7 @@ export const UserService = {
         );
         if (!creator) {
           if (img_path) {
-            fs.unlink(img_path, (err) => {
-              if (err) throw err;
-              console.log("user img delete");
-            });
+            await unlinkUserUploadQuietly(img_path);
           }
           const err = new Error("Creator not found");
           err.statusCode = 400;
@@ -242,10 +233,7 @@ export const UserService = {
               String(payload.assigned_terminal)
           ) {
             if (img_path) {
-              fs.unlink(img_path, (err) => {
-                if (err) throw err;
-                console.log("user img delete");
-              });
+              await unlinkUserUploadQuietly(img_path);
             }
             const err = new Error(
               "Operator must be assigned to the same terminal as the creating terminal admin",
@@ -258,10 +246,7 @@ export const UserService = {
           created_by = creator._id;
         } else {
           if (img_path) {
-            fs.unlink(img_path, (err) => {
-              if (err) throw err;
-              console.log("user img delete");
-            });
+            await unlinkUserUploadQuietly(img_path);
           }
           const err = new Error(
             "Only terminal admin or super admin can create operators",
@@ -306,13 +291,12 @@ export const UserService = {
       oldImage !== "default.png"
     ) {
       const imgPath = path.join("images", "user", oldImage);
-      fs.unlink(imgPath, (err) => {
-        if (err) {
-          console.error(`Error deleting old user image: ${err}`);
-        } else {
-          console.log("Old user image deleted");
-        }
-      });
+      try {
+        await fs.promises.unlink(imgPath);
+        console.log("Old user image deleted");
+      } catch (err) {
+        console.error(`Error deleting old user image: ${err}`);
+      }
     }
 
     // If role is being updated, also update roleid

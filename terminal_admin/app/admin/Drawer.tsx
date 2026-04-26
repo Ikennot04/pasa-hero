@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useSyncExternalStore } from "react";
 
 import { LiaBarsSolid } from "react-icons/lia";
-import { FaBell, FaChartLine, FaSignOutAlt } from "react-icons/fa";
+import { FaBell, FaChartLine, FaSignOutAlt, FaUsers } from "react-icons/fa";
 import { MdAltRoute, MdBusAlert } from "react-icons/md";
 import { TbBusStop } from "react-icons/tb";
 import { LuLogs } from "react-icons/lu";
@@ -31,6 +31,11 @@ const routes = [
     path: "/admin/bus",
     icon: <TbBusStop className="size-6" />,
     label: "Bus Status",
+  },
+  {
+    path: "/admin/operators",
+    icon: <FaUsers className="size-6" />,
+    label: "Operators",
   },
   {
     path: "/admin/routes",

@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import User from "../modules/user/user.model.js";
 import Bus from "../modules/bus/bus.model.js";
 import BusStatus from "../modules/bus_status/bus_status.model.js";
+import BusLocation from "../modules/bus_location/bus_location.model.js";
 import Route from "../modules/route/route.model.js";
 import Terminal from "../modules/terminal/terminal.model.js";
 import Driver from "../modules/driver/driver.model.js";
@@ -17,7 +18,9 @@ import SystemLog from "../modules/system_log/system_log.model.js";
 import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
 import seedHighPrioritySmTerminalNotifications from "./highPrioritySmTerminalNotifications.seeder.js";
 import { buildSystemLogDocuments } from "./systemLogs.seeder.js";
-import seedDevAdminUsers from "./devAdminUsers.seeder.js";
+import seedDevAdminUsers, {
+  DEV_TERMINAL_ADMIN,
+} from "./devAdminUsers.seeder.js";
 
 async function ensureDbConnected() {
   if (mongoose.connection.readyState === 1) return;
@@ -1030,6 +1033,7 @@ const seedData = async () => {
     await RouteStop.deleteMany({});
     await Bus.deleteMany({});
     await BusStatus.deleteMany({});
+    await BusLocation.deleteMany({});
     await Driver.deleteMany({});
     await BusAssignment.deleteMany({});
     await Notification.deleteMany({});
@@ -1253,16 +1257,19 @@ const seedData = async () => {
       waterfrontTerminal,
     ] = terminals;
 
-    await User.updateMany(
-      {
-        email: {
-          $in: [
-            "pedro.reyes@email.com",
-            "maria.santos@email.com",
-            "rico.alvarez@email.com",
-          ],
-        },
-      },
+    await seedDevAdminUsers(smTerminal._id);
+
+    const operatorCreatedBy = await User.findOne({
+      email: DEV_TERMINAL_ADMIN.email,
+    }).select("_id");
+    if (!operatorCreatedBy) {
+      throw new Error(
+        `Expected terminal admin ${DEV_TERMINAL_ADMIN.email} after seedDevAdminUsers.`,
+      );
+    }
+
+    await User.updateOne(
+      { email: "pedro.reyes@email.com" },
       { $set: { assigned_terminal: smTerminal._id } },
     );
     await User.updateOne(
@@ -1277,10 +1284,13 @@ const seedData = async () => {
           $in: ["maria.santos@email.com", "rico.alvarez@email.com"],
         },
       },
-      { $set: { created_by: terminalAdmin1._id } },
+      {
+        $set: {
+          created_by: operatorCreatedBy._id,
+          assigned_terminal: smTerminal._id,
+        },
+      },
     );
-
-    await seedDevAdminUsers(smTerminal._id);
 
     // ==========================================
     // 3. CREATE ROUTES
@@ -1291,6 +1301,8 @@ const seedData = async () => {
         route_code: "01A",
         start_terminal_id: smTerminal._id,
         end_terminal_id: ayalaTerminal._id,
+        start_location: { latitude: 10.3115, longitude: 123.9185 },
+        end_location: { latitude: 10.3181, longitude: 123.9061 },
         estimated_duration: 45,
         status: "active",
       },
@@ -1299,6 +1311,8 @@ const seedData = async () => {
         route_code: "02B",
         start_terminal_id: carbonTerminal._id,
         end_terminal_id: mandaueTerminal._id,
+        start_location: { latitude: 10.2935, longitude: 123.9026 },
+        end_location: { latitude: 10.3357, longitude: 123.9421 },
         estimated_duration: 30,
         status: "active",
       },
@@ -1307,6 +1321,8 @@ const seedData = async () => {
         route_code: "03C",
         start_terminal_id: itParkTerminal._id,
         end_terminal_id: smTerminal._id,
+        start_location: { latitude: 10.3241, longitude: 123.9044 },
+        end_location: { latitude: 10.3115, longitude: 123.9185 },
         estimated_duration: 35,
         status: "active",
       },
@@ -1315,6 +1331,8 @@ const seedData = async () => {
         route_code: "04D",
         start_terminal_id: ayalaTerminal._id,
         end_terminal_id: carbonTerminal._id,
+        start_location: { latitude: 10.3181, longitude: 123.9061 },
+        end_location: { latitude: 10.2935, longitude: 123.9026 },
         estimated_duration: 25,
         status: "active",
       },
@@ -1323,6 +1341,8 @@ const seedData = async () => {
         route_code: "05E",
         start_terminal_id: mandaueTerminal._id,
         end_terminal_id: itParkTerminal._id,
+        start_location: { latitude: 10.3357, longitude: 123.9421 },
+        end_location: { latitude: 10.3241, longitude: 123.9044 },
         estimated_duration: 40,
         status: "active",
       },
@@ -1331,6 +1351,8 @@ const seedData = async () => {
         route_code: "06F",
         start_terminal_id: southBusTerminal._id,
         end_terminal_id: smTerminal._id,
+        start_location: { latitude: 10.2476, longitude: 123.8494 },
+        end_location: { latitude: 10.3115, longitude: 123.9185 },
         estimated_duration: 50,
         status: "active",
         route_type: "normal",
@@ -1340,6 +1362,8 @@ const seedData = async () => {
         route_code: "07G",
         start_terminal_id: waterfrontTerminal._id,
         end_terminal_id: ayalaTerminal._id,
+        start_location: { latitude: 10.2942, longitude: 123.9171 },
+        end_location: { latitude: 10.3181, longitude: 123.9061 },
         estimated_duration: 20,
         status: "active",
         route_type: "vice_versa",
@@ -1748,6 +1772,20 @@ const seedData = async () => {
     );
 
     console.log(`✅ Created ${busStatuses.length} bus statuses`);
+
+    const busLocations = await BusLocation.insertMany(
+      buses.map((bus, index) => ({
+        bus_id: String(bus._id),
+        latitude: 10.3115 + index * 0.0012,
+        longitude: 123.9185 - index * 0.0011,
+        speed:
+          bus.status === "active"
+            ? 18 + (index % 5) * 3
+            : 0,
+      })),
+    );
+
+    console.log(`✅ Created ${busLocations.length} bus locations`);
 
     const [
       bus1,
@@ -2548,6 +2586,7 @@ const seedData = async () => {
     console.log(`Route Stops: ${routeStops.length}`);
     console.log(`Buses: ${buses.length}`);
     console.log(`Bus Statuses: ${busStatuses.length}`);
+    console.log(`Bus Locations: ${busLocations.length}`);
     console.log(`Drivers: ${drivers.length}`);
     console.log(`Bus Assignments: ${assignments.length}`);
     const notificationCount = await Notification.countDocuments();

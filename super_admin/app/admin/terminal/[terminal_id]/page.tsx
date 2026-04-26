@@ -11,7 +11,10 @@ import {
   type TerminalLogEventType,
   type TerminalLogStatus,
 } from "../TerminalProps";
+import { type RouteProps, type RouteStatus } from "../../route/RouteProps";
 import TerminalLogTable from "../_components/TerminalLogTable";
+import { useGetTerminalDetails } from "../_hooks/useGetTerminalDetails";
+import { useGetRoutes } from "../../route/_hooks/useGetRoutes";
 import {
   getGoogleMapsEmbedUrl,
   getGoogleMapsLink,
@@ -49,6 +52,33 @@ type ApiTerminalRef = {
   _id?: string;
   id?: string;
   terminal_name?: string;
+};
+
+type ApiAssignedUser = {
+  _id: string;
+  f_name?: string | null;
+  l_name?: string | null;
+  email?: string | null;
+  status?: string | null;
+};
+
+type AssignedStaffProps = {
+  id: string;
+  displayName: string;
+  email: string;
+  status: string;
+};
+
+type ApiTerminal = {
+  _id: string;
+  terminal_name: string;
+  location_lat: number;
+  location_lng: number;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  assigned_terminal_admins?: ApiAssignedUser[];
+  assigned_operators?: ApiAssignedUser[];
 };
 
 type ApiRoute = {
@@ -473,6 +503,7 @@ export default function TerminalDetailsPage() {
                 </div>
               )}
             </dl>
+          )}
           </div>
         </div>
 
@@ -508,7 +539,6 @@ export default function TerminalDetailsPage() {
             )}
           </div>
         </div>
-      </div>
 
       <div>
         <h2 className="text-xl font-bold mb-3">Routes at this terminal</h2>
