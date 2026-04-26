@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection - authenticated users can read/write their own data
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // OTP verifications - allow anyone to create/read (for email verification before account creation)
+    match /otp_verifications/{email} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // Routes collection - route definitions with bus stop coordinates
+    match /routes/{routeId} {
+      allow read, create, update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    // route_code collection - driver route codes: point A, point B, bus stops
+    match /route_code/{routeCodeId} {
+      allow read, create, update, delete: if request.auth != null;
+    }
+
+    // Bus stops shown on maps (operator + user)
+    match /bus_stops/{busStopId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if false;
+    }
+
+    // driver_status - active driver per route, is_free_ride, free_ride_until
+    match /driver_status/{documentId} {
+      allow read, create, update, delete: if request.auth != null;
+    }
+
+    // Live operator GPS
+    match /operator_locations/{operatorId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && request.auth.uid == operatorId;
+    }
+
+    // Live user GPS
+    match /user_locations/{userId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Default deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
