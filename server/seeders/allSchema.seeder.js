@@ -1270,6 +1270,16 @@ const seedData = async () => {
       { $set: { assigned_terminal: ayalaTerminal._id } },
     );
 
+    await User.updateMany(
+      {
+        role: "operator",
+        email: {
+          $in: ["maria.santos@email.com", "rico.alvarez@email.com"],
+        },
+      },
+      { $set: { created_by: terminalAdmin1._id } },
+    );
+
     await seedDevAdminUsers(smTerminal._id);
 
     // ==========================================
