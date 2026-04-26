@@ -8,6 +8,11 @@ import {
   TerminalLogProps,
 } from "../TerminalProps";
 import TerminalLogTable from "../_components/TerminalLogTable";
+import {
+  getGoogleMapsEmbedUrl,
+  getGoogleMapsLink,
+  isGoogleMapsConfigured,
+} from "@/lib/firebaseClient";
 
 // Static data for terminals (matches main terminal page)
 const TERMINALS_STATIC: TerminalProps[] = [
@@ -21,11 +26,11 @@ const TERMINALS_STATIC: TerminalProps[] = [
 
 // Static data for terminal logs (matches main terminal page)
 const TERMINAL_LOGS_STATIC: TerminalLogProps[] = [
-  { id: "log1", terminal_id: "1", bus_id: "b1", terminal_name: "PITX", bus_number: "01-AB", event_type: "arrival_confirmed", status: "confirmed", event_time: "2025-03-01T07:15:00", confirmation_time: "2025-03-01T07:16:00", auto_detected: false, remarks: null },
-  { id: "log2", terminal_id: "1", bus_id: "b2", terminal_name: "PITX", bus_number: "12C", event_type: "departure_reported", status: "pending_confirmation", event_time: "2025-03-01T07:45:00", confirmation_time: null, auto_detected: false, remarks: null },
-  { id: "log3", terminal_id: "2", bus_id: "b3", terminal_name: "SM North EDSA", bus_number: "13B", event_type: "arrival_reported", status: "pending_confirmation", event_time: "2025-03-01T08:00:00", confirmation_time: null, auto_detected: true, remarks: "Gate sensor" },
-  { id: "log4", terminal_id: "3", bus_id: "b1", terminal_name: "Monumento", bus_number: "01-AB", event_type: "departure_confirmed", status: "confirmed", event_time: "2025-03-01T06:30:00", confirmation_time: "2025-03-01T06:31:00", auto_detected: false, remarks: null },
-  { id: "log5", terminal_id: "4", bus_id: "b4", terminal_name: "Fairview", bus_number: "O1L", event_type: "arrival_confirmed", status: "rejected", event_time: "2025-03-01T08:20:00", confirmation_time: null, auto_detected: false, remarks: "Wrong terminal scan" },
+  { id: "log1", terminal_id: "1", bus_id: "b1", terminal_name: "PITX", bus_number: "01-AB", event_type: "arrival", status: "confirmed", event_time: "2025-03-01T07:15:00", confirmation_time: "2025-03-01T07:16:00", auto_detected: false, remarks: null },
+  { id: "log2", terminal_id: "1", bus_id: "b2", terminal_name: "PITX", bus_number: "12C", event_type: "departure", status: "pending", event_time: "2025-03-01T07:45:00", confirmation_time: null, auto_detected: false, remarks: null },
+  { id: "log3", terminal_id: "2", bus_id: "b3", terminal_name: "SM North EDSA", bus_number: "13B", event_type: "arrival", status: "pending", event_time: "2025-03-01T08:00:00", confirmation_time: null, auto_detected: true, remarks: "Gate sensor" },
+  { id: "log4", terminal_id: "3", bus_id: "b1", terminal_name: "Monumento", bus_number: "01-AB", event_type: "departure", status: "confirmed", event_time: "2025-03-01T06:30:00", confirmation_time: "2025-03-01T06:31:00", auto_detected: false, remarks: null },
+  { id: "log5", terminal_id: "4", bus_id: "b4", terminal_name: "Fairview", bus_number: "O1L", event_type: "arrival", status: "rejected", event_time: "2025-03-01T08:20:00", confirmation_time: null, auto_detected: false, remarks: "Wrong terminal scan" },
 ];
 
 // Static data for routes (terminal ids align with TERMINALS_STATIC)
@@ -92,6 +97,8 @@ export default function TerminalDetailsPage() {
         : [],
     [terminalId]
   );
+  const mapsLink = terminal ? getGoogleMapsLink(terminal.location_lat, terminal.location_lng) : "";
+  const embedUrl = terminal ? getGoogleMapsEmbedUrl(terminal.location_lat, terminal.location_lng) : null;
 
   if (!terminalId) {
     return (
@@ -188,13 +195,28 @@ export default function TerminalDetailsPage() {
               {terminal.location_lng.toFixed(6)}
             </p>
             <a
-              href={`https://www.google.com/maps?q=${terminal.location_lat},${terminal.location_lng}`}
+              href={mapsLink}
               target="_blank"
               rel="noopener noreferrer"
               className="link link-primary text-sm"
             >
               Open in Google Maps →
             </a>
+            {isGoogleMapsConfigured && embedUrl ? (
+              <div className="mt-3 overflow-hidden rounded-xl border border-base-300">
+                <iframe
+                  title={`${terminal.terminal_name} map`}
+                  src={embedUrl}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  className="h-52 w-full border-0"
+                />
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-base-content/60">
+                Add <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> in your env file to show map preview.
+              </p>
+            )}
           </div>
         </div>
       </div>
