@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import CreateOperator from "./_components/CreateOperator";
 import CreateTerminalAdmin from "./_components/CreateTerminalAdmin";
 import UserTable, { type UserRow } from "./_components/UserTable";
 import { useGetUsers } from "./_hooks/useGetUsers";
@@ -124,7 +123,6 @@ export default function Users() {
           </div>
         </div>
         <div className="flex items-end gap-2">
-          <CreateOperator />
           <CreateTerminalAdmin />
         </div>
       </div>

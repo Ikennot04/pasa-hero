@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { createUserSchema, type CreateUserFormData } from "./createUserSchema";
+import {
+  createOperatorSchema,
+  type CreateOperatorFormData,
+} from "./createOperatorSchema";
 
-
-// ICONS
 import { FaUserPlus } from "react-icons/fa6";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 
@@ -20,8 +21,8 @@ export default function CreateOperator() {
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<CreateUserFormData>({
-    resolver: yupResolver(createUserSchema),
+  } = useForm<CreateOperatorFormData>({
+    resolver: yupResolver(createOperatorSchema),
     defaultValues: { f_name: "", l_name: "", email: "", password: "" },
   });
 
@@ -49,13 +50,29 @@ export default function CreateOperator() {
     reset();
   }
 
-  async function onSubmit(data: CreateUserFormData) {
+  async function onSubmit(data: CreateOperatorFormData) {
     try {
+      const token = localStorage.getItem("terminal_admin_auth_token");
+      const assignedRaw = localStorage.getItem("assigned_terminal");
+      if (!token || !assignedRaw) {
+        alert(
+          "Session expired or no terminal assigned. Please sign in again.",
+        );
+        return;
+      }
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
       const formData = new FormData();
-      formData.append("data", JSON.stringify({ ...data, role: "operator" }));
-      const res = await fetch(`${baseUrl}/user`, {
+      formData.append(
+        "data",
+        JSON.stringify({
+          ...data,
+          role: "operator",
+          assigned_terminal: assignedRaw,
+        }),
+      );
+      const res = await fetch(`${baseUrl}/api/users`, {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       if (!res.ok) {
@@ -81,6 +98,10 @@ export default function CreateOperator() {
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box">
           <h3 className="font-bold text-lg text-[#0062CA]">Create operator</h3>
+          <p className="text-sm text-base-content/70 mt-1">
+            New operators are linked to your terminal and can sign in with the
+            email and password you set here.
+          </p>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="form-control">
@@ -93,7 +114,9 @@ export default function CreateOperator() {
                   {...register("f_name")}
                 />
                 {errors.f_name && (
-                  <p className="text-error text-sm mt-1">{errors.f_name.message}</p>
+                  <p className="text-error text-sm mt-1">
+                    {errors.f_name.message}
+                  </p>
                 )}
               </div>
               <div className="form-control">
@@ -106,7 +129,9 @@ export default function CreateOperator() {
                   {...register("l_name")}
                 />
                 {errors.l_name && (
-                  <p className="text-error text-sm mt-1">{errors.l_name.message}</p>
+                  <p className="text-error text-sm mt-1">
+                    {errors.l_name.message}
+                  </p>
                 )}
               </div>
             </div>
@@ -120,7 +145,9 @@ export default function CreateOperator() {
                 {...register("email")}
               />
               {errors.email && (
-                <p className="text-error text-sm mt-1">{errors.email.message}</p>
+                <p className="text-error text-sm mt-1">
+                  {errors.email.message}
+                </p>
               )}
             </div>
             <div className="form-control">
@@ -147,25 +174,39 @@ export default function CreateOperator() {
                 </button>
               </div>
               {errors.password && (
-                <p className="text-error text-sm mt-1">{errors.password.message}</p>
+                <p className="text-error text-sm mt-1">
+                  {errors.password.message}
+                </p>
               )}
               <label className="label">
-                <span className="label-text-alt">One capital letter and one special character</span>
+                <span className="label-text-alt">
+                  One capital letter and one special character
+                </span>
               </label>
             </div>
             <div className="modal-action">
-              <button type="button" className="btn btn-ghost" onClick={closeModal}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={closeModal}
+              >
                 Cancel
               </button>
-              <button type="submit" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" disabled={isSubmitting}>
-              <FaUserPlus className="w-5 h-5" />
+              <button
+                type="submit"
+                className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80"
+                disabled={isSubmitting}
+              >
+                <FaUserPlus className="w-5 h-5" />
                 {isSubmitting ? "Creating…" : "Create"}
               </button>
             </div>
           </form>
         </div>
         <form method="dialog" className="modal-backdrop" onSubmit={closeModal}>
-          <button type="submit" aria-label="Close">close</button>
+          <button type="submit" aria-label="Close">
+            close
+          </button>
         </form>
       </dialog>
     </>
