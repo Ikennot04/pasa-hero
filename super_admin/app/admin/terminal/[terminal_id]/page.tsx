@@ -1,54 +1,155 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import axios from "axios";
 import { useParams } from "next/navigation";
 import {
   TerminalProps,
   TerminalLogProps,
+  type TerminalStatus,
+  type TerminalLogEventType,
+  type TerminalLogStatus,
 } from "../TerminalProps";
 import TerminalLogTable from "../_components/TerminalLogTable";
+import { useGetTerminalDetails } from "../_hooks/useGetTerminalDetails";
+import { useGetRoutes } from "../../route/_hooks/useGetRoutes";
+import { type RouteProps, type RouteStatus } from "../../route/RouteProps";
 
-// Static data for terminals (matches main terminal page)
-const TERMINALS_STATIC: TerminalProps[] = [
-  { id: "1", terminal_name: "PITX (Parañaque Integrated Terminal Exchange)", location_lat: 14.5547, location_lng: 120.9842, status: "active" },
-  { id: "2", terminal_name: "SM North EDSA", location_lat: 14.6568, location_lng: 121.0312, status: "active" },
-  { id: "3", terminal_name: "Monumento", location_lat: 14.6548, location_lng: 120.9845, status: "active" },
-  { id: "4", terminal_name: "Fairview", location_lat: 14.7333, location_lng: 121.0500, status: "active" },
-  { id: "5", terminal_name: "Tamiya Terminal", location_lat: 10.3157, location_lng: 123.8854, status: "active" },
-  { id: "6", terminal_name: "Pacific Terminal", location_lat: 10.3128, location_lng: 123.8912, status: "inactive" },
-];
+type ApiTerminal = {
+  _id: string;
+  terminal_name: string;
+  location_lat: number;
+  location_lng: number;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
-// Static data for terminal logs (matches main terminal page)
-const TERMINAL_LOGS_STATIC: TerminalLogProps[] = [
-  { id: "log1", terminal_id: "1", bus_id: "b1", terminal_name: "PITX", bus_number: "01-AB", event_type: "arrival_confirmed", status: "confirmed", event_time: "2025-03-01T07:15:00", confirmation_time: "2025-03-01T07:16:00", auto_detected: false, remarks: null },
-  { id: "log2", terminal_id: "1", bus_id: "b2", terminal_name: "PITX", bus_number: "12C", event_type: "departure_reported", status: "pending_confirmation", event_time: "2025-03-01T07:45:00", confirmation_time: null, auto_detected: false, remarks: null },
-  { id: "log3", terminal_id: "2", bus_id: "b3", terminal_name: "SM North EDSA", bus_number: "13B", event_type: "arrival_reported", status: "pending_confirmation", event_time: "2025-03-01T08:00:00", confirmation_time: null, auto_detected: true, remarks: "Gate sensor" },
-  { id: "log4", terminal_id: "3", bus_id: "b1", terminal_name: "Monumento", bus_number: "01-AB", event_type: "departure_confirmed", status: "confirmed", event_time: "2025-03-01T06:30:00", confirmation_time: "2025-03-01T06:31:00", auto_detected: false, remarks: null },
-  { id: "log5", terminal_id: "4", bus_id: "b4", terminal_name: "Fairview", bus_number: "O1L", event_type: "arrival_confirmed", status: "rejected", event_time: "2025-03-01T08:20:00", confirmation_time: null, auto_detected: false, remarks: "Wrong terminal scan" },
-];
+type ApiTerminalRef = {
+  _id?: string;
+  id?: string;
+  terminal_name?: string;
+};
 
-// Static data for routes (terminal ids align with TERMINALS_STATIC)
-type RouteAtTerminal = {
-  id: string;
+type ApiRoute = {
+  _id: string;
   route_name: string;
   route_code: string;
-  start_terminal_id: string;
-  end_terminal_id: string;
-  start_terminal_name?: string;
-  end_terminal_name?: string;
-  estimated_duration: number | null;
-  status: string;
+  start_terminal_id: string | ApiTerminalRef | null;
+  end_terminal_id: string | ApiTerminalRef | null;
+  estimated_duration?: number | null;
+  status?: string;
 };
-const ROUTES_STATIC: RouteAtTerminal[] = [
-  { id: "1", route_name: "PITX — SM North EDSA", route_code: "PITX-NEDSA", start_terminal_id: "1", end_terminal_id: "2", start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)", end_terminal_name: "SM North EDSA", estimated_duration: 45, status: "active" },
-  { id: "2", route_name: "SM North EDSA — Monumento", route_code: "NEDSA-MON", start_terminal_id: "2", end_terminal_id: "3", start_terminal_name: "SM North EDSA", end_terminal_name: "Monumento", estimated_duration: 35, status: "active" },
-  { id: "3", route_name: "Monumento — Fairview", route_code: "MON-FV", start_terminal_id: "3", end_terminal_id: "4", start_terminal_name: "Monumento", end_terminal_name: "Fairview", estimated_duration: 55, status: "active" },
-  { id: "4", route_name: "PITX — Monumento", route_code: "PITX-MON", start_terminal_id: "1", end_terminal_id: "3", start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)", end_terminal_name: "Monumento", estimated_duration: 40, status: "active" },
-  { id: "5", route_name: "Fairview — SM North EDSA", route_code: "FV-NEDSA", start_terminal_id: "4", end_terminal_id: "2", start_terminal_name: "Fairview", end_terminal_name: "SM North EDSA", estimated_duration: 50, status: "active" },
-  { id: "6", route_name: "Tamiya — Pacific Terminal", route_code: "TAM-PAC", start_terminal_id: "5", end_terminal_id: "6", start_terminal_name: "Tamiya Terminal", end_terminal_name: "Pacific Terminal", estimated_duration: 15, status: "active" },
-  { id: "7", route_name: "PITX — Fairview (Express)", route_code: "PITX-FV-X", start_terminal_id: "1", end_terminal_id: "4", start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)", end_terminal_name: "Fairview", estimated_duration: 90, status: "suspended" },
-];
+
+type ApiTerminalLogDetail = {
+  _id: string;
+  terminal_id: string | (ApiTerminalRef & { terminal_name?: string }) | null;
+  bus_id: string | ({ _id?: string; bus_number?: string | null } & Record<string, unknown>) | null;
+  event_type: string;
+  status: string;
+  event_time: string;
+  confirmation_time: string | null;
+  auto_detected?: boolean;
+  remarks?: string | null;
+};
+
+function mapApiTerminalToProps(t: ApiTerminal): TerminalProps {
+  const status: TerminalStatus = t.status === "inactive" ? "inactive" : "active";
+  return {
+    id: String(t._id),
+    terminal_name: t.terminal_name,
+    location_lat: Number(t.location_lat),
+    location_lng: Number(t.location_lng),
+    status,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+}
+
+function normalizeTerminalRef(ref: string | ApiTerminalRef | null | undefined) {
+  if (!ref) {
+    return { id: "", name: undefined as string | undefined };
+  }
+  if (typeof ref === "string") {
+    return { id: ref, name: undefined as string | undefined };
+  }
+  return {
+    id: String(ref._id ?? ref.id ?? ""),
+    name: ref.terminal_name,
+  };
+}
+
+function mapApiRouteToProps(route: ApiRoute): RouteProps {
+  const startTerminal = normalizeTerminalRef(route.start_terminal_id);
+  const endTerminal = normalizeTerminalRef(route.end_terminal_id);
+  const status: RouteStatus =
+    route.status === "inactive" || route.status === "suspended"
+      ? route.status
+      : "active";
+
+  return {
+    id: String(route._id),
+    route_name: route.route_name,
+    route_code: route.route_code,
+    start_terminal_id: startTerminal.id,
+    end_terminal_id: endTerminal.id,
+    start_terminal_name: startTerminal.name,
+    end_terminal_name: endTerminal.name,
+    estimated_duration:
+      typeof route.estimated_duration === "number" ? route.estimated_duration : null,
+    status,
+  };
+}
+
+function mapDetailApiLogToProps(
+  log: ApiTerminalLogDetail,
+  fallbackTerminalId: string,
+): TerminalLogProps {
+  const eventTypeMap: Record<string, TerminalLogEventType> = {
+    arrival: "arrival",
+    departure: "departure",
+  };
+  const statusMap: Record<string, TerminalLogStatus> = {
+    pending: "pending",
+    confirmed: "confirmed",
+    rejected: "rejected",
+  };
+
+  const terminalIdStr =
+    log.terminal_id && typeof log.terminal_id === "object"
+      ? String(log.terminal_id._id ?? log.terminal_id.id ?? fallbackTerminalId)
+      : String(log.terminal_id ?? fallbackTerminalId);
+
+  const busIdStr =
+    log.bus_id && typeof log.bus_id === "object"
+      ? String(log.bus_id._id ?? "")
+      : String(log.bus_id ?? "");
+
+  const terminalName =
+    log.terminal_id && typeof log.terminal_id === "object" && log.terminal_id.terminal_name
+      ? log.terminal_id.terminal_name
+      : "Unknown terminal";
+
+  const busNumber =
+    log.bus_id && typeof log.bus_id === "object" && "bus_number" in log.bus_id
+      ? String(log.bus_id.bus_number ?? "Unknown bus")
+      : "Unknown bus";
+
+  return {
+    id: String(log._id),
+    terminal_id: terminalIdStr,
+    bus_id: busIdStr,
+    terminal_name: terminalName,
+    bus_number: busNumber,
+    event_type: eventTypeMap[log.event_type] ?? "arrival",
+    status: statusMap[log.status] ?? "pending",
+    event_time: log.event_time,
+    confirmation_time: log.confirmation_time,
+    auto_detected: Boolean(log.auto_detected),
+    remarks: log.remarks ?? null,
+  };
+}
 
 function TerminalStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -71,27 +172,97 @@ function formatDateTime(iso: string | undefined) {
   });
 }
 
+const LOGS_PER_PAGE = 10;
+
 export default function TerminalDetailsPage() {
   const params = useParams();
   const terminalId = params?.terminal_id as string | undefined;
 
-  const terminal = useMemo(
-    () => (terminalId ? TERMINALS_STATIC.find((t) => t.id === terminalId) ?? null : null),
-    [terminalId]
+  const { getTerminalDetails, error: detailsError } = useGetTerminalDetails();
+  const { getRoutes, error: routesError } = useGetRoutes();
+
+  const [terminal, setTerminal] = useState<TerminalProps | null>(null);
+  const [routesAtTerminal, setRoutesAtTerminal] = useState<RouteProps[]>([]);
+  const [logs, setLogs] = useState<TerminalLogProps[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [logCurrentPage, setLogCurrentPage] = useState(1);
+
+  useEffect(() => {
+    if (!terminalId) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      setLogsLoading(true);
+      setLogCurrentPage(1);
+      setTerminal(null);
+      setRoutesAtTerminal([]);
+      setLogs([]);
+
+      const detailRes = await getTerminalDetails(terminalId);
+      if (cancelled) return;
+
+      if (detailRes?.success === true && detailRes.data) {
+        setTerminal(mapApiTerminalToProps(detailRes.data as ApiTerminal));
+      } else {
+        setTerminal(null);
+      }
+      setLoading(false);
+
+      const [routesRes, logsRes] = await Promise.all([
+        getRoutes(),
+        (async () => {
+          try {
+            const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+            const { data } = await axios.get(
+              `${baseUrl}/api/terminal-logs/terminal/${terminalId}`,
+            );
+            return data;
+          } catch {
+            return null;
+          }
+        })(),
+      ]);
+
+      if (cancelled) return;
+
+      if (routesRes?.success === true && Array.isArray(routesRes.data)) {
+        const allRoutes = (routesRes.data as ApiRoute[]).map(mapApiRouteToProps);
+        setRoutesAtTerminal(
+          allRoutes.filter(
+            (r) => r.start_terminal_id === terminalId || r.end_terminal_id === terminalId,
+          ),
+        );
+      }
+
+      if (logsRes?.success === true && Array.isArray(logsRes.data)) {
+        setLogs(
+          (logsRes.data as ApiTerminalLogDetail[]).map((log) =>
+            mapDetailApiLogToProps(log, terminalId),
+          ),
+        );
+      }
+      setLogsLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [terminalId, getTerminalDetails, getRoutes]);
+
+  const logTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(logs.length / LOGS_PER_PAGE)),
+    [logs.length],
   );
-  const logs = useMemo(
-    () => (terminalId ? TERMINAL_LOGS_STATIC.filter((log) => log.terminal_id === terminalId) : []),
-    [terminalId]
-  );
-  const routesAtTerminal = useMemo(
-    () =>
-      terminalId
-        ? ROUTES_STATIC.filter(
-            (r) => r.start_terminal_id === terminalId || r.end_terminal_id === terminalId
-          )
-        : [],
-    [terminalId]
-  );
+
+  const currentLogPage = Math.min(logCurrentPage, logTotalPages);
+
+  const paginatedLogs = useMemo(() => {
+    const start = (currentLogPage - 1) * LOGS_PER_PAGE;
+    return logs.slice(start, start + LOGS_PER_PAGE);
+  }, [logs, currentLogPage]);
 
   if (!terminalId) {
     return (
@@ -106,12 +277,26 @@ export default function TerminalDetailsPage() {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="space-y-4 pt-6">
+        <span className="loading loading-spinner loading-lg" />
+      </div>
+    );
+  }
+
   if (!terminal) {
     return (
       <div className="space-y-4 pt-6">
-        <div className="alert alert-error">
-          <span>Terminal not found.</span>
-        </div>
+        {detailsError ? (
+          <div role="alert" className="alert alert-error text-sm">
+            {detailsError}
+          </div>
+        ) : (
+          <div className="alert alert-error">
+            <span>Terminal not found.</span>
+          </div>
+        )}
         <Link href="/admin/terminal" className="btn btn-lg bg-[#0062CA] text-white hover:bg-[#0062CA]/80">
           ← Back to terminals
         </Link>
@@ -121,6 +306,12 @@ export default function TerminalDetailsPage() {
 
   return (
     <div className="space-y-6 pt-6">
+      {routesError ? (
+        <div role="alert" className="alert alert-warning text-sm">
+          Routes could not be loaded: {routesError}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="breadcrumbs text-sm">
           <ul>
@@ -139,63 +330,58 @@ export default function TerminalDetailsPage() {
         </Link>
       </div>
 
-      <div className="text-2xl font-bold">{terminal.terminal_name}</div>
+      <div className="card card-bordered bg-base-100 shadow-sm">
+        <div className="card-body gap-5">
+          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-base-content/10 pb-4">
+            <div className="min-w-0 space-y-1">
+              <h2 className="card-title text-lg">Terminal details</h2>
+              <p className="text-lg font-semibold leading-snug text-base-content">
+                {terminal.terminal_name}
+              </p>
+            </div>
+            <div className="shrink-0 flex flex-col items-end gap-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-base-content/50">
+                Status
+              </span>
+              <TerminalStatusBadge status={terminal.status} />
+            </div>
+          </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="card card-bordered bg-base-100 shadow-sm">
-          <div className="card-body">
-            <h2 className="card-title text-lg">Terminal details</h2>
-            <dl className="space-y-2">
-              <div>
-                <dt className="text-sm text-base-content/60">ID</dt>
-                <dd className="font-mono text-sm">{terminal.id}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-base-content/60">Status</dt>
-                <dd>
-                  <TerminalStatusBadge status={terminal.status} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm text-base-content/60">Latitude</dt>
-                <dd>{terminal.location_lat.toFixed(6)}</dd>
-              </div>
-              <div>
-                <dt className="text-sm text-base-content/60">Longitude</dt>
-                <dd>{terminal.location_lng.toFixed(6)}</dd>
-              </div>
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <div className="min-w-0 sm:col-span-2">
+              <dt className="text-sm text-base-content/60">Terminal ID</dt>
+              <dd className="mt-1 font-mono text-sm break-all text-base-content">
+                {terminal.id}
+              </dd>
+            </div>
+            <div className="min-w-0 sm:col-span-2">
+              <dt className="text-sm text-base-content/60">Coordinates</dt>
+              <dd className="mt-1 font-mono text-sm text-base-content">
+                {terminal.location_lat.toFixed(6)}, {terminal.location_lng.toFixed(6)}
+              </dd>
+            </div>
+          </dl>
+
+          {(terminal.createdAt || terminal.updatedAt) && (
+            <dl className="grid gap-3 border-t border-base-content/10 pt-4 sm:grid-cols-2">
               {terminal.createdAt && (
                 <div>
                   <dt className="text-sm text-base-content/60">Created</dt>
-                  <dd>{formatDateTime(terminal.createdAt)}</dd>
+                  <dd className="mt-1 text-sm text-base-content">
+                    {formatDateTime(terminal.createdAt)}
+                  </dd>
                 </div>
               )}
               {terminal.updatedAt && (
                 <div>
                   <dt className="text-sm text-base-content/60">Updated</dt>
-                  <dd>{formatDateTime(terminal.updatedAt)}</dd>
+                  <dd className="mt-1 text-sm text-base-content">
+                    {formatDateTime(terminal.updatedAt)}
+                  </dd>
                 </div>
               )}
             </dl>
-          </div>
-        </div>
-
-        <div className="card card-bordered bg-base-100 shadow-sm">
-          <div className="card-body">
-            <h2 className="card-title text-lg">Location</h2>
-            <p className="text-sm text-base-content/70">
-              Coordinates: {terminal.location_lat.toFixed(6)},{" "}
-              {terminal.location_lng.toFixed(6)}
-            </p>
-            <a
-              href={`https://www.google.com/maps?q=${terminal.location_lat},${terminal.location_lng}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="link link-primary text-sm"
-            >
-              Open in Google Maps →
-            </a>
-          </div>
+          )}
         </div>
       </div>
 
@@ -254,9 +440,47 @@ export default function TerminalDetailsPage() {
       </div>
 
       <div>
-        <h2 className="text-xl font-bold mb-3">Terminal logs</h2>
-        {logs.length > 0 ? (
-          <TerminalLogTable logs={logs} />
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-4">
+          <h2 className="text-xl font-bold">Terminal logs</h2>
+          {!logsLoading && logs.length > 0 ? (
+            <span className="text-sm text-base-content/70">
+              {logs.length} log{logs.length === 1 ? "" : "s"} total
+            </span>
+          ) : null}
+        </div>
+        {logsLoading ? (
+          <span className="loading loading-spinner loading-md" />
+        ) : logs.length > 0 ? (
+          <>
+            <div className="mb-3">
+              <TerminalLogTable logs={paginatedLogs} />
+            </div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm text-base-content/70">
+                Page {currentLogPage} of {logTotalPages}
+              </span>
+              <div className="join">
+                <button
+                  type="button"
+                  className="btn btn-sm join-item"
+                  onClick={() => setLogCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentLogPage === 1}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm join-item"
+                  onClick={() =>
+                    setLogCurrentPage((prev) => Math.min(logTotalPages, prev + 1))
+                  }
+                  disabled={currentLogPage === logTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
         ) : (
           <div className="rounded-box border border-base-content/5 bg-base-100 p-6 text-center text-base-content/60">
             No logs for this terminal yet.
