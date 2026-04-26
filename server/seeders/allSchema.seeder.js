@@ -16,6 +16,7 @@ import UserSubscription from "../modules/user_subscription/user_subscription.mod
 import SystemLog from "../modules/system_log/system_log.model.js";
 import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
 import seedHighPrioritySmTerminalNotifications from "./highPrioritySmTerminalNotifications.seeder.js";
+import { buildSystemLogDocuments } from "./systemLogs.seeder.js";
 
 async function ensureDbConnected() {
   if (mongoose.connection.readyState === 1) return;
@@ -2503,99 +2504,18 @@ const seedData = async () => {
     // ==========================================
     // 11. CREATE SYSTEM LOGS
     // ==========================================
-    const systemLogs = await SystemLog.insertMany([
-      {
-        user_id: String(superAdmin._id),
-        action: "Login",
-        description: "Super admin logged in from web console.",
-        createdAt: new Date(now.getTime() - 48 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Login",
-        description: "Operator logged in from mobile app.",
-        createdAt: new Date(now.getTime() - 36 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(superAdmin._id),
-        action: "Create User",
-        description: "Created operator account rico.alvarez@email.com.",
-        createdAt: new Date(now.getTime() - 72 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(superAdmin._id),
-        action: "Update User",
-        description:
-          "Updated role for elena.villanueva@email.com to suspended.",
-        createdAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Create Route",
-        description: "Added route 07G (Waterfront to Ayala Shuttle).",
-        createdAt: new Date(now.getTime() - 120 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator2._id),
-        action: "Update Route",
-        description: "Adjusted estimated duration for route 02B.",
-        createdAt: new Date(now.getTime() - 96 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(superAdmin._id),
-        action: "Delete Route",
-        description: "Archived legacy test route (code TMP-99).",
-        createdAt: new Date(now.getTime() - 168 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(terminalAdmin1._id),
-        action: "Create Terminal",
-        description: "Registered Waterfront Lahug Terminal.",
-        createdAt: new Date(now.getTime() - 200 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(terminalAdmin2._id),
-        action: "Update Terminal",
-        description: "Updated Ayala Center Terminal status and coordinates.",
-        createdAt: new Date(now.getTime() - 12 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(superAdmin._id),
-        action: "Delete Terminal",
-        description: "Removed deprecated pop-up terminal record.",
-        createdAt: new Date(now.getTime() - 240 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Assign Bus",
-        description: `Assigned CEB-001 to route 01A with driver ${driver1.f_name} ${driver1.l_name}.`,
-        createdAt: new Date(now.getTime() - 6 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator2._id),
-        action: "Assign Bus",
-        description: `Scheduled CEB-011 on route 06F with driver ${driver8.f_name} ${driver8.l_name}.`,
-        createdAt: new Date(now.getTime() - 4 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Remove Bus Assignment",
-        description: "Cancelled same-day assignment for CEB-005 (maintenance).",
-        createdAt: new Date(now.getTime() - 3 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(terminalAdmin1._id),
-        action: "Logout",
-        description: "Session ended from SM terminal kiosk.",
-        createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Delete User",
-        description: "Removed duplicate staging user account.",
-        createdAt: new Date(now.getTime() - 18 * 60 * 60 * 1000),
-      },
-    ]);
+    const systemLogs = await SystemLog.insertMany(
+      buildSystemLogDocuments({
+        superAdmin,
+        operator1,
+        operator2,
+        terminalAdmin1,
+        terminalAdmin2,
+        driver1,
+        driver8,
+        now,
+      }),
+    );
 
     console.log(`✅ Created ${systemLogs.length} system logs`);
 
