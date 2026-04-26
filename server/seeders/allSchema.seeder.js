@@ -18,7 +18,9 @@ import SystemLog from "../modules/system_log/system_log.model.js";
 import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
 import seedHighPrioritySmTerminalNotifications from "./highPrioritySmTerminalNotifications.seeder.js";
 import { buildSystemLogDocuments } from "./systemLogs.seeder.js";
-import seedDevAdminUsers from "./devAdminUsers.seeder.js";
+import seedDevAdminUsers, {
+  DEV_TERMINAL_ADMIN,
+} from "./devAdminUsers.seeder.js";
 
 async function ensureDbConnected() {
   if (mongoose.connection.readyState === 1) return;
@@ -1255,16 +1257,19 @@ const seedData = async () => {
       waterfrontTerminal,
     ] = terminals;
 
-    await User.updateMany(
-      {
-        email: {
-          $in: [
-            "pedro.reyes@email.com",
-            "maria.santos@email.com",
-            "rico.alvarez@email.com",
-          ],
-        },
-      },
+    await seedDevAdminUsers(smTerminal._id);
+
+    const operatorCreatedBy = await User.findOne({
+      email: DEV_TERMINAL_ADMIN.email,
+    }).select("_id");
+    if (!operatorCreatedBy) {
+      throw new Error(
+        `Expected terminal admin ${DEV_TERMINAL_ADMIN.email} after seedDevAdminUsers.`,
+      );
+    }
+
+    await User.updateOne(
+      { email: "pedro.reyes@email.com" },
       { $set: { assigned_terminal: smTerminal._id } },
     );
     await User.updateOne(
@@ -1279,10 +1284,13 @@ const seedData = async () => {
           $in: ["maria.santos@email.com", "rico.alvarez@email.com"],
         },
       },
-      { $set: { created_by: terminalAdmin1._id } },
+      {
+        $set: {
+          created_by: operatorCreatedBy._id,
+          assigned_terminal: smTerminal._id,
+        },
+      },
     );
-
-    await seedDevAdminUsers(smTerminal._id);
 
     // ==========================================
     // 3. CREATE ROUTES

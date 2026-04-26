@@ -140,7 +140,9 @@ export const UserService = {
   },
   // GET USER BY ID ===================================================================
   async getUserById(id) {
-    const user = await User.findById(id);
+    const user = await User.findById(id)
+      .populate({ path: "assigned_terminal", select: "terminal_name" })
+      .populate({ path: "created_by", select: "f_name l_name email role" });
     if (!user) {
       throw new Error("User not found");
     }
@@ -148,7 +150,9 @@ export const UserService = {
   },
   // GET ALL USERS ===================================================================
   async getAllUsers() {
-    const users = await User.find();
+    const users = await User.find()
+      .populate({ path: "assigned_terminal", select: "terminal_name" })
+      .populate({ path: "created_by", select: "f_name l_name email role" });
     return users;
   },
   // CREATE ADMIN USER ===============================================================
