@@ -16,6 +16,14 @@ import { useGetTerminalDetails } from "../_hooks/useGetTerminalDetails";
 import { useGetRoutes } from "../../route/_hooks/useGetRoutes";
 import { type RouteProps, type RouteStatus } from "../../route/RouteProps";
 
+type ApiAssignedUser = {
+  _id: string;
+  f_name?: string;
+  l_name?: string;
+  email?: string;
+  status?: string;
+};
+
 type ApiTerminal = {
   _id: string;
   terminal_name: string;
@@ -24,6 +32,15 @@ type ApiTerminal = {
   status?: string;
   createdAt?: string;
   updatedAt?: string;
+  assigned_terminal_admins?: ApiAssignedUser[];
+  assigned_operators?: ApiAssignedUser[];
+};
+
+type AssignedStaffProps = {
+  id: string;
+  displayName: string;
+  email: string;
+  status: string;
 };
 
 type ApiTerminalRef = {
@@ -65,6 +82,61 @@ function mapApiTerminalToProps(t: ApiTerminal): TerminalProps {
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
   };
+}
+
+function mapApiAssignedUsers(users: ApiAssignedUser[] | undefined): AssignedStaffProps[] {
+  if (!users?.length) return [];
+  return users.map((u) => ({
+    id: String(u._id),
+    displayName:
+      [u.f_name, u.l_name].filter(Boolean).join(" ").trim() || u.email || "Unknown",
+    email: u.email ?? "",
+    status: u.status ?? "active",
+  }));
+}
+
+function UserStatusBadge({ status }: { status: string }) {
+  const cls =
+    status === "active"
+      ? "badge-success"
+      : status === "suspended"
+        ? "badge-warning"
+        : "badge-ghost";
+  return <span className={`badge badge-sm ${cls}`}>{status}</span>;
+}
+
+function AssignedStaffBlock({
+  label,
+  members,
+}: {
+  label: string;
+  members: AssignedStaffProps[];
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-sm text-base-content/60">{label}</dt>
+      <dd className="mt-1">
+        {members.length === 0 ? (
+          <span className="text-sm text-base-content/50">None assigned</span>
+        ) : (
+          <ul className="space-y-2">
+            {members.map((m) => (
+              <li
+                key={m.id}
+                className="flex flex-col gap-0.5 border-l-2 border-base-content/10 pl-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2"
+              >
+                <span className="font-medium text-sm text-base-content">{m.displayName}</span>
+                {m.email ? (
+                  <span className="font-mono text-xs text-base-content/70">{m.email}</span>
+                ) : null}
+                <UserStatusBadge status={m.status} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </dd>
+    </div>
+  );
 }
 
 function normalizeTerminalRef(ref: string | ApiTerminalRef | null | undefined) {
@@ -182,6 +254,10 @@ export default function TerminalDetailsPage() {
   const { getRoutes, error: routesError } = useGetRoutes();
 
   const [terminal, setTerminal] = useState<TerminalProps | null>(null);
+  const [assignedTerminalAdmins, setAssignedTerminalAdmins] = useState<AssignedStaffProps[]>(
+    [],
+  );
+  const [assignedOperators, setAssignedOperators] = useState<AssignedStaffProps[]>([]);
   const [routesAtTerminal, setRoutesAtTerminal] = useState<RouteProps[]>([]);
   const [logs, setLogs] = useState<TerminalLogProps[]>([]);
   const [loading, setLoading] = useState(true);
@@ -198,6 +274,8 @@ export default function TerminalDetailsPage() {
       setLogsLoading(true);
       setLogCurrentPage(1);
       setTerminal(null);
+      setAssignedTerminalAdmins([]);
+      setAssignedOperators([]);
       setRoutesAtTerminal([]);
       setLogs([]);
 
@@ -205,9 +283,14 @@ export default function TerminalDetailsPage() {
       if (cancelled) return;
 
       if (detailRes?.success === true && detailRes.data) {
-        setTerminal(mapApiTerminalToProps(detailRes.data as ApiTerminal));
+        const data = detailRes.data as ApiTerminal;
+        setTerminal(mapApiTerminalToProps(data));
+        setAssignedTerminalAdmins(mapApiAssignedUsers(data.assigned_terminal_admins));
+        setAssignedOperators(mapApiAssignedUsers(data.assigned_operators));
       } else {
         setTerminal(null);
+        setAssignedTerminalAdmins([]);
+        setAssignedOperators([]);
       }
       setLoading(false);
 
@@ -360,6 +443,11 @@ export default function TerminalDetailsPage() {
                 {terminal.location_lat.toFixed(6)}, {terminal.location_lng.toFixed(6)}
               </dd>
             </div>
+            <AssignedStaffBlock
+              label="Terminal admins"
+              members={assignedTerminalAdmins}
+            />
+            <AssignedStaffBlock label="Operators" members={assignedOperators} />
           </dl>
 
           {(terminal.createdAt || terminal.updatedAt) && (
