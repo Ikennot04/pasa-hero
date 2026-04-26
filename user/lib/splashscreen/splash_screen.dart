@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../features/auth/login/login_sreen.dart';
-import '../features/auth/register/register_screen.dart';
+
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
@@ -96,7 +96,7 @@ class SplashScreen extends StatelessWidget {
                         elevation: 0,
                       ),
                       child: Text(
-                        'Log In',
+                        'Get Started',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: buttonFontSize,
@@ -107,39 +107,7 @@ class SplashScreen extends StatelessWidget {
                   ),
                   SizedBox(height: screenHeight * 0.02),
                   // Sign Up Button - Responsive
-                  SizedBox(
-                    width: double.infinity,
-                    height: buttonHeight,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        // Handle sign up navigation
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const RegisterScreen(),
-                          ),
-                        );
-                      },
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: Colors.white,
-                          width: 2 * effectiveScale,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(borderRadius),
-                        ),
-                      ),
-                      child: Text(
-                        'Sign Up',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: buttonFontSize,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: screenHeight * 0.025),
+                  
                 ],
               ),
             ),

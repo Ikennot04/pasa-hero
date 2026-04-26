@@ -28,9 +28,13 @@ class _RegisterFormState extends State<RegisterForm> {
   bool _obscurePassword = true;
   String? _validationError;
   bool _hasNavigated = false; // Flag to prevent multiple navigations
+  
+  // Scroll controller for scrollbar indicator
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void dispose() {
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -115,8 +119,8 @@ class _RegisterFormState extends State<RegisterForm> {
         }
         // Navigation to near me screen is handled by OTP screen after success
         // No need to handle it here since OTP screen manages its own navigation
-        // Clear validation error when auth state changes
-        if (state.error != null || state.isAuthenticated) {
+        // Only clear validation error when authenticated (not when error is set)
+        if (state.isAuthenticated) {
           setState(() {
             _validationError = null;
           });
@@ -150,14 +154,33 @@ class _RegisterFormState extends State<RegisterForm> {
             final titleSpacing = availableHeight < 600 ? 6.0 : (availableHeight < 700 ? 10.0 : 14.0);
             final fieldSpacing = availableHeight < 600 ? 10.0 : (availableHeight < 700 ? 12.0 : 14.0);
             
-            return Container(
+            final viewInsets = MediaQuery.of(context).viewInsets;
+            
+            return SizedBox(
               height: double.infinity,
-              padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+              child: Scrollbar(
+                controller: _scrollController,
+                thumbVisibility: true,
+                thickness: 6.0,
+                radius: const Radius.circular(3.0),
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  physics: const ClampingScrollPhysics(),
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.only(
+                    left: horizontalPadding,
+                    right: horizontalPadding,
+                    top: verticalPadding,
+                    bottom: verticalPadding + viewInsets.bottom,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: availableHeight - viewInsets.bottom,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                   SizedBox(height: baseSpacing),
                   // Title
                   Center(
@@ -178,9 +201,7 @@ class _RegisterFormState extends State<RegisterForm> {
                         return BlocBuilder<AuthBlocBloc, AuthBlocState>(
                           builder: (context, state) {
                             final errorMessage = _validationError ?? 
-                              (state.error != null 
-                                ? state.error.toString().replaceFirst('Exception: ', '')
-                                : null);
+                              (state.error?.toString().replaceFirst('Exception: ', ''));
                             
                             if (errorMessage != null) {
                               return Container(
@@ -214,8 +235,8 @@ class _RegisterFormState extends State<RegisterForm> {
                                           fontSize: isSmallScreen ? 13.0 : 14.0,
                                           fontWeight: FontWeight.w500,
                                         ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 5,
+                                        overflow: TextOverflow.visible,
                                       ),
                                     ),
                                   ],
@@ -662,7 +683,9 @@ class _RegisterFormState extends State<RegisterForm> {
                     ),
                   ),
                   SizedBox(height: baseSpacing),
-                  ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             );

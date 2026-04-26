@@ -1,16 +1,55 @@
 import 'package:flutter/material.dart';
 
+/// Near Me floating banner when Firestore `driver_status` shows an active free ride.
 class FreeRideBanner extends StatelessWidget {
   final bool showDetails;
+  /// Route / jeepney code from Firestore (`route_id`, or `route_code` / `routeCode`).
+  final String? routeCode;
+  /// Optional friendly name from local route list (API), if known.
+  final String? routeDisplayName;
+  /// `free_ride_until` from Firestore, when set.
+  final DateTime? freeRideUntil;
   final VoidCallback? onViewTap;
   final VoidCallback? onClose;
 
   const FreeRideBanner({
     super.key,
     this.showDetails = false,
+    this.routeCode,
+    this.routeDisplayName,
+    this.freeRideUntil,
     this.onViewTap,
     this.onClose,
   });
+
+  static String _formatDateTime(DateTime d) {
+    final y = d.year;
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    final h = d.hour.toString().padLeft(2, '0');
+    final min = d.minute.toString().padLeft(2, '0');
+    return '$y-$m-$day $h:$min';
+  }
+
+  String _routeSummaryLine() {
+    final code = routeCode?.trim();
+    final name = routeDisplayName?.trim();
+    if (code != null && code.isNotEmpty) {
+      if (name != null &&
+          name.isNotEmpty &&
+          name.toUpperCase() != code.toUpperCase()) {
+        return '$name · $code';
+      }
+      return 'Route $code';
+    }
+    return 'Free ride is active';
+  }
+
+  String _untilLine() {
+    final u = freeRideUntil;
+    if (u == null) return 'End time not set by the driver.';
+    return 'Ride free until ${_formatDateTime(u)}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +76,6 @@ class FreeRideBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // 3D Bus Image
           Container(
             width: 56,
             height: 56,
@@ -47,7 +85,7 @@ class FreeRideBanner extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.asset(
-                'assets/images/logo/buspic.png',
+                'assets/images/logo/free_ride.png',
                 width: 56,
                 height: 56,
                 fit: BoxFit.cover,
@@ -65,7 +103,6 @@ class FreeRideBanner extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
-          // Text Content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,16 +117,24 @@ class FreeRideBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Ride for free until 6:00 PM',
+                  _routeSummaryLine(),
                   style: TextStyle(
                     fontSize: 13,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _untilLine(),
+                  style: TextStyle(
+                    fontSize: 12,
                     color: Colors.grey[600],
                   ),
                 ),
               ],
             ),
           ),
-          // View Button
           if (onViewTap != null)
             Container(
               decoration: BoxDecoration(
@@ -98,9 +143,9 @@ class FreeRideBanner extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Color(0xFF0062CA), // -16.81%
-                    Color(0xFF0051A7), // 69.38%
-                    Color(0xFF004084), // 90.56%
+                    Color(0xFF0062CA),
+                    Color(0xFF0051A7),
+                    Color(0xFF004084),
                   ],
                   stops: [0.0, 0.6938, 0.9056],
                 ),
@@ -157,7 +202,6 @@ class FreeRideBanner extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with close button
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -172,7 +216,7 @@ class FreeRideBanner extends StatelessWidget {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: Image.asset(
-                        'assets/images/logo/buspic.png',
+                        'assets/images/logo/free_ride.png',
                         width: 48,
                         height: 48,
                         fit: BoxFit.cover,
@@ -190,10 +234,10 @@ class FreeRideBanner extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      const Text(
                         'Free Ride Ongoing',
                         style: TextStyle(
                           fontSize: 16,
@@ -201,10 +245,19 @@ class FreeRideBanner extends StatelessWidget {
                           color: Color(0xFF1F2937),
                         ),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
-                        'Ride for free until 6:00 PM',
-                        style: TextStyle(
+                        _routeSummaryLine(),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF6B7280),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _untilLine(),
+                        style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF6B7280),
                         ),
@@ -222,7 +275,6 @@ class FreeRideBanner extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          // Route Info
           Row(
             children: [
               Container(
@@ -234,10 +286,10 @@ class FreeRideBanner extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'SM Cebu → Parkmall → Tamiya Terminal',
-                  style: TextStyle(
+                  _routeSummaryLine(),
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF1F2937),
@@ -247,12 +299,11 @@ class FreeRideBanner extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          // Additional Info
           Row(
             children: [
               _buildInfoItem(
                 icon: Icons.access_time,
-                text: 'ETA: 8-12 mins to next stop',
+                text: _untilLine(),
                 color: const Color(0xFF6B7280),
               ),
             ],
@@ -291,12 +342,14 @@ class FreeRideBanner extends StatelessWidget {
       children: [
         Icon(icon, size: 14, color: color),
         const SizedBox(width: 6),
-        Text(
-          text,
-          style: TextStyle(
-            fontSize: 12,
-            color: color,
-            fontWeight: FontWeight.w500,
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
