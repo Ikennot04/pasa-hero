@@ -1,5 +1,6 @@
 import Route from "./route.model.js"; // Model
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
+import RouteStop from "../route_stop/route_stop.model.js";
 
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
@@ -197,13 +198,17 @@ export const RouteService = {
       error.statusCode = 404;
       throw error;
     }
-    const busIds = await BusAssignment.distinct("bus_id", {
-      assignment_status: "active",
-      route_id: route._id,
-    });
+    const [busIds, routeStops] = await Promise.all([
+      BusAssignment.distinct("bus_id", {
+        assignment_status: "active",
+        route_id: route._id,
+      }),
+      RouteStop.find({ route_id: String(route._id) }).sort({ stop_order: 1 }),
+    ]);
     return {
       ...route.toObject(),
       active_buses_count: busIds.length,
+      route_stops: routeStops.map((stop) => stop.toObject()),
     };
   },
   // UPDATE ROUTE BY ID ===================================================================
