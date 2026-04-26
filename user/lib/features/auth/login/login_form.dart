@@ -24,50 +24,9 @@ class LoginForm extends StatefulWidget {
 class _LoginFormState extends State<LoginForm> {
   bool _obscurePassword = true;
   String? _validationError;
-  
-  // Scroll controller for automatic scrolling to focused fields
-  final ScrollController _scrollController = ScrollController();
-  
-  // Focus nodes for each field to detect when they're focused
-  final FocusNode _emailFocusNode = FocusNode();
-  final FocusNode _passwordFocusNode = FocusNode();
-  
-  // Global keys for each field to get their positions
-  final GlobalKey _emailKey = GlobalKey();
-  final GlobalKey _passwordKey = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    // Listen to focus changes and scroll to focused field
-    _emailFocusNode.addListener(() => _scrollToFocusedField(_emailKey));
-    _passwordFocusNode.addListener(() => _scrollToFocusedField(_passwordKey));
-  }
-  
-  void _scrollToFocusedField(GlobalKey key) {
-    // Wait for the next frame to ensure the keyboard has appeared and layout is complete
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      
-      final BuildContext? fieldContext = key.currentContext;
-      if (fieldContext == null) return;
-      
-      // Use Flutter's built-in ensureVisible for automatic scrolling
-      Scrollable.ensureVisible(
-        fieldContext,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-        alignment: 0.1, // Position field at 10% from top (above keyboard)
-        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-      );
-    });
-  }
 
   @override
   void dispose() {
-    _scrollController.dispose();
-    _emailFocusNode.dispose();
-    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -101,50 +60,31 @@ class _LoginFormState extends State<LoginForm> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final screenWidth = MediaQuery.of(context).size.width;
-            final viewInsets = MediaQuery.of(context).viewInsets;
-            final keyboardHeight = viewInsets.bottom;
             final isSmallScreen = screenWidth < 600;
             
-            // Calculate available height for form (accounting for keyboard)
+            // Calculate available height for form
             final availableHeight = constraints.maxHeight;
             
-            // Responsive values
+            // Responsive values - adjusted to fit with errors visible (reduced to prevent overflow)
             final horizontalPadding = isSmallScreen ? 24.0 : 28.0;
-            final verticalPadding = isSmallScreen ? 16.0 : 20.0;
+            final verticalPadding = isSmallScreen ? 10.0 : 14.0;
             final titleFontSize = isSmallScreen ? 24.0 : 26.0;
             final labelFontSize = isSmallScreen ? 15.0 : 16.0;
             final inputFontSize = isSmallScreen ? 17.0 : 18.0;
             final fieldHeight = isSmallScreen ? 56.0 : 60.0;
             final buttonHeight = isSmallScreen ? 50.0 : 54.0;
             
-            // Dynamic spacing - responsive to available space
-            final baseSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 10.0 : 12.0);
-            final titleSpacing = availableHeight < 600 ? 12.0 : (availableHeight < 700 ? 16.0 : 20.0);
-            final fieldSpacing = availableHeight < 600 ? 14.0 : (availableHeight < 700 ? 16.0 : 18.0);
+            // Dynamic spacing - optimized to fit content with errors (reduced to prevent overflow)
+            final baseSpacing = availableHeight < 600 ? 5.0 : (availableHeight < 700 ? 7.0 : 9.0);
+            final titleSpacing = availableHeight < 600 ? 6.0 : (availableHeight < 700 ? 10.0 : 14.0);
+            final fieldSpacing = availableHeight < 600 ? 10.0 : (availableHeight < 700 ? 12.0 : 14.0);
             
-            return Scrollbar(
-              controller: _scrollController,
-              thumbVisibility: true,
-              thickness: 6.0,
-              radius: const Radius.circular(3.0),
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                physics: const ClampingScrollPhysics(),
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: EdgeInsets.only(
-                  left: horizontalPadding,
-                  right: horizontalPadding,
-                  top: verticalPadding,
-                  bottom: verticalPadding + keyboardHeight,
-                ),
-                child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: availableHeight - keyboardHeight,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+            return Padding(
+              padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: verticalPadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   SizedBox(height: baseSpacing),
                   // Title
                   Text(
@@ -163,7 +103,9 @@ class _LoginFormState extends State<LoginForm> {
                         return BlocBuilder<AuthBlocBloc, AuthBlocState>(
                           builder: (context, state) {
                             final errorMessage = _validationError ?? 
-                              (state.error?.toString().replaceFirst('Exception: ', ''));
+                              (state.error != null 
+                                ? state.error.toString().replaceFirst('Exception: ', '')
+                                : null);
                             
                             if (errorMessage != null) {
                               return Container(
@@ -222,13 +164,10 @@ class _LoginFormState extends State<LoginForm> {
                   ),
                   SizedBox(height: baseSpacing),
                   SizedBox(
-                    key: _emailKey,
                     height: fieldHeight,
                     child: TextField(
                       controller: widget.emailController,
-                      focusNode: _emailFocusNode,
                       keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
                       style: TextStyle(fontSize: inputFontSize),
                       decoration: InputDecoration(
                         filled: true,
@@ -273,13 +212,10 @@ class _LoginFormState extends State<LoginForm> {
                   ),
                   SizedBox(height: baseSpacing),
                   SizedBox(
-                    key: _passwordKey,
                     height: fieldHeight,
                     child: TextField(
                       controller: widget.passwordController,
-                      focusNode: _passwordFocusNode,
                       obscureText: _obscurePassword,
-                      textInputAction: TextInputAction.done,
                       style: TextStyle(fontSize: inputFontSize),
                       decoration: InputDecoration(
                         filled: true,
@@ -555,11 +491,9 @@ class _LoginFormState extends State<LoginForm> {
                     ),
                   ),
                   SizedBox(height: baseSpacing),
-                  ],
-                ),
+                ],
               ),
-            ),
-          );
+            );
           },
         ),
       ),

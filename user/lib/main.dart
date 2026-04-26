@@ -4,8 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'splashscreen/splash_screen.dart';
 import 'features/near_me/Screen/nearme_screen.dart';
-import 'core/services/user_location_sync_service.dart';
-import 'core/widgets/location_services_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,9 +20,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'PasaHero',
-      builder: (context, child) => LocationServicesGate(
-        child: child ?? const SizedBox.shrink(),
-      ),
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
@@ -113,8 +108,6 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _locationSyncStarted = false;
-
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -131,28 +124,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
         // If user is logged in, show near me screen
         if (snapshot.hasData && snapshot.data != null) {
-          if (!_locationSyncStarted) {
-            UserLocationSyncService.instance.start();
-            _locationSyncStarted = true;
-          }
           // User is logged in - navigate to near me screen
           return const NearMeScreen();
-        }
-
-        if (_locationSyncStarted) {
-          UserLocationSyncService.instance.stop();
-          _locationSyncStarted = false;
         }
 
         // User is not logged in - show splash screen
         return const SplashScreen();
       },
     );
-  }
-
-  @override
-  void dispose() {
-    UserLocationSyncService.instance.stop();
-    super.dispose();
   }
 }

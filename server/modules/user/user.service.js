@@ -5,7 +5,6 @@ import fs from "fs";
 import path from "path";
 
 import User from "./user.model.js"; // Model
-import { getRoleId } from "../../utils/roleMapper.js";
 
 export const UserService = {
   // SIGNUP USER ===================================================================
@@ -53,17 +52,11 @@ export const UserService = {
     const salt = await bcrypt.genSalt(10);
     const hashPassword = await bcrypt.hash(data.password, salt);
 
-    // Get role and roleid
-    const role = data?.role || "user";
-    const roleid = getRoleId(role);
-
     // Create User
     const createUser = await User.create({
       ...data,
       password: hashPassword,
       profile_image: userImage,
-      role: role,
-      roleid: roleid,
     });
     return createUser;
   },
@@ -276,16 +269,12 @@ export const UserService = {
     const salt = await bcrypt.genSalt(10);
     const hashPassword = await bcrypt.hash(data.password, salt);
 
-    // Get roleid from role
-    const roleid = getRoleId(role);
-
     // Create Admin User
     const createUser = await User.create({
       ...payload,
       password: hashPassword,
       profile_image: userImage,
       role: role,
-      roleid: roleid,
       ...(role === "operator" ? { created_by } : {}),
     });
     return createUser;
@@ -315,16 +304,10 @@ export const UserService = {
       });
     }
 
-    // If role is being updated, also update roleid
-    const updateData = { ...data };
-    if (data?.role) {
-      updateData.roleid = getRoleId(data.role);
-    }
-
     const updatedUser = await User.findByIdAndUpdate(
       id,
       {
-        ...updateData,
+        ...data,
         profile_image: data?.profile_image,
       },
       { returnDocument: "after" },
