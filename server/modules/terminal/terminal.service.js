@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Terminal from "./terminal.model.js"; // Model
+import User from "../user/user.model.js";
 import Route from "../route/route.model.js";
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import TerminalLog from "../terminal_log/terminal_log.model.js";
@@ -96,11 +97,36 @@ export const TerminalService = {
   },
   // GET TERMINAL BY ID ===================================================================
   async getTerminalById(terminalId) {
-    const terminal = await Terminal.findById(terminalId);
+    const terminal = await Terminal.findById(terminalId).lean();
     if (!terminal) {
       throw new Error('Terminal not found.');
     }
-    return terminal;
+
+    const terminalKey = String(terminalId);
+    const terminalObjectId = mongoose.Types.ObjectId.isValid(terminalId)
+      ? new mongoose.Types.ObjectId(terminalId)
+      : null;
+    const assignedMatch = terminalObjectId
+      ? { $in: [terminalKey, terminalObjectId] }
+      : terminalKey;
+
+    const userSelect = "f_name l_name email status role";
+    const [assigned_terminal_admins, assigned_operators] = await Promise.all([
+      User.find({ assigned_terminal: assignedMatch, role: "terminal admin" })
+        .select(userSelect)
+        .sort({ f_name: 1, l_name: 1 })
+        .lean(),
+      User.find({ assigned_terminal: assignedMatch, role: "operator" })
+        .select(userSelect)
+        .sort({ f_name: 1, l_name: 1 })
+        .lean(),
+    ]);
+
+    return {
+      ...terminal,
+      assigned_terminal_admins,
+      assigned_operators,
+    };
   },
   // UPDATE TERMINAL BY ID ===================================================================
   async updateTerminalById(terminalId, updateData) {
