@@ -8,6 +8,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/otp_verification_service.dart';
 import '../../../core/services/change_password_service.dart';
 import '../../../core/services/email_verification_service.dart';
+import '../../../core/services/change_email_service.dart';
 import '../../../core/themes/validation_theme.dart';
 import 'forgot_password_reset.dart';
 
@@ -239,6 +240,7 @@ class _ForgotPasswordOTPScreenState extends State<ForgotPasswordOTPScreen> {
           otpVerificationService: OTPVerificationService(),
           changePasswordService: ChangePasswordService(),
           emailVerificationService: EmailVerificationService(),
+          changeEmailService: ChangeEmailService(),
         ),
       );
     }

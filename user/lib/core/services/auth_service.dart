@@ -2,10 +2,17 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:math';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static const String _signupUrl =
+      'https://pasa-hero-server.vercel.app/api/users/auth/signup';
+  static const String _signinUrl =
+      'https://pasa-hero-server.vercel.app/api/users/auth/signin';
   
   // Lazy initialization of GoogleSignIn to avoid errors if clientId is not set
   GoogleSignIn? _googleSignIn;
@@ -25,6 +32,9 @@ class AuthService {
   // Store the Google account from getGoogleUserEmail() to reuse in signUpWithGoogle()
   // Use static to persist across AuthService instances
   static GoogleSignInAccount? _cachedGoogleAccount;
+  static const String _userIdChars =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  final Random _random = Random.secure();
   
   // Getter for cached account
   GoogleSignInAccount? get cachedGoogleAccount => _cachedGoogleAccount;
@@ -32,6 +42,24 @@ class AuthService {
   // Setter for cached account
   void setCachedGoogleAccount(GoogleSignInAccount? account) {
     _cachedGoogleAccount = account;
+  }
+
+  Future<String> _generateUniqueUserId({int length = 12}) async {
+    while (true) {
+      final candidate = List.generate(
+        length,
+        (_) => _userIdChars[_random.nextInt(_userIdChars.length)],
+      ).join();
+
+      final existing = await _firestore
+          .collection('users')
+          .where('user_id', isEqualTo: candidate)
+          .limit(1)
+          .get();
+      if (existing.docs.isEmpty) {
+        return candidate;
+      }
+    }
   }
 
   // Get the Web OAuth Client ID from Firebase options
@@ -42,7 +70,7 @@ class AuthService {
     // Web OAuth Client ID from Firebase Console
     // This is required for Android/iOS Google Sign-In to work properly
     // The Web Client ID is used as serverClientId for mobile platforms
-    const String? webClientId = '464857061623-ohoa4afqj73bka9l3mn4rv7mdrpe0ra0.apps.googleusercontent.com';
+    const String webClientId = '464857061623-ohoa4afqj73bka9l3mn4rv7mdrpe0ra0.apps.googleusercontent.com';
     
     return webClientId;
   }
@@ -59,6 +87,31 @@ class AuthService {
     required String password,
   }) async {
     try {
+      final signinResponse = await http.post(
+        Uri.parse(_signinUrl),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'email': email.trim(),
+          'password': password,
+        }),
+      );
+
+      if (signinResponse.statusCode < 200 || signinResponse.statusCode >= 300) {
+        String message = 'Failed to sign in';
+        try {
+          final parsed = jsonDecode(signinResponse.body);
+          if (parsed is Map<String, dynamic>) {
+            final backendMessage = parsed['message']?.toString();
+            if (backendMessage != null && backendMessage.isNotEmpty) {
+              message = backendMessage;
+            }
+          }
+        } catch (_) {}
+        throw Exception(message);
+      }
+
       final credential = await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
@@ -79,6 +132,38 @@ class AuthService {
     required String lastName,
   }) async {
     try {
+      // Create backend user with multipart payload:
+      // - image_type: "user"
+      // - data: { f_name, l_name, email, password, role }
+      final signupRequest = http.MultipartRequest(
+        'POST',
+        Uri.parse(_signupUrl),
+      );
+      signupRequest.fields['image_type'] = 'user';
+      signupRequest.fields['data'] = jsonEncode({
+        'f_name': firstName.trim(),
+        'l_name': lastName.trim(),
+        'email': email.trim(),
+        'password': password,
+        'role': 'user',
+      });
+
+      final signupResponse = await signupRequest.send();
+      final signupBody = await signupResponse.stream.bytesToString();
+      if (signupResponse.statusCode < 200 || signupResponse.statusCode >= 300) {
+        String message = 'Failed to sign up';
+        try {
+          final parsed = jsonDecode(signupBody);
+          if (parsed is Map<String, dynamic>) {
+            final backendMessage = parsed['message']?.toString();
+            if (backendMessage != null && backendMessage.isNotEmpty) {
+              message = backendMessage;
+            }
+          }
+        } catch (_) {}
+        throw Exception(message);
+      }
+
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
@@ -86,11 +171,15 @@ class AuthService {
 
       // Update user display name and save to Firestore
       if (credential.user != null) {
+        final userId = await _generateUniqueUserId();
         // Save additional user data to Firestore first
         await _firestore.collection('users').doc(credential.user!.uid).set({
           'firstName': firstName,
           'lastName': lastName,
           'email': email.trim(),
+          'user_id': userId,
+          'role': 'user',
+          'roleid': 1,
           'createdAt': FieldValue.serverTimestamp(),
         });
         
@@ -152,7 +241,7 @@ class AuthService {
             throw Exception('Google Sign-In failed. Please try again.');
           }
           rethrow;
-        };
+        }
       } else {
         // For mobile platforms, use regular signIn
         googleUser = await googleSignIn.signIn();
@@ -587,10 +676,14 @@ class AuthService {
                   : '';
 
               try {
+                final generatedUserId = await _generateUniqueUserId();
                 final userData = {
                   'firstName': firstName.isNotEmpty ? firstName : 'User',
                   'lastName': lastName.isNotEmpty ? lastName : '',
                   'email': userCredential.user!.email ?? '',
+                  'user_id': generatedUserId,
+                  'role': 'user',
+                  'roleid': 1,
                   'createdAt': FieldValue.serverTimestamp(),
                   'signUpMethod': 'google',
                 };
@@ -664,10 +757,14 @@ class AuthService {
             : '';
 
         try {
+          final generatedUserId = await _generateUniqueUserId();
           final userData = {
           'firstName': firstName.isNotEmpty ? firstName : 'User',
           'lastName': lastName.isNotEmpty ? lastName : '',
           'email': userCredential.user!.email ?? '',
+          'user_id': generatedUserId,
+          'role': 'user',
+          'roleid': 1,
           'createdAt': FieldValue.serverTimestamp(),
           'signUpMethod': 'google',
           };
@@ -719,6 +816,24 @@ class AuthService {
   // Sign out
   Future<void> signOut() async {
     try {
+      final user = _auth.currentUser;
+      if (user != null) {
+        // Mark profile/status offline before sign out.
+        await _firestore.collection('users').doc(user.uid).set({
+          'status': 0,
+          'online': 0,
+          'last_seen': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        // Mark live location offline, then remove live marker document.
+        await _firestore.collection('user_locations').doc(user.uid).set({
+          'status': 0,
+          'online': 0,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        await _firestore.collection('user_locations').doc(user.uid).delete();
+      }
       await _auth.signOut();
       await googleSignIn.signOut(); // Also sign out from Google
       setCachedGoogleAccount(null); // Clear cached Google account (static)
