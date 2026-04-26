@@ -38,10 +38,6 @@ dependencies:
   flutter_bloc: ^8.1.4
   shared_preferences: ^2.2.2
   http: ^1.1.0
-  google_maps_flutter: ^2.5.0
-  geolocator: ^10.1.0
-  permission_handler: ^11.0.1
-  app_settings: ^6.1.1
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -75,11 +71,6 @@ flutter:
     - assets/images/logo/Rectangle.png
     - assets/images/logo/SealCheck.png
     - assets/images/splashscreen/spalshscreen.png
-    - assets/images/logo/Bus.png
-    - assets/images/logo/buspic.png
-    - assets/images/logo/free_ride.png
-    - assets/images/logo/bustopSign.png
-    - assets/map_styles/transportation_map_style.json
     
 
   # An image asset can refer to one or more resolution-specific "variants", see
