@@ -14,6 +14,17 @@ const routeSchema = new mongoose.Schema(
       ref: "Terminal",
       default: null,
     },
+    
+    // Optional coordinate endpoints for routes without a terminal endpoint.
+    start_location: {
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
+    },
+    end_location: {
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
+    },
+
     estimated_duration: { type: Number }, // minutes
     status: {
       type: String,

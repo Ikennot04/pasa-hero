@@ -132,7 +132,9 @@ export const RouteService = {
     const reverseRouteData = {
       ...primaryRouteData,
       start_terminal_id: routeData.end_terminal_id,
-      end_terminal_id: routeData.start_terminal_id,
+      end_terminal_id: routeData.start_terminal_id ?? null,
+      start_location: routeData.end_location ?? null,
+      end_location: routeData.start_location ?? null,
       route_type: reverseRouteType,
     };
 
