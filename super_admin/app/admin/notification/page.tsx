@@ -12,6 +12,7 @@ import AddNotificationModal from "./_components/AddNotification";
 import { SystemLogProps } from "./_components/SystemLogProps";
 import SystemLogTable from "./_components/SystemLogTable";
 import { useGetNotifications } from "./_hooks/useGetNotifications";
+import { useGetSystemLogs } from "./_hooks/useGetSystemLogs";
 
 // Static data for notifications (matches backend notification.model.js)
 const NOTIFICATIONS_STATIC: NotificationProps[] = [
@@ -131,20 +132,7 @@ const NOTIFICATION_TYPE_OPTIONS: NotificationType[] = [
 const PRIORITY_OPTIONS: NotificationPriority[] = ["high", "medium", "low"];
 const SCOPE_OPTIONS: NotificationScope[] = ["bus", "route", "terminal", "system"];
 const NOTIFICATIONS_PER_PAGE = 10;
-
-// Static data for system logs (view logs from all users with action type and description)
-const SYSTEM_LOGS_STATIC: SystemLogProps[] = [
-  { id: "1", user_id: "u1", action: "login", description: "User signed in successfully from admin dashboard.", user_name: "Admin User", user_email: "admin@pasahero.com", createdAt: "2025-03-01T08:45:00", updatedAt: "2025-03-01T08:45:00" },
-  { id: "2", user_id: "u2", action: "create_route", description: "Created new route PITX — SM North EDSA (PITX-NEDSA).", user_name: "Route Manager", user_email: "routes@pasahero.com", createdAt: "2025-03-01T08:30:00", updatedAt: "2025-03-01T08:30:00" },
-  { id: "3", user_id: "u1", action: "update_terminal", description: "Updated terminal PITX status to active.", user_name: "Admin User", user_email: "admin@pasahero.com", createdAt: "2025-03-01T08:15:00", updatedAt: "2025-03-01T08:15:00" },
-  { id: "4", user_id: "u3", action: "create_notification", description: "Sent manual notification: Delay on PITX — SM North EDSA.", user_name: "Operator", user_email: "ops@pasahero.com", createdAt: "2025-03-01T08:00:00", updatedAt: "2025-03-01T08:00:00" },
-  { id: "5", user_id: "u2", action: "delete_route", description: "Archived route PITX — Fairview (Express).", user_name: "Route Manager", user_email: "routes@pasahero.com", createdAt: "2025-03-01T07:50:00", updatedAt: "2025-03-01T07:50:00" },
-  { id: "6", user_id: "u1", action: "logout", description: "User signed out from admin dashboard.", user_name: "Admin User", user_email: "admin@pasahero.com", createdAt: "2025-02-28T18:00:00", updatedAt: "2025-02-28T18:00:00" },
-  { id: "7", user_id: "u4", action: "update_bus", description: "Updated bus 01-AB assignment to route PITX-NEDSA.", user_name: "Fleet Admin", user_email: "fleet@pasahero.com", createdAt: "2025-03-01T07:30:00", updatedAt: "2025-03-01T07:30:00" },
-  { id: "8", user_id: "u3", action: "view_report", description: "Exported notification volume report for March 2025.", user_name: "Operator", user_email: "ops@pasahero.com", createdAt: "2025-03-01T07:00:00", updatedAt: "2025-03-01T07:00:00" },
-  { id: "9", user_id: "u1", action: "create_user", description: "Created new terminal admin for Monumento.", user_name: "Admin User", user_email: "admin@pasahero.com", createdAt: "2025-02-28T16:20:00", updatedAt: "2025-02-28T16:20:00" },
-  { id: "10", user_id: "u2", action: "update_route", description: "Changed estimated duration for route MON-FV to 55 minutes.", user_name: "Route Manager", user_email: "routes@pasahero.com", createdAt: "2025-03-01T06:45:00", updatedAt: "2025-03-01T06:45:00" },
-];
+const SYSTEM_LOGS_PER_PAGE = 10;
 
 export default function Notification() {
   const [notifications, setNotifications] =
@@ -158,12 +146,19 @@ export default function Notification() {
     "all"
   );
   const [requestedPage, setRequestedPage] = useState(1);
+  const [requestedLogPage, setRequestedLogPage] = useState(1);
   const [logSearchQuery, setLogSearchQuery] = useState("");
   const [logActionFilter, setLogActionFilter] = useState<string>("all");
   const { getNotifications, error: notificationsError, isLoading } =
     useGetNotifications();
+  const {
+    getSystemLogs,
+    bulkDeleteSystemLogs,
+    error: systemLogsError,
+    isLoading: systemLogsLoading,
+  } = useGetSystemLogs();
 
-  const [logs, setLogs] = useState<SystemLogProps[]>(SYSTEM_LOGS_STATIC);
+  const [logs, setLogs] = useState<SystemLogProps[]>([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -181,13 +176,37 @@ export default function Notification() {
     };
   }, [getNotifications]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchLogs = async () => {
+      const data = await getSystemLogs();
+      if (!isMounted) return;
+      setLogs(data);
+    };
+
+    fetchLogs();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getSystemLogs]);
+
   const onBulkDelete = useCallback((ids: string[]) => {
     setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
   }, []);
 
-  const onBulkDeleteLogs = useCallback((ids: string[]) => {
-    setLogs((prev) => prev.filter((l) => !ids.includes(l.id)));
-  }, []);
+  const onBulkDeleteLogs = useCallback(
+    (ids: string[]) => {
+      void (async () => {
+        const ok = await bulkDeleteSystemLogs(ids);
+        if (!ok) return;
+        const data = await getSystemLogs();
+        setLogs(data);
+      })();
+    },
+    [bulkDeleteSystemLogs, getSystemLogs],
+  );
 
   const actionTypes = useMemo(() => {
     const set = new Set(logs.map((l) => l.action));
@@ -227,6 +246,27 @@ export default function Notification() {
       return matchSearch && matchAction;
     });
   }, [logs, logSearchQuery, logActionFilter]);
+
+  const totalLogPages = Math.max(
+    1,
+    Math.ceil(filteredLogs.length / SYSTEM_LOGS_PER_PAGE),
+  );
+  const currentLogPage = Math.min(requestedLogPage, totalLogPages);
+
+  const paginatedLogs = useMemo(() => {
+    const start = (currentLogPage - 1) * SYSTEM_LOGS_PER_PAGE;
+    const end = start + SYSTEM_LOGS_PER_PAGE;
+    return filteredLogs.slice(start, end);
+  }, [filteredLogs, currentLogPage]);
+
+  const logPaginationStart =
+    filteredLogs.length === 0
+      ? 0
+      : (currentLogPage - 1) * SYSTEM_LOGS_PER_PAGE + 1;
+  const logPaginationEnd = Math.min(
+    currentLogPage * SYSTEM_LOGS_PER_PAGE,
+    filteredLogs.length,
+  );
 
   const totalNotificationPages = Math.max(
     1,
@@ -376,14 +416,20 @@ export default function Notification() {
               placeholder="Search by user, action, or description..."
               className="input input-bordered w-full"
               value={logSearchQuery}
-              onChange={(e) => setLogSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setLogSearchQuery(e.target.value);
+                setRequestedLogPage(1);
+              }}
             />
           </div>
           <div className="form-control w-44">
             <select
               className="select select-bordered w-full"
               value={logActionFilter}
-              onChange={(e) => setLogActionFilter(e.target.value)}
+              onChange={(e) => {
+                setLogActionFilter(e.target.value);
+                setRequestedLogPage(1);
+              }}
             >
               <option value="all">All actions</option>
               {actionTypes.map((action) => (
@@ -394,11 +440,47 @@ export default function Notification() {
             </select>
           </div>
           <span className="text-sm text-base-content/70">
-            Showing {filteredLogs.length} of {logs.length} logs
+            Showing {logPaginationStart}-{logPaginationEnd} of{" "}
+            {filteredLogs.length} filtered ({logs.length} total)
           </span>
         </div>
       </div>
-      <SystemLogTable logs={filteredLogs} onBulkDelete={onBulkDeleteLogs} />
+      {systemLogsLoading && (
+        <div className="text-sm text-base-content/70">Loading system logs...</div>
+      )}
+      {!systemLogsLoading && systemLogsError && (
+        <div className="text-sm text-error">{systemLogsError}</div>
+      )}
+      <SystemLogTable logs={paginatedLogs} onBulkDelete={onBulkDeleteLogs} />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <span className="text-sm text-base-content/70">
+          Page {currentLogPage} of {totalLogPages}
+        </span>
+        <div className="join">
+          <button
+            type="button"
+            className="btn join-item btn-sm"
+            onClick={() =>
+              setRequestedLogPage((prev) => Math.max(1, prev - 1))
+            }
+            disabled={currentLogPage === 1}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            className="btn join-item btn-sm"
+            onClick={() =>
+              setRequestedLogPage((prev) =>
+                Math.min(totalLogPages, prev + 1),
+              )
+            }
+            disabled={currentLogPage === totalLogPages}
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
