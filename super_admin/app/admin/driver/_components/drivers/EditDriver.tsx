@@ -6,6 +6,7 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import type { DriverProps } from "./DriverProps";
 import { editDriverSchema, type EditDriverFormData } from "./editDriverSchema";
 import { MdOutlineEdit } from "react-icons/md";
+import { useUpdateDriver } from "../../_hooks/useUpdateDriver";
 
 export const EDIT_DRIVER_MODAL_ID = "edit-driver-modal";
 
@@ -13,6 +14,7 @@ type EditDriverProps = {
   driver: DriverProps;
   modalId?: string;
   onCloseModal?: () => void;
+  onDriverUpdated?: () => void | Promise<void>;
 };
 
 const defaultValues: EditDriverFormData = {
@@ -27,8 +29,11 @@ export default function EditDriverModal({
   driver,
   modalId = EDIT_DRIVER_MODAL_ID,
   onCloseModal,
+  onDriverUpdated,
 }: EditDriverProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { updateDriver, error: updateDriverError } = useUpdateDriver();
   const {
     register,
     handleSubmit,
@@ -51,42 +56,31 @@ export default function EditDriverModal({
 
   async function onSubmit(data: EditDriverFormData) {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const body: Record<string, unknown> = {
+      setSubmitError(null);
+      const body = {
         f_name: data.f_name,
         l_name: data.l_name,
         license_number: data.license_number,
         contact_number: data.contact_number || "",
         status: data.status,
       };
+      const formData = new FormData();
+      formData.append("data", JSON.stringify(body));
       if (data.profile_image?.length) {
-        const formData = new FormData();
-        formData.append("data", JSON.stringify(body));
+        formData.append("image_type", "driver");
         formData.append("image", data.profile_image[0]);
-        const res = await fetch(`${baseUrl}/drivers/${driver.id}`, {
-          method: "PATCH",
-          body: formData,
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err?.message ?? "Failed to update driver");
-        }
-      } else {
-        const res = await fetch(`${baseUrl}/drivers/${driver.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err?.message ?? "Failed to update driver");
-        }
       }
+      const response = await updateDriver(driver.id, formData);
+      if (!response) {
+        setSubmitError(updateDriverError ?? "Failed to update driver");
+        return;
+      }
+      await onDriverUpdated?.();
       (document.getElementById(modalId) as HTMLDialogElement)?.close();
       setIsOpen(false);
       onCloseModal?.();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update driver");
+    } catch {
+      setSubmitError("Failed to update driver");
     }
   }
 
@@ -111,7 +105,10 @@ export default function EditDriverModal({
       <button
         type="button"
         className="btn"
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setSubmitError(null);
+          setIsOpen(true);
+        }}
       >
         <MdOutlineEdit className="w-5 h-5" />
         Edit
@@ -170,10 +167,14 @@ export default function EditDriverModal({
                 <span className="label-text">Contact number</span>
               </label>
               <input
-                type="text"
-                placeholder="e.g. +63 912 345 6789"
+                type="tel"
+                inputMode="numeric"
+                placeholder="e.g. 0912 345 6789"
                 className={`input input-bordered w-full ${errors.contact_number ? "input-error" : ""}`}
                 {...register("contact_number")}
+                onInput={(event) => {
+                  event.currentTarget.value = event.currentTarget.value.replace("-", "");
+                }}
               />
               {errors.contact_number && (
                 <p className="text-error text-sm mt-1">
@@ -233,6 +234,9 @@ export default function EditDriverModal({
               {isSubmitting ? "Saving…" : "Save"}
             </button>
           </div>
+          {submitError || updateDriverError ? (
+            <p className="text-error text-sm px-4 pb-4">{submitError ?? updateDriverError}</p>
+          ) : null}
         </form>
       </div>
       <form method="dialog" className="modal-backdrop">

@@ -4,7 +4,22 @@ export const editDriverSchema = yup.object({
   f_name: yup.string().required("First name is required").trim(),
   l_name: yup.string().required("Last name is required").trim(),
   license_number: yup.string().required("License number is required").trim(),
-  contact_number: yup.string().trim(),
+  contact_number: yup
+    .string()
+    .trim()
+    .test(
+      "positiveContactNumber",
+      "Contact number must be greater than zero",
+      (value) => {
+        if (!value) return true;
+        const normalized = value.trim();
+        if (!normalized) return true;
+        if (normalized.includes("-")) return false;
+        const digitsOnly = normalized.replace(/\D/g, "");
+        if (!digitsOnly) return true;
+        return BigInt(digitsOnly) > 0n;
+      },
+    ),
   status: yup
     .string()
     .oneOf(["active", "inactive"], "Status must be active or inactive")

@@ -163,7 +163,7 @@ export default function Driver() {
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <DriverTable drivers={filteredDrivers} />
+        <DriverTable drivers={filteredDrivers} onDriverUpdated={refreshDrivers} />
       )}
       <div className="text-xl font-bold mt-10">Assignment Management Table</div>
       {assignmentsError ? (

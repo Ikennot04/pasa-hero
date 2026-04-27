@@ -23,11 +23,13 @@ function DriverStatusBadge({ status }: { status: string }) {
 type DriverTableProps = {
   drivers: DriverProps[];
   pageSize?: number;
+  onDriverUpdated?: () => void | Promise<void>;
 };
 
 export default function DriverTable({
   drivers,
   pageSize = DEFAULT_PAGE_SIZE,
+  onDriverUpdated,
 }: DriverTableProps) {
   const router = useRouter();
   const [page, setPage] = useState(1);
@@ -101,6 +103,7 @@ export default function DriverTable({
                     <EditDriverModal
                       driver={driver}
                       modalId={`${EDIT_DRIVER_MODAL_ID}-${driver.id}`}
+                      onDriverUpdated={onDriverUpdated}
                     />
                   </td>
                 </tr>
