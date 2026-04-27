@@ -37,7 +37,9 @@ export default function Bus() {
   }, [getBusses]);
 
   useEffect(() => {
-    void fetchBuses();
+    (async () => {
+      await fetchBuses();
+    })();
   }, [fetchBuses]);
 
   const [searchQuery, setSearchQuery] = useState("");

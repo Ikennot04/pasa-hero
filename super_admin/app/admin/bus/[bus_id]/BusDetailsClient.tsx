@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   FaArrowLeft,
@@ -9,11 +10,12 @@ import {
   FaGaugeHigh,
   FaUser,
   FaRoute,
+  FaTrash,
 } from "react-icons/fa6";
 import type { BusProps, AssignmentStatus, AssignmentResult } from "../BusProps";
 import { mapApiBusToBusProps, type ApiBus } from "../mapApiBus";
 import { useGetBusDetails } from "../_hooks/useGetBusDetails";
-import DeleteBusButton from "../_components/DeleteBus";
+import { useDeleteBus } from "../_hooks/useDeleteBus";
 
 function BusStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -94,10 +96,32 @@ type BusDetailsClientProps = {
 };
 
 export default function BusDetailsClient({ busId }: BusDetailsClientProps) {
+  const router = useRouter();
   const { getBusDetails, error: hookError } = useGetBusDetails();
+  const { deleteBus, error: deleteError } = useDeleteBus();
   const [bus, setBus] = useState<BusProps | null>(null);
   const [removedOrMissing, setRemovedOrMissing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!bus || isDeleting) return;
+    const isConfirmed = window.confirm(
+      `Are you sure you want to delete Bus ${bus.bus_number}? This action cannot be undone.`,
+    );
+    if (!isConfirmed) return;
+
+    setIsDeleting(true);
+    const response = await deleteBus(bus.id);
+
+    if (response?.success === true) {
+      router.push("/admin/bus");
+      router.refresh();
+      return;
+    }
+
+    setIsDeleting(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -191,10 +215,24 @@ export default function BusDetailsClient({ busId }: BusDetailsClientProps) {
           <div className="flex items-center gap-2">
             <BusStatusBadge status={bus.bus_status} />
             <OccupancyBadge status={bus.occupancy_status} />
-            <DeleteBusButton busId={bus.id} busNumber={bus.bus_number} />
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="btn bg-[#D0393A] hover:bg-[#D0393A]/80 gap-2 text-white rounded-xl btn-md text-base disabled:cursor-not-allowed disabled:opacity-70"
+              aria-label={`Delete bus ${bus.bus_number}`}
+            >
+              <FaTrash className="w-4 h-4" />
+              {isDeleting ? "Deleting..." : "Delete"}
+            </button>
           </div>
         </div>
       </div>
+      {deleteError ? (
+        <div role="alert" className="alert alert-error text-sm">
+          <span>{deleteError}</span>
+        </div>
+      ) : null}
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="group rounded-2xl border border-base-content/5 bg-base-100 p-5 shadow-md shadow-base-content/5 transition-shadow hover:shadow-lg">
