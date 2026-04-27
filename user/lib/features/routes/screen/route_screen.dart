@@ -6,6 +6,8 @@ import '../../../core/themes/validation_theme.dart';
 import '../../../core/models/operator_route_option.dart';
 import '../../../core/services/operator_route_options_service.dart';
 import '../../../core/services/nearby_operators_service.dart';
+import '../../../core/services/subscription_ids_service.dart';
+import '../route_constants.dart';
 import '../Module/route_card.dart';
 
 class RouteScreen extends StatefulWidget {
@@ -22,18 +24,12 @@ class _RouteScreenState extends State<RouteScreen> {
       NearbyOperatorsService();
   final TextEditingController _searchController = TextEditingController();
 
-  static const String _subscriptionsApiUrl =
-      'https://pasa-hero-server.vercel.app/api/user-subscriptions/';
-  static const String _routesApiUrl =
-      'https://pasa-hero-server.vercel.app/api/routes';
-  static const String _usersByFirebaseUidBaseUrl =
-      'https://pasa-hero-server.vercel.app/api/users/firebase';
-
   List<OperatorRouteOption> _routes = [];
   Map<String, int> _activeByRoute = {};
+  Map<String, String> _mongoRouteIdByCode = {};
+  String? _backendUserId;
   final Set<String> _followingRouteCodes = {};
   bool _loading = true;
-  bool _submittingFollow = false;
   String _search = '';
 
   @override
@@ -63,10 +59,31 @@ class _RouteScreenState extends State<RouteScreen> {
           counts[r.code.toUpperCase()] = 0;
         }
       }
+
+      String? backendUserId;
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      if (firebaseUser != null) {
+        backendUserId =
+            await SubscriptionIdsService.backendUserIdForFirebaseUid(
+          firebaseUser.uid,
+          email: firebaseUser.email,
+        );
+      }
+      final mongoRouteIds = await SubscriptionIdsService.fetchRouteIdByCodeMap();
+      final followedRouteCodes = await _loadFollowedRouteCodes(
+        backendUserId: backendUserId,
+        mongoRouteIdByCode: mongoRouteIds,
+      );
+
       if (!mounted) return;
       setState(() {
         _routes = routes;
         _activeByRoute = counts;
+        _mongoRouteIdByCode = mongoRouteIds;
+        _backendUserId = backendUserId;
+        _followingRouteCodes
+          ..clear()
+          ..addAll(followedRouteCodes);
         _loading = false;
       });
     } catch (_) {
@@ -75,148 +92,107 @@ class _RouteScreenState extends State<RouteScreen> {
     }
   }
 
-  Future<void> _followRoute(OperatorRouteOption route) async {
-    if (_submittingFollow) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in first.')),
-      );
-      return;
+  Future<Set<String>> _loadFollowedRouteCodes({
+    required String? backendUserId,
+    required Map<String, String> mongoRouteIdByCode,
+  }) async {
+    final firebaseUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final effectiveUserId = (backendUserId != null && backendUserId.isNotEmpty)
+        ? backendUserId
+        : firebaseUid;
+    if (effectiveUserId.isEmpty) {
+      return <String>{};
     }
 
-    setState(() => _submittingFollow = true);
     try {
-      final uri = Uri.parse(_subscriptionsApiUrl);
-      final normalizedRouteCode = route.code.trim().toUpperCase();
-      final backendUserId = await _fetchBackendUserId(user.uid);
-      final routeId = await _fetchRouteIdByCode(normalizedRouteCode);
-      if (backendUserId == null || backendUserId.isEmpty) {
-        throw Exception('Could not resolve backend user_id for this account.');
-      }
-      if (routeId == null || routeId.isEmpty) {
-        throw Exception('Could not resolve route_id for $normalizedRouteCode.');
-      }
+      // Mobile-only compatibility: backend currently reads user_id from GET body.
+      // Use http.Request so we can attach body to GET.
+      final request = http.Request(
+        'GET',
+        Uri.parse(kRouteSubscriptionsApiUrl),
+      )
+        ..headers.addAll(const {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        })
+        ..body = jsonEncode({'user_id': effectiveUserId});
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
-      final idToken = await user.getIdToken();
-      final headers = <String, String>{
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      if (idToken != null && idToken.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $idToken';
-      }
-
-      final response = await http
-          .post(
-            uri,
-            headers: headers,
-            body: jsonEncode({
-              'user_id': backendUserId,
-              'route_id': routeId,
-            }),
-          )
-          .timeout(const Duration(seconds: 12));
-
-      final message = _extractServerMessage(response.body);
-      final isSuccess = response.statusCode >= 200 && response.statusCode < 300;
-      final isAlreadyFollowed =
-          response.statusCode == 409 || message.toLowerCase().contains('already');
-
-      if (isSuccess || isAlreadyFollowed) {
-        if (!mounted) return;
-        setState(() {
-          _followingRouteCodes.add(normalizedRouteCode);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Now following $normalizedRouteCode.')),
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        // Fallback: if backend eventually supports query param, keep this path.
+        final fallback = await http.get(
+          Uri.parse(
+            '$kRouteSubscriptionsApiUrl?user_id=${Uri.encodeQueryComponent(effectiveUserId)}',
+          ),
+          headers: const {
+            'Accept': 'application/json',
+          },
         );
-      } else {
-        throw Exception('[${response.statusCode}] $message');
+        if (fallback.statusCode < 200 || fallback.statusCode >= 300) {
+          return <String>{};
+        }
+        return _extractFollowedRouteCodes(
+          responseBody: fallback.body,
+          mongoRouteIdByCode: mongoRouteIdByCode,
+        );
       }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not follow route: $e')),
+      return _extractFollowedRouteCodes(
+        responseBody: response.body,
+        mongoRouteIdByCode: mongoRouteIdByCode,
       );
-    } finally {
-      if (mounted) {
-        setState(() => _submittingFollow = false);
-      }
+    } catch (_) {
+      return <String>{};
     }
   }
 
-  Future<String?> _fetchBackendUserId(String firebaseUid) async {
-    final uri = Uri.parse('$_usersByFirebaseUidBaseUrl/$firebaseUid');
-    final response = await http.get(uri).timeout(const Duration(seconds: 12));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      return null;
+  Set<String> _extractFollowedRouteCodes({
+    required String responseBody,
+    required Map<String, String> mongoRouteIdByCode,
+  }) {
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      return <String>{};
     }
-    try {
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map<String, dynamic>) {
-        final rootId = decoded['_id']?.toString().trim();
-        if (rootId != null && rootId.isNotEmpty) return rootId;
 
-        final data = decoded['data'];
-        if (data is Map<String, dynamic>) {
-          final dataId = data['_id']?.toString().trim();
-          if (dataId != null && dataId.isNotEmpty) return dataId;
-          final user = data['user'];
-          if (user is Map<String, dynamic>) {
-            final userId = user['_id']?.toString().trim();
-            if (userId != null && userId.isNotEmpty) return userId;
-          }
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  Future<String?> _fetchRouteIdByCode(String routeCode) async {
-    final response =
-        await http.get(Uri.parse(_routesApiUrl)).timeout(const Duration(seconds: 12));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      return null;
+    final data = decoded['data'];
+    if (data is! List) {
+      return <String>{};
     }
-    try {
-      final decoded = jsonDecode(response.body);
-      Iterable<dynamic> routes = const [];
-      if (decoded is List) {
-        routes = decoded;
-      } else if (decoded is Map<String, dynamic>) {
-        final data = decoded['data'];
-        if (data is List) {
-          routes = data;
+
+    final routeCodeById = <String, String>{};
+    for (final entry in mongoRouteIdByCode.entries) {
+      routeCodeById[entry.value] = entry.key.toUpperCase();
+    }
+
+    final followed = <String>{};
+    for (final item in data) {
+      if (item is! Map<String, dynamic>) continue;
+      final routeRef = item['route_id'];
+      if (routeRef == null) continue;
+
+      if (routeRef is Map<String, dynamic>) {
+        final code = routeRef['route_code']?.toString().trim().toUpperCase();
+        if (code != null && code.isNotEmpty) {
+          followed.add(code);
+          continue;
         }
+        final routeId = routeRef['_id']?.toString().trim();
+        if (routeId != null && routeId.isNotEmpty) {
+          final mappedCode = routeCodeById[routeId];
+          if (mappedCode != null) followed.add(mappedCode);
+        }
+        continue;
       }
 
-      for (final item in routes) {
-        if (item is! Map<String, dynamic>) continue;
-        final code = item['route_code']?.toString().trim().toUpperCase();
-        if (code == routeCode) {
-          final id = item['_id']?.toString().trim();
-          if (id != null && id.isNotEmpty) return id;
-        }
+      final routeId = routeRef.toString().trim();
+      if (routeId.isEmpty) continue;
+      final mappedCode = routeCodeById[routeId];
+      if (mappedCode != null) {
+        followed.add(mappedCode);
       }
-    } catch (_) {}
-    return null;
-  }
-
-  String _extractServerMessage(String responseBody) {
-    try {
-      final decoded = jsonDecode(responseBody);
-      if (decoded is Map<String, dynamic>) {
-        for (final key in ['message', 'error', 'detail']) {
-          final v = decoded[key]?.toString().trim();
-          if (v != null && v.isNotEmpty) {
-            return v;
-          }
-        }
-      }
-    } catch (_) {}
-    final body = responseBody.trim();
-    return body.isEmpty ? 'Request failed' : body;
+    }
+    return followed;
   }
 
   @override
@@ -248,7 +224,7 @@ class _RouteScreenState extends State<RouteScreen> {
                   children: [
                     // Title
                     const Text(
-                      'Active Routes',
+                      kRoutesTitle,
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
@@ -278,7 +254,7 @@ class _RouteScreenState extends State<RouteScreen> {
                               controller: _searchController,
                               onChanged: (v) => setState(() => _search = v),
                               decoration: InputDecoration(
-                                hintText: 'Search route',
+                                hintText: kRoutesSearchHint,
                                 hintStyle: const TextStyle(
                                   color: ValidationTheme.textSecondary,
                                   fontSize: 14,
@@ -344,8 +320,9 @@ class _RouteScreenState extends State<RouteScreen> {
                             final routeCode = route.code.toUpperCase();
                             final active = _activeByRoute[routeCode] ?? 0;
                             return RouteCard(
-                              routeId: 'Route ${route.code}',
-                              estimatedTime: 'Estimated: 20 min',
+                              routeId: '$kRouteIdPrefix${route.code}',
+                              estimatedTime:
+                                  '$kEstimatedLabelPrefix$kEstimatedFallback',
                               routeDescription: route.description ??
                                   route.displayName,
                               status: null,
@@ -353,9 +330,18 @@ class _RouteScreenState extends State<RouteScreen> {
                               isFollowing:
                                   _followingRouteCodes.contains(routeCode),
                               activeBuses: active,
-                              onFollowPressed: _submittingFollow
-                                  ? null
-                                  : () => _followRoute(route),
+                              backendUserId: _backendUserId,
+                              backendRouteId: _mongoRouteIdByCode[routeCode],
+                              followRouteCode: routeCode,
+                              onFollowChanged: (code, isFollowing) {
+                                setState(() {
+                                  if (isFollowing) {
+                                    _followingRouteCodes.add(code);
+                                  } else {
+                                    _followingRouteCodes.remove(code);
+                                  }
+                                });
+                              },
                             );
                           },
                         ),

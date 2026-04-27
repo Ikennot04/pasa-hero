@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/themes/validation_theme.dart';
+import '../route_constants.dart';
 import '../../map/map.dart';
 
 class RouteDetailsScreen extends StatelessWidget {
@@ -13,7 +14,7 @@ class RouteDetailsScreen extends StatelessWidget {
     required this.routeId,
     required this.estimatedArrival,
     this.status,
-    this.routeDescription = 'Tamiya to Plaza Independencia',
+    this.routeDescription = '',
   });
 
   Color _getStatusColor() {
@@ -159,79 +160,28 @@ class RouteDetailsScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 24),
-                        _buildRouteStop(
-                          isFirst: true,
-                          isLast: false,
-                          stopName: 'Tamiya Terminal',
-                          stopAddress: null,
-                          arrivalTime: null,
-                          isActive: false,
-                          icon: Icons.directions_bus,
-                        ),
-                        _buildRouteStop(
-                          isFirst: false,
-                          isLast: false,
-                          stopName: 'University of Cebu - Lapu-lapu & Mandaue',
-                          stopAddress: null,
-                          arrivalTime: 'Arriving in 7 min',
-                          isActive: true,
-                          icon: Icons.directions_bus,
-                        ),
-                        _buildRouteStop(
-                          isFirst: false,
-                          isLast: false,
-                          stopName: 'DPWH',
-                          stopAddress: 'A.C Cortes Ave',
-                          arrivalTime: null,
-                          isActive: false,
-                          icon: null,
-                        ),
-                        _buildRouteStop(
-                          isFirst: false,
-                          isLast: false,
-                          stopName: 'Parkmall',
-                          stopAddress: 'Reclamation Area, Mandaue City',
-                          arrivalTime: null,
-                          isActive: false,
-                          icon: null,
-                        ),
-                        _buildRouteStop(
-                          isFirst: false,
-                          isLast: false,
-                          stopName: 'Pier 5',
-                          stopAddress: 'Cebu City',
-                          arrivalTime: null,
-                          isActive: false,
-                          icon: null,
-                        ),
-                        _buildRouteStop(
-                          isFirst: false,
-                          isLast: false,
-                          stopName: 'Pier 4',
-                          stopAddress: 'Cebu City',
-                          arrivalTime: null,
-                          isActive: false,
-                          icon: null,
-                        ),
-                        _buildRouteStop(
-                          isFirst: false,
-                          isLast: false,
-                          stopName: 'Pier 3',
-                          stopAddress: 'Cebu City',
-                          arrivalTime: null,
-                          isActive: false,
-                          icon: null,
-                        ),
-                        _buildRouteStop(
-                          isFirst: false,
-                          isLast: true,
-                          stopName: 'Plaza Independencia',
-                          stopAddress: 'Cebu City',
-                          arrivalTime: null,
-                          isActive: false,
-                          icon: Icons.location_on,
-                          isDestination: true,
-                        ),
+                        if (routeDescription.trim().isNotEmpty)
+                          _buildRouteStop(
+                            isFirst: true,
+                            isLast: true,
+                            stopName: routeDescription.trim(),
+                            stopAddress: null,
+                            arrivalTime: null,
+                            isActive: false,
+                            icon: Icons.route,
+                          )
+                        else
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Text(
+                              kNoStopsAvailableMessage,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: ValidationTheme.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: 24),
                       ],
                     ),

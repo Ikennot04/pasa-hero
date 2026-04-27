@@ -3,8 +3,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'subscription_ids_service.dart';
 import 'dart:convert';
 import 'dart:math';
+
+/// Google signed in to Firebase but the app has no Firestore profile yet.
+/// Sign out Firebase only, keep Google session for [AuthService.signUpWithGoogle] after OTP.
+class GoogleLoginNeedsOtp implements Exception {
+  GoogleLoginNeedsOtp({
+    required this.email,
+    required this.displayName,
+  });
+
+  final String email;
+  final String displayName;
+
+  @override
+  String toString() => 'GoogleLoginNeedsOtp: $email';
+}
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -13,6 +29,10 @@ class AuthService {
       'https://pasa-hero-server.vercel.app/api/users/auth/signup';
   static const String _signinUrl =
       'https://pasa-hero-server.vercel.app/api/users/auth/signin';
+  static const String _logoutUrlBase =
+      'https://pasa-hero-server.vercel.app/api/users/auth/logout';
+  static const String _usersApiBase =
+      'https://pasa-hero-server.vercel.app/api/users';
   
   // Lazy initialization of GoogleSignIn to avoid errors if clientId is not set
   GoogleSignIn? _googleSignIn;
@@ -44,22 +64,201 @@ class AuthService {
     _cachedGoogleAccount = account;
   }
 
-  Future<String> _generateUniqueUserId({int length = 12}) async {
-    while (true) {
-      final candidate = List.generate(
+  /// Syncs the passenger profile to MongoDB via multipart `/api/users/auth/signup`.
+  /// Fields match the API: [f_name], [l_name], [email], [password], [role] (always `user`),
+  /// [assigned_terminal] (null for passengers), [firebase_id].
+  Future<void> _postPassengerSignupToBackend({
+    required String firebaseUid,
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+  }) async {
+    final signupRequest = http.MultipartRequest(
+      'POST',
+      Uri.parse(_signupUrl),
+    );
+    signupRequest.fields['image_type'] = 'user';
+    signupRequest.fields['data'] = jsonEncode({
+      'f_name': firstName.trim(),
+      'l_name': lastName.trim(),
+      'email': email.trim(),
+      'password': password,
+      'role': 'user',
+      'assigned_terminal': null,
+      'firebase_id': firebaseUid,
+    });
+
+    final signupResponse = await signupRequest.send();
+    final signupBody = await signupResponse.stream.bytesToString();
+    if (signupResponse.statusCode < 200 || signupResponse.statusCode >= 300) {
+      String message = 'Failed to sync account with server';
+      try {
+        final parsed = jsonDecode(signupBody);
+        if (parsed is Map<String, dynamic>) {
+          final backendMessage = parsed['message']?.toString();
+          if (backendMessage != null && backendMessage.isNotEmpty) {
+            message = backendMessage;
+          }
+        }
+      } catch (_) {}
+      throw Exception(message);
+    }
+  }
+
+  /// Strong password for Mongo only (e.g. Google sign-up); meets server `isStrongPassword`.
+  String _generateBackendOnlyPassword() {
+    final n = _random.nextInt(900000) + 100000;
+    return 'Pasa$n!Aa1';
+  }
+
+  Future<void> _rollbackGoogleFirebaseUser(User? u) async {
+    try {
+      await u?.delete();
+    } catch (_) {}
+    try {
+      await _auth.signOut();
+      await googleSignIn.signOut();
+    } catch (_) {}
+  }
+
+  Future<void> _notifyBackendLogout(User user) async {
+    try {
+      final backendUserId = await SubscriptionIdsService.backendUserIdForFirebaseUid(
+        user.uid,
+        email: user.email,
+      );
+      if (backendUserId == null || backendUserId.isEmpty) {
+        return;
+      }
+
+      final response = await http.patch(
+        Uri.parse('$_logoutUrlBase/$backendUserId'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'firebase_uid': user.uid,
+          'email': user.email,
+        }),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        print(
+          '⚠️ Backend logout failed (HTTP ${response.statusCode}): ${response.body}',
+        );
+      }
+    } catch (e) {
+      // Do not block client logout on backend logout failure.
+      print('⚠️ Backend logout request error: $e');
+    }
+  }
+
+  bool _isBackendEmailAlreadyExistsError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('email already exists') ||
+        message.contains('email already exist');
+  }
+
+  Future<void> _linkExistingBackendUserToFirebase({
+    required String firebaseUid,
+    required String email,
+  }) async {
+    final backendUserId = await SubscriptionIdsService.backendUserIdForFirebaseUid(
+      firebaseUid,
+      email: email,
+    );
+    if (backendUserId == null || backendUserId.isEmpty) {
+      throw Exception(
+        'Existing backend account found but could not resolve backend user id.',
+      );
+    }
+
+    final updateRequest = http.MultipartRequest(
+      'PATCH',
+      Uri.parse('$_usersApiBase/$backendUserId'),
+    );
+    updateRequest.fields['data'] = jsonEncode({
+      'firebase_id': firebaseUid,
+      'status': 'active',
+    });
+
+    final response = await updateRequest.send();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await response.stream.bytesToString();
+      throw Exception(
+        'Failed to link existing backend account (HTTP ${response.statusCode}): $body',
+      );
+    }
+  }
+
+  Future<void> _syncGoogleUserToBackend({
+    required String firebaseUid,
+    required String email,
+    required String firstName,
+    required String lastName,
+  }) async {
+    try {
+      await _postPassengerSignupToBackend(
+        firebaseUid: firebaseUid,
+        email: email,
+        password: _generateBackendOnlyPassword(),
+        firstName: firstName,
+        lastName: lastName,
+      );
+    } catch (e) {
+      if (_isBackendEmailAlreadyExistsError(e)) {
+        await _linkExistingBackendUserToFirebase(
+          firebaseUid: firebaseUid,
+          email: email,
+        );
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _requireOtpRegistrationForNewGoogleUser({
+    required UserCredential userCredential,
+    required GoogleSignInAccount googleUser,
+  }) async {
+    final fbUser = userCredential.user;
+    final email = fbUser?.email?.trim().isNotEmpty == true
+        ? fbUser!.email!.trim()
+        : googleUser.email.trim();
+    if (email.isEmpty) {
+      await _auth.signOut();
+      await googleSignIn.signOut();
+      throw Exception('Your Google account has no email address.');
+    }
+    final displayName = fbUser?.displayName?.trim().isNotEmpty == true
+        ? fbUser!.displayName!.trim()
+        : (googleUser.displayName ?? '').trim();
+    setCachedGoogleAccount(googleUser);
+    await _auth.signOut();
+    throw GoogleLoginNeedsOtp(email: email, displayName: displayName);
+  }
+
+  String _generateUserIdFromUid(String uid, {int length = 12}) {
+    // Use Firebase UID as source so we avoid cross-document queries that may be
+    // blocked by Firestore security rules during signup.
+    final cleanUid = uid.trim();
+    if (cleanUid.isEmpty) {
+      return List.generate(
         length,
         (_) => _userIdChars[_random.nextInt(_userIdChars.length)],
       ).join();
-
-      final existing = await _firestore
-          .collection('users')
-          .where('user_id', isEqualTo: candidate)
-          .limit(1)
-          .get();
-      if (existing.docs.isEmpty) {
-        return candidate;
-      }
     }
+
+    final normalized = cleanUid.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    final targetLength = length < 6 ? 6 : length;
+    if (normalized.length >= targetLength) {
+      return normalized.substring(0, targetLength);
+    }
+
+    final buffer = StringBuffer(normalized);
+    while (buffer.length < targetLength) {
+      buffer.write(_userIdChars[_random.nextInt(_userIdChars.length)]);
+    }
+    return buffer.toString();
   }
 
   // Get the Web OAuth Client ID from Firebase options
@@ -132,46 +331,34 @@ class AuthService {
     required String lastName,
   }) async {
     try {
-      // Create backend user with multipart payload:
-      // - image_type: "user"
-      // - data: { f_name, l_name, email, password, role }
-      final signupRequest = http.MultipartRequest(
-        'POST',
-        Uri.parse(_signupUrl),
-      );
-      signupRequest.fields['image_type'] = 'user';
-      signupRequest.fields['data'] = jsonEncode({
-        'f_name': firstName.trim(),
-        'l_name': lastName.trim(),
-        'email': email.trim(),
-        'password': password,
-        'role': 'user',
-      });
-
-      final signupResponse = await signupRequest.send();
-      final signupBody = await signupResponse.stream.bytesToString();
-      if (signupResponse.statusCode < 200 || signupResponse.statusCode >= 300) {
-        String message = 'Failed to sign up';
-        try {
-          final parsed = jsonDecode(signupBody);
-          if (parsed is Map<String, dynamic>) {
-            final backendMessage = parsed['message']?.toString();
-            if (backendMessage != null && backendMessage.isNotEmpty) {
-              message = backendMessage;
-            }
-          }
-        } catch (_) {}
-        throw Exception(message);
-      }
-
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
 
+      final fbUser = credential.user;
+      if (fbUser == null) {
+        throw Exception('Registration failed');
+      }
+
+      try {
+        await _postPassengerSignupToBackend(
+          firebaseUid: fbUser.uid,
+          email: email.trim(),
+          password: password,
+          firstName: firstName,
+          lastName: lastName,
+        );
+      } catch (e) {
+        try {
+          await fbUser.delete();
+        } catch (_) {}
+        rethrow;
+      }
+
       // Update user display name and save to Firestore
       if (credential.user != null) {
-        final userId = await _generateUniqueUserId();
+        final userId = _generateUserIdFromUid(credential.user!.uid);
         // Save additional user data to Firestore first
         await _firestore.collection('users').doc(credential.user!.uid).set({
           'firstName': firstName,
@@ -348,16 +535,16 @@ class AuthService {
                   .get();
 
               if (!userDoc.exists) {
-                await _auth.signOut();
-                await googleSignIn.signOut();
-                throw Exception(
-                  'No account found. Please sign up first to create an account.',
+                await _requireOtpRegistrationForNewGoogleUser(
+                  userCredential: userCredential,
+                  googleUser: googleUser,
                 );
               }
             }
 
             return userCredential;
           } catch (e) {
+            if (e is GoogleLoginNeedsOtp) rethrow;
             throw Exception(
               '🚫 Google Sign-In Failed: ID Token is Required\n\n'
               'The google_sign_in package on web cannot provide an idToken\n'
@@ -403,11 +590,9 @@ class AuthService {
             .get();
 
         if (!userDoc.exists) {
-          // User doesn't exist in database - sign them out and throw error
-          await _auth.signOut();
-          await googleSignIn.signOut();
-          throw Exception(
-            'No account found. Please sign up first to create an account.',
+          await _requireOtpRegistrationForNewGoogleUser(
+            userCredential: userCredential,
+            googleUser: googleUser,
           );
         }
       }
@@ -415,9 +600,10 @@ class AuthService {
       return userCredential;
     } on FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
+    } on GoogleLoginNeedsOtp {
+      rethrow;
     } catch (e) {
-      if (e.toString().contains('No account found') || 
-          e.toString().contains('cancelled')) {
+      if (e.toString().contains('cancelled')) {
         rethrow;
       }
       // Handle popup_closed error
@@ -676,11 +862,25 @@ class AuthService {
                   : '';
 
               try {
-                final generatedUserId = await _generateUniqueUserId();
+                final fn = firstName.isNotEmpty ? firstName : 'User';
+                final ln = lastName;
+                final em = userCredential.user!.email?.trim() ?? '';
+                if (em.isEmpty) {
+                  throw Exception('Your Google account has no email address.');
+                }
+                await _syncGoogleUserToBackend(
+                  firebaseUid: userCredential.user!.uid,
+                  email: em,
+                  firstName: fn,
+                  lastName: ln,
+                );
+                final generatedUserId = _generateUserIdFromUid(
+                  userCredential.user!.uid,
+                );
                 final userData = {
-                  'firstName': firstName.isNotEmpty ? firstName : 'User',
-                  'lastName': lastName.isNotEmpty ? lastName : '',
-                  'email': userCredential.user!.email ?? '',
+                  'firstName': fn,
+                  'lastName': ln,
+                  'email': em,
                   'user_id': generatedUserId,
                   'role': 'user',
                   'roleid': 1,
@@ -696,6 +896,7 @@ class AuthService {
                   // Email verification is optional
                 }
               } catch (e) {
+                await _rollbackGoogleFirebaseUser(userCredential.user);
                 throw Exception('Failed to create user profile: $e');
               }
             }
@@ -757,16 +958,30 @@ class AuthService {
             : '';
 
         try {
-          final generatedUserId = await _generateUniqueUserId();
+          final fn = firstName.isNotEmpty ? firstName : 'User';
+          final ln = lastName;
+          final em = userCredential.user!.email?.trim() ?? '';
+          if (em.isEmpty) {
+            throw Exception('Your Google account has no email address.');
+          }
+          await _syncGoogleUserToBackend(
+            firebaseUid: userCredential.user!.uid,
+            email: em,
+            firstName: fn,
+            lastName: ln,
+          );
+          final generatedUserId = _generateUserIdFromUid(
+            userCredential.user!.uid,
+          );
           final userData = {
-          'firstName': firstName.isNotEmpty ? firstName : 'User',
-          'lastName': lastName.isNotEmpty ? lastName : '',
-          'email': userCredential.user!.email ?? '',
-          'user_id': generatedUserId,
-          'role': 'user',
-          'roleid': 1,
-          'createdAt': FieldValue.serverTimestamp(),
-          'signUpMethod': 'google',
+            'firstName': fn,
+            'lastName': ln,
+            'email': em,
+            'user_id': generatedUserId,
+            'role': 'user',
+            'roleid': 1,
+            'createdAt': FieldValue.serverTimestamp(),
+            'signUpMethod': 'google',
           };
           await _firestore.collection('users').doc(userCredential.user!.uid).set(userData);
           
@@ -777,8 +992,7 @@ class AuthService {
             // Email verification is optional
           }
         } catch (e) {
-          // Re-throw the error so the user knows something went wrong
-          // The user is authenticated but not saved - this is a problem
+          await _rollbackGoogleFirebaseUser(userCredential.user);
           throw Exception(
             'User account created but failed to save user data. '
             'Please contact support. Error: ${e.toString()}'
@@ -833,6 +1047,9 @@ class AuthService {
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
         await _firestore.collection('user_locations').doc(user.uid).delete();
+
+        // Mark Mongo user as inactive in backend.
+        await _notifyBackendLogout(user);
       }
       await _auth.signOut();
       await googleSignIn.signOut(); // Also sign out from Google

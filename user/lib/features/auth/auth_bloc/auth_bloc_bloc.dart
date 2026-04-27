@@ -1,4 +1,5 @@
 import 'package:bloc/bloc.dart';
+import '../../../core/services/auth_service.dart';
 import 'auth_bloc_event.dart';
 import 'auth_bloc_state.dart';
 import 'auth_bloc_provider.dart';
@@ -101,6 +102,17 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
         isLoading: false,
         user: credential.user,
       ));
+    } on GoogleLoginNeedsOtp catch (e) {
+      try {
+        _pendingGoogleEmail = e.email;
+        _pendingGoogleDisplayName = e.displayName;
+        await provider.otpVerificationService.sendOTP(email: e.email);
+        emit(state.copyWithoutError(isLoading: false));
+      } catch (otpError) {
+        _pendingGoogleEmail = null;
+        _pendingGoogleDisplayName = null;
+        emit(state.copy(error: otpError, isLoading: false));
+      }
     } catch (error) {
       emit(state.copy(error: error, isLoading: false));
     }
