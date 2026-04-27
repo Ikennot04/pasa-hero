@@ -1,5 +1,6 @@
 import Notification from "./notification.model.js";
 import UserNotification from "../user_notification/user_notification.model.js";
+import UserSubscription from "../user_subscription/user_subscription.model.js";
 import Route from "../route/route.model.js";
 import Terminal from "../terminal/terminal.model.js";
 import User from "../user/user.model.js";
@@ -39,6 +40,76 @@ export const NotificationService = {
       Notification.findById(doc._id),
     );
     return populated;
+  },
+
+  // BULK DELETE NOTIFICATIONS + RELATED DATA ==============================
+  async bulkDeleteNotificationsWithRelations(notificationIds) {
+    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+      const error = new Error("notification_ids must be a non-empty array");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const normalizedIds = [
+      ...new Set(
+        notificationIds
+          .map((id) => String(id || "").trim())
+          .filter((id) => Boolean(id)),
+      ),
+    ];
+
+    if (!normalizedIds.length) {
+      const error = new Error("notification_ids must contain valid IDs");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const notifications = await Notification.find({
+      _id: { $in: normalizedIds },
+    })
+      .select("_id route_id bus_id")
+      .lean();
+
+    const foundNotificationIds = notifications.map((n) => String(n._id));
+    const routeIds = [
+      ...new Set(
+        notifications
+          .map((n) => (n.route_id ? String(n.route_id) : null))
+          .filter((id) => Boolean(id)),
+      ),
+    ];
+    const busIds = [
+      ...new Set(
+        notifications
+          .map((n) => (n.bus_id ? String(n.bus_id) : null))
+          .filter((id) => Boolean(id)),
+      ),
+    ];
+    const subscriptionFilters = [
+      ...(routeIds.length ? [{ route_id: { $in: routeIds } }] : []),
+      ...(busIds.length ? [{ bus_id: { $in: busIds } }] : []),
+    ];
+
+    const [deletedUserNotifications, deletedUserSubscriptions, deletedNotifications] =
+      await Promise.all([
+        UserNotification.deleteMany({
+          notification_id: { $in: foundNotificationIds },
+        }),
+        subscriptionFilters.length
+          ? UserSubscription.deleteMany({ $or: subscriptionFilters })
+          : Promise.resolve({ deletedCount: 0 }),
+        Notification.deleteMany({ _id: { $in: foundNotificationIds } }),
+      ]);
+
+    return {
+      requested_count: normalizedIds.length,
+      deleted_notifications: deletedNotifications.deletedCount || 0,
+      deleted_user_notifications: deletedUserNotifications.deletedCount || 0,
+      deleted_user_subscriptions: deletedUserSubscriptions.deletedCount || 0,
+      not_found_notification_ids: normalizedIds.filter(
+        (id) => !foundNotificationIds.includes(id),
+      ),
+    };
   },
 
   // GET ALL NOTIFICATIONS =================================================
