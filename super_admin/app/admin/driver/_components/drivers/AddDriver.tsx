@@ -70,6 +70,7 @@ export default function AddDriverModal({ onDriverAdded }: AddDriverModalProps) {
         })
       );
       if (data.profile_image?.length) {
+        formData.append("image_type", "driver");
         formData.append("image", data.profile_image[0]);
       }
       const response = await postDriver(formData);
@@ -163,7 +164,7 @@ export default function AddDriverModal({ onDriverAdded }: AddDriverModalProps) {
               </label>
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp"
+                accept="image/jpeg,image/jpg,image/png"
                 className={`file-input file-input-bordered w-full ${errors.profile_image ? "input-error" : ""}`}
                 {...register("profile_image")}
               />
