@@ -4,10 +4,17 @@ import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { addBusSchema, type AddBusFormData } from "./addBusSchema";
+import { usePostBus } from "../_hooks/usePostBus";
 
-export default function AddBusModal() {
+type AddBusModalProps = {
+  onBusAdded?: () => void | Promise<void>;
+};
+
+export default function AddBusModal({ onBusAdded }: AddBusModalProps) {
   const [open, setOpen] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const { postBus, error: postBusError } = usePostBus();
 
   const {
     register,
@@ -17,7 +24,7 @@ export default function AddBusModal() {
   } = useForm<AddBusFormData>({
     resolver: yupResolver(addBusSchema),
     defaultValues: {
-      bus_code: "",
+      bus_number: "",
       plate_number: "",
       maximum_capacity: undefined,
     },
@@ -38,33 +45,32 @@ export default function AddBusModal() {
 
   function openModal() {
     setOpen(true);
+    setSubmitError(null);
     reset();
   }
 
   function closeModal() {
     setOpen(false);
+    setSubmitError(null);
     reset();
   }
 
   async function onSubmit(data: AddBusFormData) {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/bus`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bus_number: data.bus_code,
-          plate_number: data.plate_number,
-          capacity: data.maximum_capacity,
-        }),
+      setSubmitError(null);
+      const response = await postBus({
+        bus_number: data.bus_number,
+        plate_number: data.plate_number,
+        capacity: data.maximum_capacity,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to add bus");
+      if (!response) {
+        setSubmitError(postBusError ?? "Failed to add bus");
+        return;
       }
+      await onBusAdded?.();
       closeModal();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to add bus");
+    } catch {
+      setSubmitError("Failed to add bus");
     }
   }
 
@@ -79,17 +85,17 @@ export default function AddBusModal() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
             <div className="form-control">
               <label className="label">
-                <span className="label-text">Bus code</span>
+                <span className="label-text">Bus number</span>
               </label>
               <input
                 type="text"
-                placeholder="e.g. 01-AB"
-                className={`input input-bordered w-full ${errors.bus_code ? "input-error" : ""}`}
-                {...register("bus_code")}
+                placeholder="e.g. 01"
+                className={`input input-bordered w-full ${errors.bus_number ? "input-error" : ""}`}
+                {...register("bus_number")}
               />
-              {errors.bus_code && (
+              {errors.bus_number && (
                 <p className="text-error text-sm mt-1">
-                  {errors.bus_code.message}
+                  {errors.bus_number.message}
                 </p>
               )}
             </div>
@@ -117,9 +123,21 @@ export default function AddBusModal() {
                 type="number"
                 min={1}
                 max={999}
+                step={1}
+                inputMode="numeric"
+                pattern="[0-9]*"
                 placeholder="e.g. 45"
                 className={`input input-bordered w-full ${errors.maximum_capacity ? "input-error" : ""}`}
-                {...register("maximum_capacity", { valueAsNumber: true })}
+                {...register("maximum_capacity", {
+                  setValueAs: (value) =>
+                    value === "" ? undefined : Number(value),
+                })}
+                onInput={(event) => {
+                  event.currentTarget.value = event.currentTarget.value.replace(
+                    /\D/g,
+                    "",
+                  );
+                }}
               />
               {errors.maximum_capacity && (
                 <p className="text-error text-sm mt-1">
@@ -135,6 +153,9 @@ export default function AddBusModal() {
                 {isSubmitting ? "Adding…" : "Add bus"}
               </button>
             </div>
+            {submitError || postBusError ? (
+              <p className="text-error text-sm">{submitError ?? postBusError}</p>
+            ) : null}
           </form>
         </div>
         <form method="dialog" className="modal-backdrop" onSubmit={closeModal}>

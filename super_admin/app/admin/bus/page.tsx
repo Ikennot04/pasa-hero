@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 
 // PROPS
 import { type BusProps } from "./BusProps";
@@ -22,26 +22,23 @@ export default function Bus() {
   const [buses, setBuses] = useState<BusProps[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      const res = await getBusses();
-      if (cancelled) return;
-      if (res?.success === true && Array.isArray(res.data)) {
-        const rows = (res.data as ApiBus[])
-          .filter((b) => !b.is_deleted)
-          .map(mapApiBusToBusProps);
-        setBuses(rows);
-      } else {
-        setBuses([]);
-      }
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const fetchBuses = useCallback(async () => {
+    setLoading(true);
+    const res = await getBusses();
+    if (res?.success === true && Array.isArray(res.data)) {
+      const rows = (res.data as ApiBus[])
+        .filter((b) => !b.is_deleted)
+        .map(mapApiBusToBusProps);
+      setBuses(rows);
+    } else {
+      setBuses([]);
+    }
+    setLoading(false);
   }, [getBusses]);
+
+  useEffect(() => {
+    void fetchBuses();
+  }, [fetchBuses]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [busStatusFilter, setBusStatusFilter] = useState<string>("all");
@@ -150,7 +147,7 @@ export default function Bus() {
           </div>
         </div>
         <div className="flex items-end gap-2">
-        <AddBusModal />
+          <AddBusModal onBusAdded={fetchBuses} />
         </div>
       </div>
       {loading ? (
