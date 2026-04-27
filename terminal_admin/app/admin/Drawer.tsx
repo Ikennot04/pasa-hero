@@ -8,6 +8,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { LiaBarsSolid } from "react-icons/lia";
 import { FaBell, FaChartLine, FaSignOutAlt, FaUsers } from "react-icons/fa";
 import { MdAltRoute, MdBusAlert } from "react-icons/md";
+import { MdAssignmentTurnedIn } from "react-icons/md";
 import { TbBusStop } from "react-icons/tb";
 import { LuLogs } from "react-icons/lu";
 import useAuthToken from "../_public_hooks/useAuthToken";
@@ -22,6 +23,11 @@ const routes = [
     path: "/admin/management",
     icon: <MdBusAlert className="size-6" />,
     label: "Arrival & Departure",
+  },
+  {
+    path: "/admin/assignment",
+    icon: <MdAssignmentTurnedIn className="size-6" />,
+    label: "Assignment Management",
   },
   {
     path: "/admin/logs",

@@ -10,7 +10,6 @@ import {
 import DriverTable from "./_components/drivers/DriverTable";
 import AssignmentsTable from "./_components/assignmens/AssignmentsTable";
 import AddDriverModal from "./_components/drivers/AddDriver";
-import AddAssignmentModal from "./_components/assignmens/AddAssignment";
 import { useGetDrivers } from "./_hooks/useGetDrivers";
 import { useGetBusAssignments } from "./_hooks/useGetBusAssignments";
 import {
@@ -78,13 +77,6 @@ export default function Driver() {
     return () => {
       cancelled = true;
     };
-  }, [getBusAssignments]);
-
-  const refreshAssignments = useCallback(async () => {
-    const res = await getBusAssignments();
-    if (res?.success === true && Array.isArray(res.data)) {
-      setAssignments((res.data as ApiBusAssignmentRow[]).map(mapApiBusAssignmentToProps));
-    }
   }, [getBusAssignments]);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -223,18 +215,13 @@ export default function Driver() {
           assignments
         </span>
         </div>
-        <AddAssignmentModal drivers={drivers} />
       </div>
       {assignmentsLoading ? (
         <div className="flex justify-center py-16">
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <AssignmentsTable
-          assignments={filteredAssignments}
-          drivers={drivers}
-          onAssignmentUpdated={refreshAssignments}
-        />
+        <AssignmentsTable assignments={filteredAssignments} />
       )}
     </div>
   );
