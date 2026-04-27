@@ -1,13 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSuspendUser } from "../_hooks/useSuspendUser";
 import EditUserModal from "./EditUser";
 import ConfirmSuspendModal, {
   CONFIRM_SUSPEND_MODAL_ID,
+  type ConfirmStatusModalMode,
 } from "./ConfirmSuspend";
 
 // ICONS
-import { MdOutlinePersonOff } from "react-icons/md";
+import { MdOutlinePerson, MdOutlinePersonOff } from "react-icons/md";
 
 export type UserRow = {
   id: string;
@@ -50,7 +52,11 @@ export default function UserTable({
   pageSize = DEFAULT_PAGE_SIZE,
   onUserUpdated,
 }: UserTableProps) {
-  const [userToSuspend, setUserToSuspend] = useState<UserRow | null>(null);
+  const { suspendUser, unsuspendUser } = useSuspendUser();
+  const [statusConfirm, setStatusConfirm] = useState<{
+    user: UserRow;
+    mode: ConfirmStatusModalMode;
+  } | null>(null);
   const [page, setPage] = useState(1);
 
   const visibleUsers = useMemo(
@@ -69,8 +75,8 @@ export default function UserTable({
     return visibleUsers.slice(start, start + pageSize);
   }, [visibleUsers, activePage, pageSize]);
 
-  const openSuspendModal = (user: UserRow) => {
-    setUserToSuspend(user);
+  const openStatusModal = (user: UserRow, mode: ConfirmStatusModalMode) => {
+    setStatusConfirm({ user, mode });
     (
       document.getElementById(CONFIRM_SUSPEND_MODAL_ID) as HTMLDialogElement
     )?.showModal();
@@ -78,6 +84,17 @@ export default function UserTable({
 
   const go = (next: number) => {
     setPage(Math.min(Math.max(1, next), totalPages));
+  };
+
+  const handleConfirmStatusChange = async (user: UserRow) => {
+    const ctx = statusConfirm;
+    if (!ctx || ctx.user.id !== user.id) return;
+    if (ctx.mode === "unsuspend") {
+      await unsuspendUser(user.id);
+    } else {
+      await suspendUser(user.id);
+    }
+    await onUserUpdated?.();
   };
 
   const pageNumbers = useMemo(() => {
@@ -115,16 +132,27 @@ export default function UserTable({
                 <td>
                   <UserStatusBadge status={user.status} />
                 </td>
-                <td className="flex gap-2">
+                <td className="flex flex-wrap gap-2">
                   <EditUserModal user={user} onUpdated={onUserUpdated} />
-                  <button
-                    type="button"
-                    className="btn bg-[#D0393A] hover:bg-[#D0393A]/90 text-white"
-                    onClick={() => openSuspendModal(user)}
-                  >
-                    <MdOutlinePersonOff className="w-5 h-5" />
-                    Suspend
-                  </button>
+                  {user.status.trim().toLowerCase() === "suspended" ? (
+                    <button
+                      type="button"
+                      className="btn btn-success text-white"
+                      onClick={() => openStatusModal(user, "unsuspend")}
+                    >
+                      <MdOutlinePerson className="w-5 h-5" />
+                      Unsuspend
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn bg-[#D0393A] hover:bg-[#D0393A]/90 text-white"
+                      onClick={() => openStatusModal(user, "suspend")}
+                    >
+                      <MdOutlinePersonOff className="w-5 h-5" />
+                      Suspend
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -186,7 +214,11 @@ export default function UserTable({
         </div>
       ) : null}
 
-      <ConfirmSuspendModal user={userToSuspend} />
+      <ConfirmSuspendModal
+        user={statusConfirm?.user ?? null}
+        mode={statusConfirm?.mode ?? "suspend"}
+        onConfirm={handleConfirmStatusChange}
+      />
     </>
   );
 }
