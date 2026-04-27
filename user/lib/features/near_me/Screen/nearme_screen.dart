@@ -23,12 +23,18 @@ import '../Module/from_to_form.dart';
 import '../Module/nearby_terminal.dart';
 
 class NearMeScreen extends StatelessWidget {
-  const NearMeScreen({super.key});
+  final int initialTabIndex;
+
+  const NearMeScreen({
+    super.key,
+    this.initialTabIndex = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MainNavigationScreen(
       nearMeContent: const _NearMeContent(),
+      initialIndex: initialTabIndex,
     );
   }
 }

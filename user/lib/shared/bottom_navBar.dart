@@ -5,10 +5,12 @@ import '../features/profile/screen/profile_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final Widget nearMeContent;
+  final int initialIndex;
   
   const MainNavigationScreen({
     super.key,
     required this.nearMeContent,
+    this.initialIndex = 0,
   });
 
   @override
@@ -16,12 +18,13 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
 
   late final List<Widget> _screens;
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialIndex.clamp(0, 3).toInt();
     _screens = [
       widget.nearMeContent,
       const RouteScreen(),

@@ -1,8 +1,199 @@
+import 'dart:convert';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+import '../../../core/services/subscription_ids_service.dart';
 import '../../../core/themes/validation_theme.dart';
 
-class NotificationScreen extends StatelessWidget {
+class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
+
+  @override
+  State<NotificationScreen> createState() => _NotificationScreenState();
+}
+
+class _NotificationScreenState extends State<NotificationScreen> {
+  static const String _notificationsInboxApiBase =
+      'https://pasa-hero-server.vercel.app/api/notifications/inbox';
+
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _inboxItems = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInbox();
+  }
+
+  Future<void> _loadInbox() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final firebaseUser = FirebaseAuth.instance.currentUser;
+      if (firebaseUser == null) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _error = 'Please sign in first.';
+        });
+        return;
+      }
+
+      final backendUserId =
+          await SubscriptionIdsService.backendUserIdForFirebaseUid(
+        firebaseUser.uid,
+        email: firebaseUser.email,
+      );
+      final effectiveUserId =
+          (backendUserId != null && backendUserId.isNotEmpty)
+              ? backendUserId
+              : firebaseUser.uid;
+
+      final idsToTry = <String>[];
+      if (backendUserId != null && backendUserId.isNotEmpty) {
+        idsToTry.add(backendUserId);
+      }
+      if (!idsToTry.contains(firebaseUser.uid)) {
+        idsToTry.add(firebaseUser.uid);
+      }
+      if (!idsToTry.contains(effectiveUserId)) {
+        idsToTry.add(effectiveUserId);
+      }
+
+      List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
+      String? lastError;
+      for (final id in idsToTry) {
+        final result = await _fetchInboxByUserId(id);
+        if (result.error != null) {
+          lastError = result.error;
+          continue;
+        }
+        items = result.items;
+        if (items.isNotEmpty) {
+          break;
+        }
+      }
+      if (items.isEmpty && lastError != null) {
+        throw Exception(lastError);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _inboxItems = items;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<_InboxFetchResult> _fetchInboxByUserId(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_notificationsInboxApiBase/$userId'),
+        headers: const {'Accept': 'application/json'},
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return _InboxFetchResult(
+          items: const [],
+          error: 'Failed to load notifications (${response.statusCode})',
+        );
+      }
+
+      final decoded = jsonDecode(response.body);
+      final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
+      final inbox = data is Map<String, dynamic> ? data['inbox'] : null;
+      final items = <Map<String, dynamic>>[];
+      if (inbox is List) {
+        for (final item in inbox) {
+          if (item is Map<String, dynamic>) {
+            items.add(item);
+          }
+        }
+      }
+      return _InboxFetchResult(items: items);
+    } catch (e) {
+      return _InboxFetchResult(items: const [], error: e.toString());
+    }
+  }
+
+  String _resolveTitle(Map<String, dynamic> item) {
+    final notification = item['notification_id'];
+    if (notification is Map<String, dynamic>) {
+      final title = notification['title']?.toString().trim();
+      if (title != null && title.isNotEmpty) {
+        return title;
+      }
+    }
+    return 'Notification';
+  }
+
+  String _resolveDescription(Map<String, dynamic> item) {
+    final notification = item['notification_id'];
+    if (notification is Map<String, dynamic>) {
+      final message = notification['message']?.toString().trim();
+      if (message != null && message.isNotEmpty) {
+        return message;
+      }
+    }
+    return 'No details available.';
+  }
+
+  DateTime? _resolveCreatedAt(Map<String, dynamic> item) {
+    final notification = item['notification_id'];
+    final raw = (notification is Map<String, dynamic>)
+        ? notification['createdAt'] ?? item['createdAt']
+        : item['createdAt'];
+    if (raw == null) return null;
+    try {
+      return DateTime.parse(raw.toString()).toLocal();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatTimestamp(DateTime? dt) {
+    if (dt == null) return '';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.month}/${dt.day}/${dt.year}';
+  }
+
+  Color _statusColorFor(Map<String, dynamic> item) {
+    final notification = item['notification_id'];
+    if (notification is! Map<String, dynamic>) {
+      return ValidationTheme.primaryBlue;
+    }
+    final type = notification['notification_type']?.toString().toLowerCase();
+    switch (type) {
+      case 'delay':
+      case 'full':
+      case 'skipped_stop':
+        return ValidationTheme.errorRed;
+      case 'arrival_reported':
+      case 'arrival_confirmed':
+      case 'departure_reported':
+      case 'departure_confirmed':
+        return ValidationTheme.successGreen;
+      default:
+        return ValidationTheme.primaryBlue;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +207,6 @@ class NotificationScreen extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              // Header Section
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: screenWidth * 0.05,
@@ -32,138 +222,68 @@ class NotificationScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
               ),
-
-              // Scrollable Notifications
               Expanded(
                 child: Container(
                   padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Today Section
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Today',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: ValidationTheme.textPrimary,
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: () {},
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text(
-                                'Mark All as Read',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: ValidationTheme.darkBlue,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _buildNotificationCard(
-                          title: 'Delay: Route 01K',
-                          description:
-                              'Route 01K is delayed by 15 minutes due to heavy traffic.',
-                          timestamp: 'Just now',
-                          statusColor: ValidationTheme.errorRed,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildNotificationCard(
-                          title: 'Delay: Route 13B',
-                          description:
-                              'Route 01K is delayed by 8 minutes due to Light traffic.',
-                          timestamp: '1 min',
-                          statusColor: const Color(0xFFFF9800), // Orange
-                        ),
-                        const SizedBox(height: 24),
-
-                        // See All link between Today and Last Week
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: () {},
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            child: const Text(
-                              'See All',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: ValidationTheme.primaryBlue,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Last Week Section
-                        const Text(
-                          'Last Week',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: ValidationTheme.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildNotificationCard(
-                          title: 'Route Change: Route 13B',
-                          description:
-                              'Route 13B is now re-routed due to a road closure.',
-                          timestamp: '11 Feb',
-                          statusColor: const Color(0xFFFFC107), // Yellow/Orange
-                        ),
-                        const SizedBox(height: 12),
-                        _buildNotificationCard(
-                          title: 'Arrived: Route 13B',
-                          description:
-                              'Route 13B has arrived at Parkmall Terminal.',
-                          timestamp: '02 Feb',
-                          statusColor: ValidationTheme.successGreen,
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
+                  child: _buildBody(),
                 ),
-              ),
-
-              // Bottom Navigation Bar
-              Container(
-                decoration: BoxDecoration(
-                  color: ValidationTheme.backgroundWhite.withOpacity(0.95),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    topRight: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-               
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: ValidationTheme.textPrimary),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: _loadInbox,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_inboxItems.isEmpty) {
+      return const Center(
+        child: Text(
+          'No notifications yet.',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: ValidationTheme.textPrimary,
+          ),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadInbox,
+      child: ListView.separated(
+        itemCount: _inboxItems.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          final item = _inboxItems[index];
+          return _buildNotificationCard(
+            title: _resolveTitle(item),
+            description: _resolveDescription(item),
+            timestamp: _formatTimestamp(_resolveCreatedAt(item)),
+            statusColor: _statusColorFor(item),
+          );
+        },
       ),
     );
   }
@@ -223,7 +343,6 @@ class NotificationScreen extends StatelessWidget {
               ),
             ],
           ),
-          // Status indicator dot
           Positioned(
             top: 0,
             right: 0,
@@ -240,7 +359,14 @@ class NotificationScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  
-  
+class _InboxFetchResult {
+  const _InboxFetchResult({
+    required this.items,
+    this.error,
+  });
+
+  final List<Map<String, dynamic>> items;
+  final String? error;
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/themes/validation_theme.dart';
-import '../../screen/profile_screen.dart';
+import '../../../near_me/Screen/nearme_screen.dart';
 
 class PasswordSuccessScreen extends StatelessWidget {
   const PasswordSuccessScreen({super.key});
@@ -56,10 +56,12 @@ class PasswordSuccessScreen extends StatelessWidget {
                   height: 56,
                   child: ElevatedButton(
                     onPressed: () {
-                      // Navigate back to profile screen
+                      // Reopen app shell on Profile tab so bottom nav stays visible.
                       Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute(
-                          builder: (context) => const ProfileScreen(),
+                          builder: (context) => const NearMeScreen(
+                            initialTabIndex: 3,
+                          ),
                         ),
                         (route) => false,
                       );

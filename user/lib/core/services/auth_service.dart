@@ -1059,6 +1059,67 @@ class AuthService {
     }
   }
 
+  // Add password for users authenticated via Google.
+  // Reauthenticates with Google credential to satisfy sensitive operation checks.
+  Future<void> addPasswordForGoogleUser({
+    required String newPassword,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('No user is currently signed in.');
+      }
+
+      final trimmedPassword = newPassword.trim();
+      if (trimmedPassword.isEmpty) {
+        throw Exception('Password cannot be empty');
+      }
+      if (trimmedPassword.length < 6) {
+        throw Exception('Password must be at least 6 characters long');
+      }
+
+      final providerIds = user.providerData
+          .map((provider) => provider.providerId)
+          .toSet();
+      final hasGoogleProvider = providerIds.contains('google.com');
+      final hasPasswordProvider = providerIds.contains('password');
+
+      if (!hasGoogleProvider) {
+        throw Exception('This account is not using Google sign-in.');
+      }
+      if (hasPasswordProvider) {
+        throw Exception('Password is already set for this account.');
+      }
+
+      final googleUser = googleSignIn.currentUser ?? await googleSignIn.signIn();
+      if (googleUser == null) {
+        throw Exception('Google re-authentication was cancelled.');
+      }
+
+      final googleAuth = await googleUser.authentication;
+      if (googleAuth.accessToken == null) {
+        throw Exception('Failed to get Google access token for re-authentication.');
+      }
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(trimmedPassword);
+      await user.reload();
+      print('✅ Password added successfully for Google-auth user');
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'provider-already-linked') {
+        throw Exception('Password is already set for this account.');
+      }
+      throw _handleAuthException(e);
+    } catch (e) {
+      throw Exception('Failed to add password: $e');
+    }
+  }
+
 
 
   // Check if user exists in Firestore

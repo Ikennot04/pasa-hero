@@ -210,3 +210,13 @@ class ChangePasswordEvent extends AuthBlocEvent {
   @override
   String toString() => 'ChangePasswordEvent';
 }
+
+/// Add password for Google-auth users by reauthenticating with Google
+class AddPasswordForGoogleUserEvent extends AuthBlocEvent {
+  final String newPassword;
+
+  AddPasswordForGoogleUserEvent({required this.newPassword});
+
+  @override
+  String toString() => 'AddPasswordForGoogleUserEvent';
+}
