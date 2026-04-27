@@ -9,8 +9,6 @@ const busStatusSchema = new mongoose.Schema(
       enum: ["empty", "few seats", "standing room", "full"], 
       default: "empty" 
     },
-    is_deleted: { type: Boolean, default: false },
-    deleted_at: { type: Date, default: null },
   },
   { timestamps: true }, 
 );

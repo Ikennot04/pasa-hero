@@ -35,6 +35,15 @@ export default function Driver() {
   const [assignments, setAssignments] = useState<AssignmentProps[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
 
+  const refreshDrivers = useCallback(async () => {
+    const res = await getDrivers();
+    if (res?.success === true && Array.isArray(res.data)) {
+      setDrivers((res.data as ApiDriver[]).map(mapApiDriverToProps));
+      return;
+    }
+    setDrivers([]);
+  }, [getDrivers]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -147,14 +156,14 @@ export default function Driver() {
             </span>
           </div>
         </div>
-        <AddDriverModal />
+        <AddDriverModal onDriverAdded={refreshDrivers} />
       </div>
       {driversLoading ? (
         <div className="flex justify-center py-16">
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <DriverTable drivers={filteredDrivers} />
+        <DriverTable drivers={filteredDrivers} onDriverUpdated={refreshDrivers} />
       )}
       <div className="text-xl font-bold mt-10">Assignment Management Table</div>
       {assignmentsError ? (

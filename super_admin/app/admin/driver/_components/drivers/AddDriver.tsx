@@ -4,10 +4,17 @@ import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { addDriverSchema, type AddDriverFormData } from "./addDriverSchema";
+import { usePostDriver } from "../../_hooks/usePostDriver";
 
-export default function AddDriverModal() {
+type AddDriverModalProps = {
+  onDriverAdded?: () => void | Promise<void>;
+};
+
+export default function AddDriverModal({ onDriverAdded }: AddDriverModalProps) {
   const [open, setOpen] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const { postDriver, error: postDriverError } = usePostDriver();
 
   const {
     register,
@@ -39,17 +46,19 @@ export default function AddDriverModal() {
 
   function openModal() {
     setOpen(true);
+    setSubmitError(null);
     reset();
   }
 
   function closeModal() {
     setOpen(false);
+    setSubmitError(null);
     reset();
   }
 
   async function onSubmit(data: AddDriverFormData) {
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+      setSubmitError(null);
       const formData = new FormData();
       formData.append(
         "data",
@@ -61,19 +70,18 @@ export default function AddDriverModal() {
         })
       );
       if (data.profile_image?.length) {
+        formData.append("image_type", "driver");
         formData.append("image", data.profile_image[0]);
       }
-      const res = await fetch(`${baseUrl}/drivers`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to add driver");
+      const response = await postDriver(formData);
+      if (!response) {
+        setSubmitError(postDriverError ?? "Failed to add driver");
+        return;
       }
+      await onDriverAdded?.();
       closeModal();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to add driver");
+    } catch {
+      setSubmitError("Failed to add driver");
     }
   }
 
@@ -135,10 +143,14 @@ export default function AddDriverModal() {
                 <span className="label-text">Contact number</span>
               </label>
               <input
-                type="text"
-                placeholder="e.g. +63 912 345 6789"
+                type="tel"
+                inputMode="numeric"
+                placeholder="e.g.  0912 345 6789"
                 className={`input input-bordered w-full ${errors.contact_number ? "input-error" : ""}`}
                 {...register("contact_number")}
+                onInput={(event) => {
+                  event.currentTarget.value = event.currentTarget.value.replace("-", "");
+                }}
               />
               {errors.contact_number && (
                 <p className="text-error text-sm mt-1">
@@ -152,7 +164,7 @@ export default function AddDriverModal() {
               </label>
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/gif,image/webp"
+                accept="image/jpeg,image/jpg,image/png"
                 className={`file-input file-input-bordered w-full ${errors.profile_image ? "input-error" : ""}`}
                 {...register("profile_image")}
               />
@@ -170,6 +182,9 @@ export default function AddDriverModal() {
                 {isSubmitting ? "Adding…" : "Add driver"}
               </button>
             </div>
+            {submitError || postDriverError ? (
+              <p className="text-error text-sm">{submitError ?? postDriverError}</p>
+            ) : null}
           </form>
         </div>
         <form method="dialog" className="modal-backdrop" onSubmit={closeModal}>

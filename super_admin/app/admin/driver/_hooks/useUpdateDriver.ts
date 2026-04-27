@@ -2,18 +2,17 @@
 
 import axios from "axios";
 import { useCallback, useState } from "react";
-import { CreateTerminalAdminFormData } from "../_components/createUserSchema";
 
-export const usePostTerminalAdmin = () => {
+export const useUpdateDriver = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const postTerminalAdmin = useCallback(
-    async (data: CreateTerminalAdminFormData) => {
+  const updateDriver = useCallback(
+    async (driverId: string, driverData: unknown) => {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-        const { data: response } = await axios.post(
-          `${baseUrl}/api/users`,
-          data,
+        const { data: response } = await axios.patch(
+          `${baseUrl}/api/drivers/${driverId}`,
+          driverData,
         );
         return response;
       } catch (error) {
@@ -22,10 +21,9 @@ export const usePostTerminalAdmin = () => {
         } else {
           setError("Unexpected error");
         }
-        return null;
       }
     },
     [],
   );
-  return { postTerminalAdmin, error };
+  return { updateDriver, error };
 };

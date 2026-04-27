@@ -3,13 +3,13 @@
 import axios from "axios";
 import { useCallback, useState } from "react";
 
-export const useGetBusses = () => {
+export const useUpdateBus = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getBusses = useCallback(async () => {
+  const updateBus = useCallback(async (busId: string, busData: unknown) => {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.get(`${baseUrl}/api/buses`);
+      const { data: response } = await axios.patch(`${baseUrl}/api/buses/${busId}`, busData);
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -19,5 +19,5 @@ export const useGetBusses = () => {
       }
     }
   }, []);
-  return { getBusses, error };
+  return { updateBus, error };
 }

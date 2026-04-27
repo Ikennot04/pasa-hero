@@ -95,6 +95,21 @@ type DriverDetailsClientProps = {
   driverId: string;
 };
 
+function resolveDriverProfileImage(profileImage?: string): string {
+  const fallback = "/default-img.jpg";
+  if (!profileImage || profileImage === "default.png") return fallback;
+  if (/^https?:\/\//i.test(profileImage)) return profileImage;
+
+  const baseUrl = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
+  const normalized = profileImage.replace(/\\/g, "/").replace(/^\/+/, "");
+
+  if (normalized.startsWith("images/")) {
+    return `${baseUrl}/${normalized}`;
+  }
+
+  return `${baseUrl}/images/driver/${normalized}`;
+}
+
 function assignmentSortTime(a: AssignmentProps): number {
   const raw = a.updatedAt ?? a.createdAt;
   if (!raw) return 0;
@@ -181,6 +196,7 @@ export default function DriverDetailsClient({ driverId }: DriverDetailsClientPro
   }
 
   const fullName = `${driver.f_name} ${driver.l_name}`;
+  const profileImageSrc = resolveDriverProfileImage(driver.profile_image);
 
   return (
     <div className="space-y-8 pt-6">
@@ -198,8 +214,16 @@ export default function DriverDetailsClient({ driverId }: DriverDetailsClientPro
               <FaArrowLeft className="w-8 h-8" />
             </Link>
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/20 text-primary">
-                <FaUser className="h-7 w-7" />
+              <div className="h-24 w-24 overflow-hidden rounded-xl border border-base-content/10 bg-base-200">
+                <img
+                  src={profileImageSrc}
+                  alt={`${fullName} profile`}
+                  className="h-full w-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "/default-img.jpg";
+                  }}
+                />
               </div>
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">{fullName}</h1>

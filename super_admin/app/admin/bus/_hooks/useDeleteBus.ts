@@ -3,13 +3,15 @@
 import axios from "axios";
 import { useCallback, useState } from "react";
 
-export const useGetBusses = () => {
+export const useDeleteBus = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getBusses = useCallback(async () => {
+  const deleteBus = useCallback(async (busId: string) => {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.get(`${baseUrl}/api/buses`);
+      const { data: response } = await axios.delete(
+        `${baseUrl}/api/buses/${busId}`,
+      );
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -19,5 +21,5 @@ export const useGetBusses = () => {
       }
     }
   }, []);
-  return { getBusses, error };
-}
+  return { deleteBus, error };
+};
