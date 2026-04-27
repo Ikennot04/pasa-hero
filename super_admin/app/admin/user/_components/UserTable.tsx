@@ -42,11 +42,13 @@ export const USER_TABLE_EXCLUDED_ROLES = new Set(["super admin", "admin"]);
 type UserTableProps = {
   users: UserRow[];
   pageSize?: number;
+  onUserUpdated?: () => void | Promise<void>;
 };
 
 export default function UserTable({
   users,
   pageSize = DEFAULT_PAGE_SIZE,
+  onUserUpdated,
 }: UserTableProps) {
   const [userToSuspend, setUserToSuspend] = useState<UserRow | null>(null);
   const [page, setPage] = useState(1);
@@ -114,7 +116,7 @@ export default function UserTable({
                   <UserStatusBadge status={user.status} />
                 </td>
                 <td className="flex gap-2">
-                  <EditUserModal user={user} />
+                  <EditUserModal user={user} onUpdated={onUserUpdated} />
                   <button
                     type="button"
                     className="btn bg-[#D0393A] hover:bg-[#D0393A]/90 text-white"

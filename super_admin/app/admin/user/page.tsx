@@ -152,7 +152,7 @@ export default function Users() {
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <UserTable users={tableRows} />
+        <UserTable users={tableRows} onUserUpdated={refreshUsers} />
       )}
     </div>
   );
