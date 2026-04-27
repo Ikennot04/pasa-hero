@@ -4,7 +4,14 @@ export const addDriverSchema = yup.object({
   f_name: yup.string().required("First name is required").trim(),
   l_name: yup.string().required("Last name is required").trim(),
   license_number: yup.string().required("License number is required").trim(),
-  contact_number: yup.string().trim(),
+  contact_number: yup
+    .string()
+    .trim()
+    .test(
+      "nonNegativeContactNumber",
+      "Contact number cannot be negative",
+      (value) => !value || !value.includes("-")
+    ),
   profile_image: yup
     .mixed<FileList>()
     .test("fileType", "Must be an image (JPEG, PNG, GIF, WebP)", (value) => {
