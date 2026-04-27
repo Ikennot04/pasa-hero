@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import CreateTerminalAdmin from "./_components/CreateTerminalAdmin";
 import UserTable, {
   type UserRow,
@@ -25,23 +25,26 @@ export default function Users() {
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const refreshUsers = useCallback(async () => {
+    const res = await getUsers();
+    if (res?.success === true && Array.isArray(res.data)) {
+      setUsers(res.data);
+    } else {
+      setUsers([]);
+    }
+  }, [getUsers]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const res = await getUsers();
-      if (cancelled) return;
-      if (res?.success === true && Array.isArray(res.data)) {
-        setUsers(res.data);
-      } else {
-        setUsers([]);
-      }
-      setLoading(false);
+      await refreshUsers();
+      if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [getUsers]);
+  }, [refreshUsers]);
 
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -141,7 +144,7 @@ export default function Users() {
           </div>
         </div>
         <div className="flex items-end gap-2">
-          <CreateTerminalAdmin />
+          <CreateTerminalAdmin onCreated={refreshUsers} />
         </div>
       </div>
       {loading ? (

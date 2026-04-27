@@ -20,6 +20,22 @@ export type UserRow = {
 
 const DEFAULT_PAGE_SIZE = 10;
 
+const USER_STATUS_BADGE_CLASS: Record<string, string> = {
+  active: "badge-success",
+  suspended: "badge-warning",
+  inactive: "badge-ghost",
+};
+
+function UserStatusBadge({ status }: { status: string }) {
+  const key = status.trim().toLowerCase();
+  const cls = USER_STATUS_BADGE_CLASS[key] ?? "badge-ghost";
+  const label =
+    key.length > 0
+      ? key.charAt(0).toUpperCase() + key.slice(1)
+      : "—";
+  return <span className={`badge badge-sm ${cls}`}>{label}</span>;
+}
+
 /** Roles not shown in this table (matches API enum values). */
 export const USER_TABLE_EXCLUDED_ROLES = new Set(["super admin", "admin"]);
 
@@ -94,7 +110,9 @@ export default function UserTable({
                 </td>
                 <td>{user.email}</td>
                 <td>{user.role}</td>
-                <td>{user.status}</td>
+                <td>
+                  <UserStatusBadge status={user.status} />
+                </td>
                 <td className="flex gap-2">
                   <EditUserModal user={user} />
                   <button

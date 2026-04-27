@@ -8,6 +8,7 @@ import {
   type CreateTerminalAdminFormData,
 } from "./createUserSchema";
 import { useGetTerminalName } from "../_hooks/useGetTerminalName";
+import { usePostUser } from "../_hooks/usePostUser";
 
 // ICONS
 import { FaUserPlus } from "react-icons/fa6";
@@ -15,13 +16,18 @@ import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 type TerminalOption = { _id: string; terminal_name: string };
 
-export default function CreateTerminalAdmin() {
+type CreateTerminalAdminProps = {
+  onCreated?: () => void | Promise<void>;
+};
+
+export default function CreateTerminalAdmin({ onCreated }: CreateTerminalAdminProps) {
   const [open, setOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [terminals, setTerminals] = useState<TerminalOption[]>([]);
   const [terminalsLoading, setTerminalsLoading] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { getTerminalName, error: terminalsError } = useGetTerminalName();
+  const { postUser, error: submitError, clearError } = usePostUser();
 
   const {
     register,
@@ -72,6 +78,7 @@ export default function CreateTerminalAdmin() {
   }, [open, getTerminalName]);
 
   function openModal() {
+    clearError();
     setOpen(true);
     reset();
   }
@@ -83,8 +90,11 @@ export default function CreateTerminalAdmin() {
   }
 
   async function onSubmit(data: CreateTerminalAdminFormData) {
-    const formData = { ...data, role: "terminal admin" };
-    console.log("CreateTerminalAdmin form data", formData);
+    const res = await postUser({ ...data, role: "terminal admin" });
+    if (res?.success) {
+      await onCreated?.();
+      closeModal();
+    }
   }
 
   return (
@@ -197,6 +207,11 @@ export default function CreateTerminalAdmin() {
                 <span className="label-text-alt">One capital letter and one special character</span>
               </label>
             </div>
+            {submitError && (
+              <p className="text-error text-sm" role="alert">
+                {submitError}
+              </p>
+            )}
             <div className="modal-action">
               <button type="button" className="btn btn-ghost" onClick={closeModal}>
                 Cancel
