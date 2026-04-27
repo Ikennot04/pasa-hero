@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { MdOutlineEdit } from "react-icons/md";
 import type { BusProps } from "../BusProps";
+import { useUpdateBus } from "../_hooks/useUpdateBus";
 import { editBusSchema, type EditBusFormData } from "./editBusSchema";
 
 export const EDIT_BUS_MODAL_ID = "edit-bus-modal";
@@ -13,6 +14,7 @@ type EditBusProps = {
   bus: BusProps;
   modalId?: string;
   onCloseModal?: () => void;
+  onBusUpdated?: () => void | Promise<void>;
 };
 
 const defaultValues: EditBusFormData = {
@@ -21,13 +23,20 @@ const defaultValues: EditBusFormData = {
   maximum_capacity: 0,
 };
 
-export default function EditBusModal({ bus, modalId, onCloseModal }: EditBusProps) {
+export default function EditBusModal({
+  bus,
+  modalId,
+  onCloseModal,
+  onBusUpdated,
+}: EditBusProps) {
   const id = modalId ?? `${EDIT_BUS_MODAL_ID}-${bus.id}`;
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { updateBus, error: updateBusError } = useUpdateBus();
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<EditBusFormData>({
     resolver: yupResolver(editBusSchema),
     defaultValues,
@@ -48,28 +57,28 @@ export default function EditBusModal({ bus, modalId, onCloseModal }: EditBusProp
   async function onSubmit(data: EditBusFormData) {
     if (!bus) return;
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/bus/${bus.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bus_number: data.bus_code,
-          plate_number: data.plate_number,
-          capacity: data.maximum_capacity,
-        }),
+      setSubmitError(null);
+      const response = await updateBus(bus.id, {
+        bus_number: data.bus_code,
+        plate_number: data.plate_number,
+        capacity: data.maximum_capacity,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message ?? "Failed to update bus");
+
+      if (!response) {
+        setSubmitError(updateBusError ?? "Failed to update bus");
+        return;
       }
+
+      await onBusUpdated?.();
       (document.getElementById(id) as HTMLDialogElement)?.close();
       onCloseModal?.();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update bus");
+    } catch {
+      setSubmitError("Failed to update bus");
     }
   }
 
   function openModal() {
+    setSubmitError(null);
     (document.getElementById(id) as HTMLDialogElement)?.showModal();
   }
 
@@ -155,10 +164,14 @@ export default function EditBusModal({ bus, modalId, onCloseModal }: EditBusProp
             <button
               type="submit"
               className="btn bg-[#008DF7] hover:bg-[#008DF7]/80 text-white"
+              disabled={isSubmitting}
             >
-              Save
+              {isSubmitting ? "Saving…" : "Save"}
             </button>
           </div>
+          {submitError || updateBusError ? (
+            <p className="text-error text-sm px-4 pb-4">{submitError ?? updateBusError}</p>
+          ) : null}
         </form>
       </div>
       <form method="dialog" className="modal-backdrop">

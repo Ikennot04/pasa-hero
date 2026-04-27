@@ -155,7 +155,7 @@ export default function Bus() {
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <BusTable buses={filteredBuses} />
+        <BusTable buses={filteredBuses} onBusUpdated={fetchBuses} />
       )}
     </div>
   );
