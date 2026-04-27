@@ -1,4 +1,5 @@
 import { UserService } from "./user.service.js";
+import { friendlyUserWriteError } from "./user.errors.js";
 
 export const signupUser = async (req, res) => {
   try {
@@ -8,7 +9,10 @@ export const signupUser = async (req, res) => {
     const user = await UserService.signupUser(userData, userImg);
     res.status(201).json({ success: true, data: user });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(400).json({
+      success: false,
+      message: friendlyUserWriteError(error),
+    });
   }
 };
 
@@ -92,7 +96,10 @@ export const createAdminUser = async (req, res) => {
     res.status(201).json({ success: true, data: user });
   } catch (error) {
     const status = error.statusCode || 400;
-    res.status(status).json({ success: false, message: error.message });
+    res.status(status).json({
+      success: false,
+      message: friendlyUserWriteError(error),
+    });
   }
 };
 
@@ -108,6 +115,9 @@ export const updateUser = async (req, res) => {
     });
     res.status(200).json({ success: true, data: user });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(400).json({
+      success: false,
+      message: friendlyUserWriteError(error),
+    });
   }
 };
