@@ -96,6 +96,11 @@ export const BusService = {
       throw error;
     }
     const bus = await Bus.create(busData);
+    await BusStatus.create({
+      bus_id: String(bus._id),
+      occupancy_count: 0,
+      occupancy_status: "empty",
+    });
     return bus;
   },
   // UPDATE BUS BY ID ===================================================================
