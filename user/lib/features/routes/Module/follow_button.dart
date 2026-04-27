@@ -31,6 +31,21 @@ class FollowButton extends StatefulWidget {
 
 class _FollowButtonState extends State<FollowButton> {
   bool _submitting = false;
+  late bool _isFollowingLocal;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFollowingLocal = widget.isFollowing;
+  }
+
+  @override
+  void didUpdateWidget(covariant FollowButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_submitting && oldWidget.isFollowing != widget.isFollowing) {
+      _isFollowingLocal = widget.isFollowing;
+    }
+  }
 
   Future<void> _toggleFollow() async {
     if (_submitting) return;
@@ -44,6 +59,7 @@ class _FollowButtonState extends State<FollowButton> {
       return;
     }
 
+    setState(() => _submitting = true);
     var userId = widget.userId?.trim();
     var routeId = widget.routeId?.trim();
     if (userId == null || userId.isEmpty) {
@@ -67,7 +83,6 @@ class _FollowButtonState extends State<FollowButton> {
       return;
     }
 
-    setState(() => _submitting = true);
     try {
       final uri = Uri.parse(kRouteSubscriptionsApiUrl);
       final idToken = await user.getIdToken();
@@ -106,13 +121,14 @@ class _FollowButtonState extends State<FollowButton> {
       final isAlreadyUnfollowed =
           response.statusCode == 404 || message.toLowerCase().contains('not found');
 
-      final nowFollowing = !widget.isFollowing;
+      final nowFollowing = !_isFollowingLocal;
       final treatAsSuccess = nowFollowing
           ? (isSuccess || isAlreadyFollowed)
           : (isSuccess || isAlreadyUnfollowed);
 
       if (treatAsSuccess) {
         if (!mounted) return;
+        setState(() => _isFollowingLocal = nowFollowing);
         widget.onFollowChanged?.call(widget.routeLabel, nowFollowing);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -163,7 +179,7 @@ class _FollowButtonState extends State<FollowButton> {
   @override
   Widget build(BuildContext context) {
     final canPress = !_submitting;
-    final isFollowing = widget.isFollowing;
+    final isFollowing = _isFollowingLocal;
 
     return OutlinedButton(
       onPressed: canPress ? _toggleFollow : null,

@@ -13,7 +13,12 @@ import '../../../../core/themes/validation_theme.dart';
 import 'password_succcess.dart';
 
 class NewPasswordScreen extends StatefulWidget {
-  const NewPasswordScreen({super.key});
+  final bool isAddPasswordFlow;
+
+  const NewPasswordScreen({
+    super.key,
+    this.isAddPasswordFlow = false,
+  });
 
   @override
   State<NewPasswordScreen> createState() => _NewPasswordScreenState();
@@ -51,6 +56,11 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
     // Get bloc from the BlocConsumer context
     final authBloc = BlocProvider.of<AuthBlocBloc>(blocContext, listen: false);
     
+    if (widget.isAddPasswordFlow) {
+      authBloc.add(AddPasswordForGoogleUserEvent(newPassword: newPassword));
+      return;
+    }
+
     // Dispatch change password event
     authBloc.add(ChangePasswordEvent(newPassword: newPassword));
   }
@@ -128,10 +138,12 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                               onPressed: () => Navigator.of(context).pop(),
                             ),
                           ),
-                          const Expanded(
+                          Expanded(
                             child: Center(
                               child: Text(
-                                'Change Password',
+                                widget.isAddPasswordFlow
+                                    ? 'Add Password'
+                                    : 'Change Password',
                                 style: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -158,8 +170,10 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                               const SizedBox(height: 40),
                               
                               // Heading
-                              const Text(
-                                'Create New password',
+                              Text(
+                                widget.isAddPasswordFlow
+                                    ? 'Create your password'
+                                    : 'Create New password',
                                 style: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -171,7 +185,9 @@ class _NewPasswordScreenState extends State<NewPasswordScreen> {
                               
                               // Subtitle
                               Text(
-                                'Your password at least 6 characters',
+                                widget.isAddPasswordFlow
+                                    ? 'Add a password with at least 6 characters'
+                                    : 'Your password at least 6 characters',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: ValidationTheme.textSecondary,

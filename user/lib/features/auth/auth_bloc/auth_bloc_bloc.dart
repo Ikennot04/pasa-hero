@@ -28,6 +28,7 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     on<VerifyOTPForNewEmailEvent>(_onVerifyOTPForNewEmailEvent);
     on<UpdateEmailEvent>(_onUpdateEmailEvent);
     on<ChangePasswordEvent>(_onChangePasswordEvent);
+    on<AddPasswordForGoogleUserEvent>(_onAddPasswordForGoogleUserEvent);
   }
 
   final AuthBlocProvider provider;
@@ -469,6 +470,21 @@ class AuthBlocBloc extends Bloc<AuthBlocEvent, AuthBlocState> {
     emit(state.copyWithoutError(isLoading: true));
     try {
       await provider.changePasswordService.changePassword(event.newPassword);
+      emit(state.copyWithoutError(isLoading: false));
+    } catch (error) {
+      emit(state.copy(error: error, isLoading: false));
+    }
+  }
+
+  Future<void> _onAddPasswordForGoogleUserEvent(
+    AddPasswordForGoogleUserEvent event,
+    Emitter<AuthBlocState> emit,
+  ) async {
+    emit(state.copyWithoutError(isLoading: true));
+    try {
+      await provider.authService.addPasswordForGoogleUser(
+        newPassword: event.newPassword,
+      );
       emit(state.copyWithoutError(isLoading: false));
     } catch (error) {
       emit(state.copy(error: error, isLoading: false));

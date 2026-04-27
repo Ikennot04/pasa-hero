@@ -14,6 +14,7 @@ import '../../../splashscreen/splash_screen.dart';
 import '../module/change_email.dart';
 import '../module/profile_information.dart';
 import '../module/change_password.dart';
+import 'change_password/new_password.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -61,6 +62,15 @@ class ProfileScreen extends StatelessWidget {
           }
         },
         builder: (context, state) {
+          final providers = state.user?.providerData
+                  .map((provider) => provider.providerId)
+                  .toSet() ??
+              <String>{};
+          final isGoogleSignInUser = providers.contains('google.com');
+          final hasPasswordProvider = providers.contains('password');
+          final shouldShowAddPasswordWarning =
+              isGoogleSignInUser && !hasPasswordProvider;
+
           return Scaffold(
             body: Container(
               width: double.infinity,
@@ -227,16 +237,24 @@ class ProfileScreen extends StatelessWidget {
                                   
                                   // Change Password
                                   ListTile(
-                                    leading: const Icon(
-                                      Icons.lock_outline,
-                                      color: ValidationTheme.textSecondary,
+                                    leading: Icon(
+                                      shouldShowAddPasswordWarning
+                                          ? Icons.warning_amber_rounded
+                                          : Icons.lock_outline,
+                                      color: shouldShowAddPasswordWarning
+                                          ? ValidationTheme.errorRed
+                                          : ValidationTheme.textSecondary,
                                     ),
-                                    title: const Text(
-                                      'Change Password',
+                                    title: Text(
+                                      shouldShowAddPasswordWarning
+                                          ? 'Add Password!'
+                                          : 'Change Password',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w500,
-                                        color: ValidationTheme.textDark,
+                                        color: shouldShowAddPasswordWarning
+                                            ? ValidationTheme.errorRed
+                                            : ValidationTheme.textDark,
                                       ),
                                     ),
                                     trailing: const Icon(
@@ -244,7 +262,19 @@ class ProfileScreen extends StatelessWidget {
                                       color: ValidationTheme.textSecondary,
                                     ),
                                     onTap: () {
-                                      ChangePasswordModule.navigateToChangePassword(context);
+                                      if (shouldShowAddPasswordWarning) {
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                const NewPasswordScreen(
+                                              isAddPasswordFlow: true,
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      ChangePasswordModule
+                                          .navigateToChangePassword(context);
                                     },
                                   ),
                                 ],
