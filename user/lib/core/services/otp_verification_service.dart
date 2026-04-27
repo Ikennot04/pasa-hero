@@ -4,8 +4,20 @@ import 'dart:io' show Platform;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+/// Sends OTP codes by:
+/// 1. Writing the code to Firestore (`otp_verifications`).
+/// 2. Calling the backend **`POST /api/otp/send`**, which uses **Nodemailer**
+///    in [server/modules/otp/otp.service.js] to deliver email.
+///
+/// The Flutter app cannot run Nodemailer (Node-only); the HTTP route is the
+/// supported way to trigger it.
 class OTPVerificationService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  /// Same host as [AuthService] / production API. Override with
+  /// `--dart-define=SERVER_URL=http://localhost:3000` for local OTP email.
+  static const String _defaultApiBaseUrl =
+      'https://pasa-hero-server.vercel.app';
 
   // Send OTP to email
   Future<void> sendOTP({required String email}) async {
@@ -31,273 +43,84 @@ class OTPVerificationService {
       });
       print('   ✅ OTP stored in Firestore successfully');
       
-      // Send OTP via email using the backend server
-      // Server URL - update this to your server URL
-      // For local development: 
-      //   - Web: http://localhost:3000
-      //   - Mobile: http://YOUR_COMPUTER_IP:3000 (e.g., http://192.168.1.100:3000)
-      //   - Android Emulator: http://10.0.2.2:3000
-      //   - iOS Simulator: http://localhost:3000
-      // For production: your production server URL
-      // You can also set this via environment variable: --dart-define=SERVER_URL=http://your-server.com
       String serverUrl = const String.fromEnvironment(
         'SERVER_URL',
         defaultValue: '',
       );
-      
-      // If SERVER_URL is not set via environment, use platform-specific defaults
+
       if (serverUrl.isEmpty) {
-        if (kIsWeb) {
-          // Web: use localhost
-          serverUrl = 'http://localhost:3000';
-        } else {
-          // Mobile: need to use computer's IP address or emulator address
-          // For Android Emulator, use 10.0.2.2 to access host machine
-          // For iOS Simulator, use localhost
-          // For physical devices, use your computer's local IP (e.g., 192.168.x.x)
-          if (Platform.isAndroid) {
-            // Check if running on emulator (this is a heuristic)
-            // In production, you should set SERVER_URL via --dart-define
-            // For now, try emulator address first, but this should be configured
-            serverUrl = 'http://10.0.2.2:3000'; // Android Emulator
-            print('⚠️ Using Android Emulator default: $serverUrl');
-            print('   For physical Android devices, set SERVER_URL to your computer\'s IP address');
-            print('   Example: flutter run --dart-define=SERVER_URL=http://192.168.1.100:3000');
-          } else if (Platform.isIOS) {
-            // iOS Simulator can use localhost
-            serverUrl = 'http://localhost:3000';
-          } else {
-            // Fallback
-            serverUrl = 'http://localhost:3000';
-            print('⚠️ Unknown platform, using localhost. This may not work on mobile devices.');
-          }
-        }
+        serverUrl = _defaultApiBaseUrl;
       }
-      
-      print('🌐 Using server URL: $serverUrl');
-      print('   Platform: ${kIsWeb ? 'Web' : (Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Unknown'))}');
-      
+
+      print('🌐 OTP email via Nodemailer: POST $serverUrl/api/otp/send');
+      print(
+        '   Platform: ${kIsWeb ? 'Web' : (Platform.isAndroid ? 'Android' : (Platform.isIOS ? 'iOS' : 'Unknown'))}',
+      );
+
       try {
-        
-        // First, try to check if server is reachable
-        print('   🔍 Checking server connectivity at: $serverUrl/api/otp/status');
-        try {
-          final statusResponse = await http.get(
-            Uri.parse('$serverUrl/api/otp/status'),
-          ).timeout(
-            const Duration(seconds: 8),
-            onTimeout: () {
-              print('   ⏱️ Server status check timed out');
-              throw Exception('Server status check timed out');
-            },
-          );
-          
-          if (statusResponse.statusCode == 200) {
-            print('   ✅ Server is reachable and responding');
-          } else {
-            print('⚠️ Server status check failed: ${statusResponse.statusCode}');
-            print('   Response: ${statusResponse.body}');
-          }
-        } catch (statusError) {
-          final errorStr = statusError.toString().toLowerCase();
-          print('   ❌ Server status check failed: $statusError');
-          print('   Server URL: $serverUrl');
-          
-          if (errorStr.contains('connection refused') || 
-              errorStr.contains('failed host lookup') ||
-              errorStr.contains('network is unreachable') ||
-              errorStr.contains('failed to fetch') ||
-              errorStr.contains('clientexception') ||
-              errorStr.contains('socketexception') ||
-              errorStr.contains('timeout')) {
-            print('   ⚠️  Server appears to be offline or unreachable');
-            
-            // For mobile, throw early if server is clearly unreachable
-            if (!kIsWeb) {
-              String errorMsg = 'Server is not reachable at $serverUrl\n\n';
-              if (Platform.isAndroid && serverUrl.contains('10.0.2.2')) {
-                errorMsg += '⚠️ Using Android Emulator address (10.0.2.2)\n\n'
-                    'If you\'re using a PHYSICAL Android device, this won\'t work!\n'
-                    'You must set SERVER_URL to your computer\'s IP address:\n\n'
-                    '1. Find your computer\'s IP:\n'
-                    '   Windows: ipconfig (look for IPv4 Address)\n'
-                    '   Mac/Linux: ifconfig or ip addr\n\n'
-                    '2. Run with:\n'
-                    '   flutter run --dart-define=SERVER_URL=http://YOUR_IP:3000\n\n'
-                    'Example: flutter run --dart-define=SERVER_URL=http://192.168.1.100:3000\n\n';
+        final response = await http
+            .post(
+              Uri.parse('$serverUrl/api/otp/send'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'email': email.trim(),
+                'otpCode': otpCode,
+              }),
+            )
+            .timeout(
+              const Duration(seconds: 20),
+              onTimeout: () {
+                throw Exception(
+                  'Request timed out. Check network and that $serverUrl is reachable.',
+                );
+              },
+            );
+
+        print('   📥 Nodemailer route responded: HTTP ${response.statusCode}');
+
+        if (response.statusCode != 200) {
+          var msg =
+              'Could not send OTP email (HTTP ${response.statusCode}). ';
+          try {
+            final decoded = jsonDecode(response.body);
+            if (decoded is Map<String, dynamic>) {
+              final m = decoded['message']?.toString().trim();
+              final err = decoded['error']?.toString().trim();
+              if (m != null && m.isNotEmpty) {
+                msg = m;
+              } else if (err != null && err.isNotEmpty) {
+                msg = err;
               }
-              errorMsg += 'Please ensure:\n'
-                  '1. Server is running: cd server && npm run dev\n'
-                  '2. Server is accessible from your device\n'
-                  '3. Both devices are on the same network\n'
-                  '4. Firewall is not blocking port 3000';
-              throw Exception(errorMsg);
             }
-            // For web, continue to try sending anyway
-            print('   Will attempt to send OTP anyway, but it will likely fail...');
+          } catch (_) {
+            final body = response.body.trim();
+            if (body.isNotEmpty) {
+              msg += body.length > 300 ? '${body.substring(0, 300)}…' : body;
+            }
           }
+          print('   ❌ $msg');
+          throw Exception(msg);
         }
 
-        print('   📤 Sending HTTP POST request to: $serverUrl/api/otp/send');
-        print('   Request body: {email: ${email.trim()}, otpCode: $otpCode}');
-        
-        final response = await http.post(
-          Uri.parse('$serverUrl/api/otp/send'),
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode({
-            'email': email.trim(),
-            'otpCode': otpCode,
-          }),
-        ).timeout(
-          const Duration(seconds: 15), // Increased timeout to 15 seconds
-          onTimeout: () {
-            print('   ⏱️ Request timed out after 15 seconds');
-            throw Exception('Email sending request timed out. Server may be slow or unreachable.');
-          },
-        );
-        
-        print('   📥 Response received: Status ${response.statusCode}');
-        
-        if (response.statusCode != 200) {
-          final responseBody = jsonDecode(response.body);
-          print('⚠️ OTP email sending failed: ${response.statusCode}');
-          print('   Error: ${responseBody['error'] ?? 'Unknown error'}');
-          print('   Message: ${responseBody['message'] ?? 'No message'}');
-          if (responseBody['troubleshooting'] != null) {
-            print('   Troubleshooting:');
-            if (responseBody['troubleshooting'] is List) {
-              for (var tip in responseBody['troubleshooting']) {
-                print('     - $tip');
-              }
-            } else {
-              print('     - ${responseBody['troubleshooting']}');
-            }
-          }
-          // Don't throw - OTP is stored, email sending is optional
-        } else {
-          print('✅ OTP email sent successfully');
-        }
+        print('   ✅ Nodemailer sent OTP email');
       } catch (e) {
         final errorStr = e.toString().toLowerCase();
-        
-        // Provide helpful error messages for connection issues
-        if (errorStr.contains('connection refused') || 
+        final isNetwork = errorStr.contains('connection refused') ||
             errorStr.contains('failed host lookup') ||
             errorStr.contains('network is unreachable') ||
             errorStr.contains('failed to fetch') ||
             errorStr.contains('clientexception') ||
-            errorStr.contains('socketexception')) {
-          print('❌ Server connection failed: $e');
-          print('   Server URL: $serverUrl');
-          print('   Error Type: Connection Refused (Server not running or unreachable)');
-          print('');
-          print('   🔧 Troubleshooting Steps:');
-          print('   1. Start the server:');
-          print('      - Open a terminal/command prompt');
-          print('      - Navigate to: cd server');
-          print('      - Run: npm run dev');
-          print('      - Wait for: "Listening to port 3000" message');
-          print('');
-          if (!kIsWeb) {
-            print('   2. For MOBILE DEVICES (Android/iOS):');
-            print('      ⚠️  IMPORTANT: localhost/10.0.2.2 won\'t work on physical devices!');
-            print('      - Find your computer\'s IP address:');
-            print('        * Windows: ipconfig (look for IPv4 Address)');
-            print('        * Mac/Linux: ifconfig or ip addr (look for inet)');
-            print('      - Example IP: 192.168.1.100');
-            print('      - Run app with: flutter run --dart-define=SERVER_URL=http://YOUR_IP:3000');
-            print('      - Example: flutter run --dart-define=SERVER_URL=http://192.168.1.100:3000');
-            print('');
-            print('   3. For Android Emulator:');
-            print('      - Use: http://10.0.2.2:3000 (already configured)');
-            print('      - Make sure server is running on your computer');
-            print('');
-            print('   4. For iOS Simulator:');
-            print('      - Use: http://localhost:3000 (already configured)');
-            print('      - Make sure server is running on your computer');
-            print('');
-            
-            // Throw error for mobile devices so user knows it failed
-            String errorMessage = 'Failed to send OTP email. Server connection failed.\n\n';
-            
-            if (serverUrl.contains('localhost') || serverUrl.contains('127.0.0.1')) {
-              errorMessage += 'Cannot connect to server on mobile device.\n\n'
-                  'For physical mobile devices, you must set your computer\'s IP address:\n'
-                  '1. Find your computer\'s IP (Windows: ipconfig, Mac/Linux: ifconfig)\n'
-                  '2. Run: flutter run --dart-define=SERVER_URL=http://YOUR_IP:3000\n'
-                  'Example: flutter run --dart-define=SERVER_URL=http://192.168.1.100:3000\n\n'
-                  'Current server URL: $serverUrl';
-            } else if (Platform.isAndroid && serverUrl.contains('10.0.2.2')) {
-              errorMessage += 'Using Android Emulator address (10.0.2.2).\n\n'
-                  'If you\'re on a physical Android device, this won\'t work!\n'
-                  'Set SERVER_URL to your computer\'s IP address:\n'
-                  '1. Find your computer\'s IP (Windows: ipconfig, Mac/Linux: ifconfig)\n'
-                  '2. Run: flutter run --dart-define=SERVER_URL=http://YOUR_IP:3000\n'
-                  'Example: flutter run --dart-define=SERVER_URL=http://192.168.1.100:3000\n\n'
-                  'Current server URL: $serverUrl';
-            } else {
-              errorMessage += 'Server is not reachable at: $serverUrl\n\n'
-                  'Please ensure:\n'
-                  '1. The server is running (cd server && npm run dev)\n'
-                  '2. Your mobile device and computer are on the same network\n'
-                  '3. The server URL is correct';
-            }
-            
-            throw Exception(errorMessage);
-          }
-          
-          print('   5. Verify server is running:');
-          print('      - Open in browser: $serverUrl/health');
-          print('      - Should show: {"status":"ok",...}');
-          print('');
-          print('   6. Check server port:');
-          print('      - Default port: 3000');
-          print('      - Check server/.env file for PORT setting');
-          print('      - If different port, update SERVER_URL');
-          print('');
-          if (kIsWeb) {
-            print('   7. For web apps:');
-            print('      - Ensure server CORS allows your origin');
-            print('      - Check browser console for CORS errors');
-            print('');
-          }
-          
-          // For web, don't throw - OTP is stored, email sending is optional
-          if (kIsWeb) {
-            print('   ⚠️  Note: OTP is saved in Firestore, but email cannot be sent until server is running.');
-          }
-        } else if (errorStr.contains('timeout')) {
-          print('⏱️ Request timed out: $e');
-          print('   Server URL: $serverUrl');
-          print('   The server may be slow or unreachable');
-          print('   Check server logs for errors');
-          
-          // Throw error for mobile devices
-          if (!kIsWeb) {
-            throw Exception(
-              'OTP email request timed out. Server may be unreachable.\n\n'
-              'Please check:\n'
-              '1. Server is running (cd server && npm run dev)\n'
-              '2. Server URL is correct: $serverUrl\n'
-              '3. Your device and computer are on the same network'
-            );
-          }
-        } else {
-          print('⚠️ OTP email sending error: $e');
-          print('   Server URL: $serverUrl');
-          print('   Check server logs for more details');
-          
-          // Throw error for mobile devices
-          if (!kIsWeb) {
-            throw Exception(
-              'Failed to send OTP email: $e\n\n'
-              'Server URL: $serverUrl\n'
-              'Please check server logs and ensure the server is running.'
-            );
-          }
+            errorStr.contains('socketexception');
+
+        if (isNetwork) {
+          throw Exception(
+            'Cannot reach the server at $serverUrl to send OTP (Nodemailer).\n\n'
+            'For local dev use:\n'
+            'flutter run --dart-define=SERVER_URL=http://YOUR_IP:3000\n\n'
+            'Production uses Vercel; ensure the app can access the internet.',
+          );
         }
+        rethrow;
       }
     } catch (e) {
       // Check if it's a permission error

@@ -4,6 +4,7 @@ import '../register/register_screen.dart';
 import '../auth_bloc/auth_bloc_bloc.dart';
 import '../auth_bloc/auth_bloc_event.dart';
 import '../auth_bloc/auth_bloc_state.dart';
+import '../otp/otp_screen.dart';
 import '../../near_me/Screen/nearme_screen.dart';
 import '../forgot_password/forgot_password_screen.dart';
 
@@ -24,6 +25,7 @@ class LoginForm extends StatefulWidget {
 class _LoginFormState extends State<LoginForm> {
   bool _obscurePassword = true;
   String? _validationError;
+  bool _navigatedToGoogleOtp = false;
   
   // Scroll controller for automatic scrolling to focused fields
   final ScrollController _scrollController = ScrollController();
@@ -89,10 +91,44 @@ class _LoginFormState extends State<LoginForm> {
             }
           });
         }
-        // Clear validation error when auth state changes
+        // Google login with no app profile yet: OTP was sent — same flow as Google sign-up
+        if (!state.isLoading &&
+            !state.isAuthenticated &&
+            state.error == null &&
+            !_navigatedToGoogleOtp) {
+          final bloc = context.read<AuthBlocBloc>();
+          final pendingEmail = bloc.pendingGoogleEmail;
+          if (pendingEmail != null) {
+            setState(() => _navigatedToGoogleOtp = true);
+            final googleDisplayName = bloc.pendingGoogleDisplayName ?? '';
+            bloc.resetPendingGoogleInfo();
+            final authBloc =
+                BlocProvider.of<AuthBlocBloc>(context, listen: false);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: authBloc,
+                      child: OTPScreen(
+                        email: pendingEmail,
+                        isRegistration: true,
+                        isGoogleSignUp: true,
+                        googleDisplayName: googleDisplayName,
+                      ),
+                    ),
+                  ),
+                );
+              }
+            });
+          }
+        }
         if (state.error != null || state.isAuthenticated) {
           setState(() {
             _validationError = null;
+            if (state.error != null) {
+              _navigatedToGoogleOtp = false;
+            }
           });
         }
       },
@@ -451,7 +487,10 @@ class _LoginFormState extends State<LoginForm> {
                           onPressed: state.isLoading
                               ? null
                               : () {
-                                  context.read<AuthBlocBloc>().add(GoogleSignInEvent());
+                                  setState(() => _navigatedToGoogleOtp = false);
+                                  context
+                                      .read<AuthBlocBloc>()
+                                      .add(GoogleSignInEvent());
                                 },
                           style: OutlinedButton.styleFrom(
                             backgroundColor: Colors.white,
