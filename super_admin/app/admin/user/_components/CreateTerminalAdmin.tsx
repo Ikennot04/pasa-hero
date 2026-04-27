@@ -3,26 +3,46 @@
 import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { createUserSchema, type CreateUserFormData } from "./createUserSchema";
-
+import {
+  createTerminalAdminSchema,
+  type CreateTerminalAdminFormData,
+} from "./createUserSchema";
+import { useGetTerminalName } from "../_hooks/useGetTerminalName";
+import { usePostUser } from "../_hooks/usePostUser";
 
 // ICONS
 import { FaUserPlus } from "react-icons/fa6";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 
-export default function CreateTerminalAdmin() {
+type TerminalOption = { _id: string; terminal_name: string };
+
+type CreateTerminalAdminProps = {
+  onCreated?: () => void | Promise<void>;
+};
+
+export default function CreateTerminalAdmin({ onCreated }: CreateTerminalAdminProps) {
   const [open, setOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [terminals, setTerminals] = useState<TerminalOption[]>([]);
+  const [terminalsLoading, setTerminalsLoading] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const { getTerminalName, error: terminalsError } = useGetTerminalName();
+  const { postUser, error: submitError, clearError } = usePostUser();
 
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<CreateUserFormData>({
-    resolver: yupResolver(createUserSchema),
-    defaultValues: { f_name: "", l_name: "", email: "", password: "" },
+  } = useForm<CreateTerminalAdminFormData>({
+    resolver: yupResolver(createTerminalAdminSchema),
+    defaultValues: {
+      f_name: "",
+      l_name: "",
+      email: "",
+      password: "",
+      assigned_terminal: "",
+    },
   });
 
   useEffect(() => {
@@ -38,7 +58,27 @@ export default function CreateTerminalAdmin() {
     return () => dialog.removeEventListener("close", onClose);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setTerminalsLoading(true);
+    (async () => {
+      try {
+        const res = await getTerminalName();
+        if (cancelled) return;
+        const list = res && Array.isArray(res.data) ? (res.data as TerminalOption[]) : [];
+        setTerminals(list);
+      } finally {
+        if (!cancelled) setTerminalsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, getTerminalName]);
+
   function openModal() {
+    clearError();
     setOpen(true);
     reset();
   }
@@ -49,22 +89,11 @@ export default function CreateTerminalAdmin() {
     reset();
   }
 
-  async function onSubmit(data: CreateUserFormData) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const formData = new FormData();
-      formData.append("data", JSON.stringify({ ...data, role: "terminal admin" }));
-      const res = await fetch(`${baseUrl}/user`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to create terminal admin");
-      }
+  async function onSubmit(data: CreateTerminalAdminFormData) {
+    const res = await postUser({ ...data, role: "terminal admin" });
+    if (res?.success) {
+      await onCreated?.();
       closeModal();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to create terminal admin");
     }
   }
 
@@ -112,6 +141,31 @@ export default function CreateTerminalAdmin() {
             </div>
             <div className="form-control">
               <label className="label">
+                <span className="label-text">Assigned terminal</span>
+              </label>
+              <select
+                className={`select select-bordered w-full ${errors.assigned_terminal ? "select-error" : ""}`}
+                disabled={terminalsLoading}
+                {...register("assigned_terminal")}
+              >
+                <option value="">
+                  {terminalsLoading ? "Loading terminals…" : "Select terminal"}
+                </option>
+                {terminals.map((t) => (
+                  <option key={String(t._id)} value={String(t._id)}>
+                    {t.terminal_name}
+                  </option>
+                ))}
+              </select>
+              {errors.assigned_terminal && (
+                <p className="text-error text-sm mt-1">{errors.assigned_terminal.message}</p>
+              )}
+              {terminalsError && !terminalsLoading && (
+                <p className="text-error text-sm mt-1">{terminalsError}</p>
+              )}
+            </div>
+            <div className="form-control">
+              <label className="label">
                 <span className="label-text">Email</span>
               </label>
               <input
@@ -153,6 +207,11 @@ export default function CreateTerminalAdmin() {
                 <span className="label-text-alt">One capital letter and one special character</span>
               </label>
             </div>
+            {submitError && (
+              <p className="text-error text-sm" role="alert">
+                {submitError}
+              </p>
+            )}
             <div className="modal-action">
               <button type="button" className="btn btn-ghost" onClick={closeModal}>
                 Cancel

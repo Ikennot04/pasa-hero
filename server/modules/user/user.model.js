@@ -24,11 +24,17 @@ const userSchema = new mongoose.Schema(
     status: {
       type: String,
       default: "active",
-      enum: ["active", "inactive", "suspended"],
+      enum: ["active", "suspended"],
     },
     assigned_terminal: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Terminal",
+      default: null,
+    },
+    /** User id of the terminal admin (or super admin) who created this operator */
+    created_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       default: null,
     },
   },
@@ -36,11 +42,10 @@ const userSchema = new mongoose.Schema(
 );
 
 // Pre-save hook to automatically set roleid based on role if not provided
-userSchema.pre('save', function(next) {
-  if (this.isModified('role') || !this.roleid) {
+userSchema.pre("save", function () {
+  if (this.isModified("role") || !this.roleid) {
     this.roleid = getRoleId(this.role);
   }
-  next();
 });
 
 export default mongoose.model("User", userSchema);

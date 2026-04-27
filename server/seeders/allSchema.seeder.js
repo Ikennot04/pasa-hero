@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import User from "../modules/user/user.model.js";
 import Bus from "../modules/bus/bus.model.js";
 import BusStatus from "../modules/bus_status/bus_status.model.js";
+import BusLocation from "../modules/bus_location/bus_location.model.js";
 import Route from "../modules/route/route.model.js";
 import Terminal from "../modules/terminal/terminal.model.js";
 import Driver from "../modules/driver/driver.model.js";
@@ -16,6 +17,24 @@ import UserSubscription from "../modules/user_subscription/user_subscription.mod
 import SystemLog from "../modules/system_log/system_log.model.js";
 import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
 import seedHighPrioritySmTerminalNotifications from "./highPrioritySmTerminalNotifications.seeder.js";
+import seedUserNotifications from "./userNotifications.seeder.js";
+import { buildSystemLogDocuments } from "./systemLogs.seeder.js";
+import seedDevAdminUsers, {
+  DEV_TERMINAL_ADMIN,
+} from "./devAdminUsers.seeder.js";
+
+const ALLOWED_USER_STATUSES = new Set(["active", "suspended"]);
+
+function normalizeUserSeedStatus(status) {
+  if (status === "inactive") return "suspended";
+  if (!status) return "active";
+  if (!ALLOWED_USER_STATUSES.has(status)) {
+    throw new Error(
+      `Invalid user seed status "${status}". Allowed values: active, suspended.`,
+    );
+  }
+  return status;
+}
 
 async function ensureDbConnected() {
   if (mongoose.connection.readyState === 1) return;
@@ -1028,6 +1047,7 @@ const seedData = async () => {
     await RouteStop.deleteMany({});
     await Bus.deleteMany({});
     await BusStatus.deleteMany({});
+    await BusLocation.deleteMany({});
     await Driver.deleteMany({});
     await BusAssignment.deleteMany({});
     await Notification.deleteMany({});
@@ -1040,7 +1060,7 @@ const seedData = async () => {
     // ==========================================
     // 1. CREATE USERS
     // ==========================================
-    const users = await User.insertMany([
+    const userSeedRows = [
       {
         f_name: "Juan",
         l_name: "Dela Cruz",
@@ -1171,7 +1191,14 @@ const seedData = async () => {
         firebase_id: "firebase_user_008",
         profile_image: "default.png",
       },
-    ]);
+    ];
+
+    const users = await User.insertMany(
+      userSeedRows.map((row) => ({
+        ...row,
+        status: normalizeUserSeedStatus(row.status),
+      })),
+    );
 
     console.log(`✅ Created ${users.length} users`);
 
@@ -1251,21 +1278,39 @@ const seedData = async () => {
       waterfrontTerminal,
     ] = terminals;
 
-    await User.updateMany(
-      {
-        email: {
-          $in: [
-            "pedro.reyes@email.com",
-            "maria.santos@email.com",
-            "rico.alvarez@email.com",
-          ],
-        },
-      },
+    await seedDevAdminUsers(smTerminal._id);
+
+    const operatorCreatedBy = await User.findOne({
+      email: DEV_TERMINAL_ADMIN.email,
+    }).select("_id");
+    if (!operatorCreatedBy) {
+      throw new Error(
+        `Expected terminal admin ${DEV_TERMINAL_ADMIN.email} after seedDevAdminUsers.`,
+      );
+    }
+
+    await User.updateOne(
+      { email: "pedro.reyes@email.com" },
       { $set: { assigned_terminal: smTerminal._id } },
     );
     await User.updateOne(
       { email: "jenny.lim@email.com" },
       { $set: { assigned_terminal: ayalaTerminal._id } },
+    );
+
+    await User.updateMany(
+      {
+        role: "operator",
+        email: {
+          $in: ["maria.santos@email.com", "rico.alvarez@email.com"],
+        },
+      },
+      {
+        $set: {
+          created_by: operatorCreatedBy._id,
+          assigned_terminal: smTerminal._id,
+        },
+      },
     );
 
     // ==========================================
@@ -1277,6 +1322,8 @@ const seedData = async () => {
         route_code: "01A",
         start_terminal_id: smTerminal._id,
         end_terminal_id: ayalaTerminal._id,
+        start_location: { latitude: 10.3115, longitude: 123.9185 },
+        end_location: { latitude: 10.3181, longitude: 123.9061 },
         estimated_duration: 45,
         status: "active",
       },
@@ -1285,6 +1332,8 @@ const seedData = async () => {
         route_code: "02B",
         start_terminal_id: carbonTerminal._id,
         end_terminal_id: mandaueTerminal._id,
+        start_location: { latitude: 10.2935, longitude: 123.9026 },
+        end_location: { latitude: 10.3357, longitude: 123.9421 },
         estimated_duration: 30,
         status: "active",
       },
@@ -1293,6 +1342,8 @@ const seedData = async () => {
         route_code: "03C",
         start_terminal_id: itParkTerminal._id,
         end_terminal_id: smTerminal._id,
+        start_location: { latitude: 10.3241, longitude: 123.9044 },
+        end_location: { latitude: 10.3115, longitude: 123.9185 },
         estimated_duration: 35,
         status: "active",
       },
@@ -1301,6 +1352,8 @@ const seedData = async () => {
         route_code: "04D",
         start_terminal_id: ayalaTerminal._id,
         end_terminal_id: carbonTerminal._id,
+        start_location: { latitude: 10.3181, longitude: 123.9061 },
+        end_location: { latitude: 10.2935, longitude: 123.9026 },
         estimated_duration: 25,
         status: "active",
       },
@@ -1309,6 +1362,8 @@ const seedData = async () => {
         route_code: "05E",
         start_terminal_id: mandaueTerminal._id,
         end_terminal_id: itParkTerminal._id,
+        start_location: { latitude: 10.3357, longitude: 123.9421 },
+        end_location: { latitude: 10.3241, longitude: 123.9044 },
         estimated_duration: 40,
         status: "active",
       },
@@ -1317,6 +1372,8 @@ const seedData = async () => {
         route_code: "06F",
         start_terminal_id: southBusTerminal._id,
         end_terminal_id: smTerminal._id,
+        start_location: { latitude: 10.2476, longitude: 123.8494 },
+        end_location: { latitude: 10.3115, longitude: 123.9185 },
         estimated_duration: 50,
         status: "active",
         route_type: "normal",
@@ -1326,6 +1383,8 @@ const seedData = async () => {
         route_code: "07G",
         start_terminal_id: waterfrontTerminal._id,
         end_terminal_id: ayalaTerminal._id,
+        start_location: { latitude: 10.2942, longitude: 123.9171 },
+        end_location: { latitude: 10.3181, longitude: 123.9061 },
         estimated_duration: 20,
         status: "active",
         route_type: "vice_versa",
@@ -1734,6 +1793,20 @@ const seedData = async () => {
     );
 
     console.log(`✅ Created ${busStatuses.length} bus statuses`);
+
+    const busLocations = await BusLocation.insertMany(
+      buses.map((bus, index) => ({
+        bus_id: String(bus._id),
+        latitude: 10.3115 + index * 0.0012,
+        longitude: 123.9185 - index * 0.0011,
+        speed:
+          bus.status === "active"
+            ? 18 + (index % 5) * 3
+            : 0,
+      })),
+    );
+
+    console.log(`✅ Created ${busLocations.length} bus locations`);
 
     const [
       bus1,
@@ -2503,99 +2576,18 @@ const seedData = async () => {
     // ==========================================
     // 11. CREATE SYSTEM LOGS
     // ==========================================
-    const systemLogs = await SystemLog.insertMany([
-      {
-        user_id: String(superAdmin._id),
-        action: "Login",
-        description: "Super admin logged in from web console.",
-        createdAt: new Date(now.getTime() - 48 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Login",
-        description: "Operator logged in from mobile app.",
-        createdAt: new Date(now.getTime() - 36 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(superAdmin._id),
-        action: "Create User",
-        description: "Created operator account rico.alvarez@email.com.",
-        createdAt: new Date(now.getTime() - 72 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(superAdmin._id),
-        action: "Update User",
-        description:
-          "Updated role for elena.villanueva@email.com to suspended.",
-        createdAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Create Route",
-        description: "Added route 07G (Waterfront to Ayala Shuttle).",
-        createdAt: new Date(now.getTime() - 120 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator2._id),
-        action: "Update Route",
-        description: "Adjusted estimated duration for route 02B.",
-        createdAt: new Date(now.getTime() - 96 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(superAdmin._id),
-        action: "Delete Route",
-        description: "Archived legacy test route (code TMP-99).",
-        createdAt: new Date(now.getTime() - 168 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(terminalAdmin1._id),
-        action: "Create Terminal",
-        description: "Registered Waterfront Lahug Terminal.",
-        createdAt: new Date(now.getTime() - 200 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(terminalAdmin2._id),
-        action: "Update Terminal",
-        description: "Updated Ayala Center Terminal status and coordinates.",
-        createdAt: new Date(now.getTime() - 12 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(superAdmin._id),
-        action: "Delete Terminal",
-        description: "Removed deprecated pop-up terminal record.",
-        createdAt: new Date(now.getTime() - 240 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Assign Bus",
-        description: `Assigned CEB-001 to route 01A with driver ${driver1.f_name} ${driver1.l_name}.`,
-        createdAt: new Date(now.getTime() - 6 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator2._id),
-        action: "Assign Bus",
-        description: `Scheduled CEB-011 on route 06F with driver ${driver8.f_name} ${driver8.l_name}.`,
-        createdAt: new Date(now.getTime() - 4 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Remove Bus Assignment",
-        description: "Cancelled same-day assignment for CEB-005 (maintenance).",
-        createdAt: new Date(now.getTime() - 3 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(terminalAdmin1._id),
-        action: "Logout",
-        description: "Session ended from SM terminal kiosk.",
-        createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
-      },
-      {
-        user_id: String(operator1._id),
-        action: "Delete User",
-        description: "Removed duplicate staging user account.",
-        createdAt: new Date(now.getTime() - 18 * 60 * 60 * 1000),
-      },
-    ]);
+    const systemLogs = await SystemLog.insertMany(
+      buildSystemLogDocuments({
+        superAdmin,
+        operator1,
+        operator2,
+        terminalAdmin1,
+        terminalAdmin2,
+        driver1,
+        driver8,
+        now,
+      }),
+    );
 
     console.log(`✅ Created ${systemLogs.length} system logs`);
 
@@ -2604,16 +2596,18 @@ const seedData = async () => {
     // ==========================================
     console.log("\n📊 SEED DATA SUMMARY:");
     console.log("=====================");
-    console.log(`Users: ${users.length}`);
-    console.log(`  - Super Admin: 1`);
-    console.log(`  - Operators: 2`);
-    console.log(`  - Terminal Admins: 2`);
-    console.log(`  - Regular Users: 8`);
+    const userTotal = await User.countDocuments();
+    console.log(`Users: ${userTotal}`);
+    console.log(`  - Super Admins: ${await User.countDocuments({ role: "super admin" })}`);
+    console.log(`  - Operators: ${await User.countDocuments({ role: "operator" })}`);
+    console.log(`  - Terminal Admins: ${await User.countDocuments({ role: "terminal admin" })}`);
+    console.log(`  - Regular Users: ${await User.countDocuments({ role: "user" })}`);
     console.log(`Terminals: ${terminals.length}`);
     console.log(`Routes: ${routes.length}`);
     console.log(`Route Stops: ${routeStops.length}`);
     console.log(`Buses: ${buses.length}`);
     console.log(`Bus Statuses: ${busStatuses.length}`);
+    console.log(`Bus Locations: ${busLocations.length}`);
     console.log(`Drivers: ${drivers.length}`);
     console.log(`Bus Assignments: ${assignments.length}`);
     const notificationCount = await Notification.countDocuments();
@@ -2634,6 +2628,9 @@ const seedData = async () => {
 
     await seedOperationalSummaryDemo();
     console.log("✅ Ran terminal operational summary seeder");
+
+    await seedUserNotifications();
+    console.log("✅ Ran user notifications seeder");
 
     console.log("\n✅ Seed data created successfully!");
   } catch (error) {

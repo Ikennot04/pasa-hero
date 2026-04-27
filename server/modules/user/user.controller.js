@@ -1,4 +1,5 @@
 import { UserService } from "./user.service.js";
+import { friendlyUserWriteError } from "./user.errors.js";
 
 export const signupUser = async (req, res) => {
   try {
@@ -8,7 +9,10 @@ export const signupUser = async (req, res) => {
     const user = await UserService.signupUser(userData, userImg);
     res.status(201).json({ success: true, data: user });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(400).json({
+      success: false,
+      message: friendlyUserWriteError(error),
+    });
   }
 };
 
@@ -72,10 +76,30 @@ export const createAdminUser = async (req, res) => {
     const userData = JSON.parse(req?.body?.data);
     const userImg = req.file?.filename;
 
-    const user = await UserService.createAdminUser(userData, userImg);
+    let creatorUserId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      try {
+        const token = authHeader.split(" ")[1];
+        const { user: authUser } = await UserService.verifyJwtAuth(token);
+        creatorUserId = authUser._id;
+      } catch {
+        creatorUserId = null;
+      }
+    }
+
+    const user = await UserService.createAdminUser(
+      userData,
+      userImg,
+      creatorUserId,
+    );
     res.status(201).json({ success: true, data: user });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    const status = error.statusCode || 400;
+    res.status(status).json({
+      success: false,
+      message: friendlyUserWriteError(error),
+    });
   }
 };
 
@@ -91,6 +115,9 @@ export const updateUser = async (req, res) => {
     });
     res.status(200).json({ success: true, data: user });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.status(400).json({
+      success: false,
+      message: friendlyUserWriteError(error),
+    });
   }
 };

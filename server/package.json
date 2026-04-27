@@ -6,7 +6,7 @@
   "scripts": {
     "seed": "node seeders/allSchema.seeder.js",
     "seed:operational-summary": "node seeders/terminalOperationalSummary.seeder.js",
-    "seed:admin-access": "node seeders/adminAccess.seeder.js",
+    "seed:system-logs": "node seeders/systemLogs.seeder.js",
     "dev": "nodemon index.js"
   },
   "keywords": [],

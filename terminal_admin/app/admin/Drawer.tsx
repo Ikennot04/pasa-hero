@@ -1,11 +1,12 @@
 "use client";
 
+import axios from "axios";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useSyncExternalStore } from "react";
 
 import { LiaBarsSolid } from "react-icons/lia";
-import { FaBell, FaChartLine, FaSignOutAlt } from "react-icons/fa";
+import { FaBell, FaChartLine, FaSignOutAlt, FaUsers } from "react-icons/fa";
 import { MdAltRoute, MdBusAlert } from "react-icons/md";
 import { TbBusStop } from "react-icons/tb";
 import { LuLogs } from "react-icons/lu";
@@ -31,6 +32,11 @@ const routes = [
     path: "/admin/bus",
     icon: <TbBusStop className="size-6" />,
     label: "Bus Status",
+  },
+  {
+    path: "/admin/operators",
+    icon: <FaUsers className="size-6" />,
+    label: "Operators",
   },
   {
     path: "/admin/routes",
@@ -59,7 +65,25 @@ export default function Drawer({ children }: { children: React.ReactNode }) {
   // Use effect to check if the token is expired
   useAuthToken();
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    const token = localStorage.getItem("terminal_admin_auth_token");
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+    if (token && baseUrl) {
+      try {
+        const { data } = await axios.get<{ data?: { user?: { _id?: string; id?: string } } }>(
+          `${baseUrl}/api/users/auth/check`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const user = data?.data?.user;
+        const userId = user?._id ?? user?.id;
+        if (userId) {
+          await axios.patch(`${baseUrl}/api/users/auth/logout/${userId}`);
+        }
+      } catch {
+        // Still clear session locally if the API is unreachable.
+      }
+    }
+
     localStorage.removeItem("terminal_admin_auth_token");
     localStorage.removeItem("f_name");
     localStorage.removeItem("assigned_terminal");

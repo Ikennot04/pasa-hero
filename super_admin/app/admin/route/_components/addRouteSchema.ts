@@ -14,14 +14,18 @@ export const addRouteSchema = yup.object({
   start_terminal_id: yup.string().required("Start terminal is required"),
   end_terminal_id: yup
     .string()
-    .required("End terminal is required")
+    .optional()
+    .transform((value) => (typeof value === "string" ? value.trim() : value))
     .test(
       "different",
       "Start and end terminals must be different",
       function (value) {
+        if (!value) return true;
         return value !== this.parent.start_terminal_id;
-      }
+      },
     ),
+  start_location: yup.string().required("Start location is required").trim(),
+  end_location: yup.string().required("End location is required").trim(),
   estimated_duration: durationOptional,
 });
 

@@ -16,6 +16,12 @@ export const createUserSchema = yup.object({
 
 export type CreateUserFormData = yup.InferType<typeof createUserSchema>;
 
+export const createTerminalAdminSchema = createUserSchema.shape({
+  assigned_terminal: yup.string().required("Assigned terminal is required").trim(),
+});
+
+export type CreateTerminalAdminFormData = yup.InferType<typeof createTerminalAdminSchema>;
+
 export const editUserSchema = yup.object({
   f_name: yup.string().required("First name is required").trim(),
   l_name: yup.string().required("Last name is required").trim(),

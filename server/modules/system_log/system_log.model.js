@@ -9,9 +9,9 @@ const systemLogSchema = new mongoose.Schema(
       enum: [
         "Login",
         "Logout",
-        "Create User",
-        "Update User",
-        "Delete User",
+        "Create Operator",
+        "Update Operator",
+        "Delete Operator",
         "Create Route",
         "Update Route",
         "Delete Route",

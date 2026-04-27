@@ -1,101 +1,76 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { RouteProps } from "../RouteProps";
+import { RouteProps, type RouteStatus } from "../RouteProps";
+import { useGetRouteDetails } from "../_hooks/useGetRouteDetails";
 
-// Static data for routes (matches main route page)
-const ROUTES_STATIC: RouteProps[] = [
-  {
-    id: "1",
-    route_name: "PITX — SM North EDSA",
-    route_code: "PITX-NEDSA",
-    start_terminal_id: "1",
-    end_terminal_id: "2",
-    start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)",
-    end_terminal_name: "SM North EDSA",
-    estimated_duration: 45,
-    status: "active",
-  },
-  {
-    id: "2",
-    route_name: "SM North EDSA — Monumento",
-    route_code: "NEDSA-MON",
-    start_terminal_id: "2",
-    end_terminal_id: "3",
-    start_terminal_name: "SM North EDSA",
-    end_terminal_name: "Monumento",
-    estimated_duration: 35,
-    status: "active",
-  },
-  {
-    id: "3",
-    route_name: "Monumento — Fairview",
-    route_code: "MON-FV",
-    start_terminal_id: "3",
-    end_terminal_id: "4",
-    start_terminal_name: "Monumento",
-    end_terminal_name: "Fairview",
-    estimated_duration: 55,
-    status: "active",
-  },
-  {
-    id: "4",
-    route_name: "PITX — Monumento",
-    route_code: "PITX-MON",
-    start_terminal_id: "1",
-    end_terminal_id: "3",
-    start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)",
-    end_terminal_name: "Monumento",
-    estimated_duration: 40,
-    status: "active",
-  },
-  {
-    id: "5",
-    route_name: "Fairview — SM North EDSA",
-    route_code: "FV-NEDSA",
-    start_terminal_id: "4",
-    end_terminal_id: "2",
-    start_terminal_name: "Fairview",
-    end_terminal_name: "SM North EDSA",
-    estimated_duration: 50,
-    status: "active",
-  },
-  {
-    id: "6",
-    route_name: "Tamiya — Pacific Terminal",
-    route_code: "TAM-PAC",
-    start_terminal_id: "5",
-    end_terminal_id: "6",
-    start_terminal_name: "Tamiya Terminal",
-    end_terminal_name: "Pacific Terminal",
-    estimated_duration: 15,
-    status: "active",
-  },
-  {
-    id: "7",
-    route_name: "PITX — Fairview (Express)",
-    route_code: "PITX-FV-X",
-    start_terminal_id: "1",
-    end_terminal_id: "4",
-    start_terminal_name: "PITX (Parañaque Integrated Terminal Exchange)",
-    end_terminal_name: "Fairview",
-    estimated_duration: 90,
-    status: "suspended",
-  },
-];
-
-// Number of buses currently assigned/running on each route (static for demo)
-const BUS_COUNT_BY_ROUTE: Record<string, number> = {
-  "1": 3,
-  "2": 2,
-  "3": 2,
-  "4": 2,
-  "5": 1,
-  "6": 1,
-  "7": 0,
+type ApiTerminalRef = {
+  _id?: string;
+  id?: string;
+  terminal_name?: string;
 };
+
+type ApiRouteStop = {
+  _id: string;
+  route_id: string;
+  stop_name: string;
+  stop_order: number;
+  latitude: number;
+  longitude: number;
+};
+
+type ApiRoute = {
+  _id: string;
+  route_name: string;
+  route_code: string;
+  start_terminal_id: string | ApiTerminalRef | null;
+  end_terminal_id: string | ApiTerminalRef | null;
+  estimated_duration?: number | null;
+  status?: string;
+  active_buses_count?: number;
+  route_stops?: ApiRouteStop[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+function normalizeTerminalRef(ref: string | ApiTerminalRef | null | undefined) {
+  if (!ref) {
+    return { id: "", name: undefined as string | undefined };
+  }
+  if (typeof ref === "string") {
+    return { id: ref, name: undefined as string | undefined };
+  }
+  return {
+    id: String(ref._id ?? ref.id ?? ""),
+    name: ref.terminal_name,
+  };
+}
+
+function mapApiRouteToProps(route: ApiRoute): RouteProps {
+  const startTerminal = normalizeTerminalRef(route.start_terminal_id);
+  const endTerminal = normalizeTerminalRef(route.end_terminal_id);
+  const status: RouteStatus =
+    route.status === "inactive" || route.status === "suspended"
+      ? route.status
+      : "active";
+
+  return {
+    id: String(route._id),
+    route_name: route.route_name,
+    route_code: route.route_code,
+    start_terminal_id: startTerminal.id,
+    end_terminal_id: endTerminal.id,
+    start_terminal_name: startTerminal.name,
+    end_terminal_name: endTerminal.name,
+    estimated_duration:
+      typeof route.estimated_duration === "number" ? route.estimated_duration : null,
+    status,
+    createdAt: route.createdAt,
+    updatedAt: route.updatedAt,
+  };
+}
 
 function RouteStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -119,16 +94,54 @@ function formatDateTime(iso: string | undefined) {
   });
 }
 
+type RouteDetailsResponse = {
+  success?: boolean;
+  data?: ApiRoute;
+  message?: string;
+};
+
 export default function RouteDetailsPage() {
   const params = useParams();
   const routeId = params?.route_id as string | undefined;
 
-  const route = useMemo(
-    () => (routeId ? ROUTES_STATIC.find((r) => r.id === routeId) ?? null : null),
-    [routeId]
-  );
+  const { getRouteDetails, error: detailsError } = useGetRouteDetails();
+  const [route, setRoute] = useState<RouteProps | null>(null);
+  const [busCount, setBusCount] = useState(0);
+  const [routeStops, setRouteStops] = useState<ApiRouteStop[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const busCount = routeId ? (BUS_COUNT_BY_ROUTE[routeId] ?? 0) : 0;
+  useEffect(() => {
+    if (!routeId) return;
+
+    let cancelled = false;
+
+    (async () => {
+      setLoading(true);
+      setRoute(null);
+      setBusCount(0);
+      setRouteStops([]);
+
+      const res = (await getRouteDetails(routeId)) as RouteDetailsResponse | null;
+      if (cancelled) return;
+
+      if (res?.success === true && res.data) {
+        const raw = res.data;
+        setRoute(mapApiRouteToProps(raw));
+        setBusCount(Number(raw.active_buses_count ?? 0));
+        const stops = Array.isArray(raw.route_stops) ? raw.route_stops : [];
+        setRouteStops(
+          [...stops].sort((a, b) => (a.stop_order ?? 0) - (b.stop_order ?? 0)),
+        );
+      } else {
+        setRoute(null);
+      }
+      setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [routeId, getRouteDetails]);
 
   if (!routeId) {
     return (
@@ -143,12 +156,26 @@ export default function RouteDetailsPage() {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="space-y-4 pt-6">
+        <span className="loading loading-spinner loading-lg" />
+      </div>
+    );
+  }
+
   if (!route) {
     return (
       <div className="space-y-4 pt-6">
-        <div className="alert alert-error">
-          <span>Route not found.</span>
-        </div>
+        {detailsError ? (
+          <div role="alert" className="alert alert-error text-sm">
+            {detailsError}
+          </div>
+        ) : (
+          <div className="alert alert-error">
+            <span>Route not found.</span>
+          </div>
+        )}
         <Link href="/admin/route" className="btn btn-lg bg-[#0062CA] text-white hover:bg-[#0062CA]/80">
           ← Back to routes
         </Link>
@@ -261,6 +288,40 @@ export default function RouteDetailsPage() {
               </div>
             </dl>
           </div>
+        </div>
+      </div>
+
+      <div className="card card-bordered bg-base-100 shadow-sm">
+        <div className="card-body">
+          <h2 className="card-title text-xl">Route stops</h2>
+          {routeStops.length === 0 ? (
+            <p className="text-base-content/70">No stops configured for this route.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table table-zebra">
+                <thead>
+                  <tr>
+                    <th className="w-16">#</th>
+                    <th>Stop name</th>
+                    <th className="hidden sm:table-cell">Coordinates</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {routeStops.map((stop) => (
+                    <tr key={stop._id}>
+                      <td className="font-mono text-base-content/80">
+                        {stop.stop_order}
+                      </td>
+                      <td className="font-medium">{stop.stop_name}</td>
+                      <td className="hidden font-mono text-sm text-base-content/70 sm:table-cell">
+                        {stop.latitude.toFixed(5)}, {stop.longitude.toFixed(5)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { GoogleMap, LoadScript } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader, type Libraries } from "@react-google-maps/api";
 import { addRouteSchema, type AddRouteFormData } from "./addRouteSchema";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
 
@@ -38,9 +38,9 @@ const TERMINAL_OPTIONS: TerminalOption[] = [
   { id: "6", terminal_name: "Pacific Terminal", lat: 10.3128, lng: 123.8912 },
 ];
 
-const MAP_CENTER = { lat: 12.8797, lng: 121.774 };
-const MAP_ZOOM = 6;
-const GOOGLE_MAPS_LIBRARIES: ("marker")[] = ["marker"];
+const MAP_CENTER = { lat: 10.3236, lng: 123.9229 };
+const MAP_ZOOM = 14;
+const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
 
 export default function AddRouteModal() {
   const [open, setOpen] = useState(false);
@@ -49,6 +49,11 @@ export default function AddRouteModal() {
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const advancedMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
+    id: "pasahero-admin-route-map-script",
+    googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
+    libraries: GOOGLE_MAPS_LIBRARIES,
+  });
 
   const {
     register,
@@ -65,6 +70,8 @@ export default function AddRouteModal() {
       route_code: "",
       start_terminal_id: "",
       end_terminal_id: "",
+      start_location: "",
+      end_location: "",
       estimated_duration: undefined,
     },
   });
@@ -84,6 +91,19 @@ export default function AddRouteModal() {
 
   const startTerminalValue = watch("start_terminal_id");
   const endTerminalValue = watch("end_terminal_id");
+  const endLocationValue = watch("end_location");
+
+  function parseCoordinatePair(
+    value: string,
+  ): { latitude: number; longitude: number } | null {
+    const [latRaw, lngRaw] = value.split(",").map((part) => part.trim());
+    const latitude = Number(latRaw);
+    const longitude = Number(lngRaw);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return { latitude, longitude };
+  }
 
   function resolveTerminalId(value: string) {
     const normalized = value.trim().toLowerCase();
@@ -102,12 +122,14 @@ export default function AddRouteModal() {
   }
 
   useEffect(() => {
-    const generatedRouteName =
-      startTerminalValue.trim() && endTerminalValue.trim()
-        ? `${startTerminalValue.trim()} - ${endTerminalValue.trim()}`
-        : "";
+    const startLabel = String(startTerminalValue ?? "").trim() || "Start";
+    const endLabel =
+      String(endTerminalValue ?? "").trim() ||
+      String(endLocationValue ?? "").trim() ||
+      "End location";
+    const generatedRouteName = `${startLabel} - ${endLabel}`;
     setValue("route_name", generatedRouteName, { shouldValidate: false });
-  }, [endTerminalValue, setValue, startTerminalValue]);
+  }, [endLocationValue, endTerminalValue, setValue, startTerminalValue]);
 
   function openModal() {
     setOpen(true);
@@ -152,6 +174,11 @@ export default function AddRouteModal() {
     });
 
     if (tool === "start" || tool === "end") {
+      setValue(
+        tool === "start" ? "start_location" : "end_location",
+        `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+        { shouldValidate: true, shouldTouch: true },
+      );
       const nearest = nearestTerminal(lat, lng);
       if (nearest) {
         setValue(
@@ -215,6 +242,13 @@ export default function AddRouteModal() {
     };
   }, [mapInstance, droppedMarkers]);
 
+  useEffect(() => {
+    if (!open || !mapInstance || !window.google?.maps) return;
+    // Ensure map renders correctly after dialog becomes visible.
+    window.google.maps.event.trigger(mapInstance, "resize");
+    mapInstance.setCenter(MAP_CENTER);
+  }, [open, mapInstance]);
+
   const startMarker = droppedMarkers.find((m) => m.type === "start");
   const endMarker = droppedMarkers.find((m) => m.type === "end");
   const stopMarkers = droppedMarkers.filter((m) => m.type === "stop");
@@ -222,34 +256,34 @@ export default function AddRouteModal() {
   const routeCoverageLabel =
     startMarker && endMarker
       ? `Start (${startMarker.lat.toFixed(4)}, ${startMarker.lng.toFixed(4)}) → End (${endMarker.lat.toFixed(4)}, ${endMarker.lng.toFixed(4)})`
-      : "Place start and end points on the map.";
+      : "Place start and end points on the map (end point optional).";
 
   async function onSubmit(data: AddRouteFormData) {
+    const typedStartLocation = parseCoordinatePair(data.start_location);
+    const typedEndLocation = parseCoordinatePair(data.end_location);
+
     const startPoint = startMarker
       ? {
           latitude: Number(startMarker.lat.toFixed(6)),
           longitude: Number(startMarker.lng.toFixed(6)),
         }
-      : null;
+      : typedStartLocation;
     const endPoint = endMarker
       ? {
           latitude: Number(endMarker.lat.toFixed(6)),
           longitude: Number(endMarker.lng.toFixed(6)),
         }
-      : null;
+      : typedEndLocation;
     const busStops = stopMarkers.map((s, idx) => ({
       name: `Stop ${idx + 1}`,
       latitude: Number(s.lat.toFixed(6)),
       longitude: Number(s.lng.toFixed(6)),
     }));
 
-    const routeName =
-      startMarker && endMarker
-        ? `${data.start_terminal_id.trim()} - ${data.end_terminal_id.trim()}`
-        : data.route_name;
+    const routeName = data.route_name;
 
-    if (!startMarker || !endMarker) {
-      alert("Please drag and drop both start and end markers on the map.");
+    if (!startPoint || !endPoint) {
+      alert("Please provide valid start and end locations (map marker or lat,lng input).");
       return;
     }
 
@@ -262,13 +296,15 @@ export default function AddRouteModal() {
           route_name: routeName,
           route_code: data.route_code,
           start_terminal_id: resolveTerminalId(data.start_terminal_id),
-          end_terminal_id: resolveTerminalId(data.end_terminal_id),
+          end_terminal_id: data.end_terminal_id
+            ? resolveTerminalId(data.end_terminal_id)
+            : undefined,
+          start_location: startPoint,
+          end_location: endPoint,
           estimated_duration:
             data.estimated_duration != null ? data.estimated_duration : undefined,
           status: "active",
           route_type: "normal",
-          pointA: startPoint,
-          pointB: endPoint,
           busStops,
         }),
       });
@@ -305,10 +341,11 @@ export default function AddRouteModal() {
                   className="relative min-h-[360px] overflow-hidden rounded-xl border border-[#D1D5DB] bg-[#F3F4F6]"
                 >
                   {isGoogleMapsConfigured ? (
-                    <LoadScript
-                      googleMapsApiKey={googleMapsApiKey}
-                      libraries={GOOGLE_MAPS_LIBRARIES}
-                    >
+                    googleMapsLoadError ? (
+                      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-error">
+                        Failed to load Google Maps script. Check your API key and map restrictions.
+                      </div>
+                    ) : isGoogleMapsLoaded ? (
                       <GoogleMap
                         center={MAP_CENTER}
                         zoom={MAP_ZOOM}
@@ -323,7 +360,11 @@ export default function AddRouteModal() {
                         onUnmount={() => setMapInstance(null)}
                         onClick={onMapClick}
                       />
-                    </LoadScript>
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6B7280]">
+                        Loading map...
+                      </div>
+                    )
                   ) : (
                     <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6B7280]">
                       Add <code className="mx-1">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>
@@ -399,7 +440,7 @@ export default function AddRouteModal() {
               <h4 className="text-sm font-semibold text-[#4B5563]">Route coverage</h4>
               <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">Start route</label>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">Start terminal</label>
                   <input
                     type="text"
                     placeholder="e.g. PITX"
@@ -409,10 +450,10 @@ export default function AddRouteModal() {
                   {errors.start_terminal_id && <p className="mt-1 text-sm text-error">{errors.start_terminal_id.message}</p>}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">End route</label>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">End terminal (optional)</label>
                   <input
                     type="text"
-                    placeholder="e.g. Fairview"
+                    placeholder="e.g. Fairview (leave blank if none)"
                     className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.end_terminal_id ? "input-error" : ""}`}
                     {...register("end_terminal_id")}
                   />
@@ -421,6 +462,28 @@ export default function AddRouteModal() {
               </div>
               <div className="mt-2 rounded-md bg-[#F9FAFB] p-2 text-xs text-[#6B7280]">
                 {routeCoverageLabel}
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">Start location (lat, lng)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 14.554700, 120.984200"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_location ? "input-error" : ""}`}
+                    {...register("start_location")}
+                  />
+                  {errors.start_location && <p className="mt-1 text-sm text-error">{errors.start_location.message}</p>}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">End location (lat, lng)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 14.733300, 121.050000"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.end_location ? "input-error" : ""}`}
+                    {...register("end_location")}
+                  />
+                  {errors.end_location && <p className="mt-1 text-sm text-error">{errors.end_location.message}</p>}
+                </div>
               </div>
             </section>
 
