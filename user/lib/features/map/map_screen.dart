@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -25,6 +25,7 @@ class MapScreen extends StatefulWidget {
     this.routeOrigin,
     this.routeDestination,
     this.nearbyOperators = const [],
+    this.activeFreeRideOperatorIds = const <String>{},
     this.onMapControllerReady,
     this.routeCatalogHighlightPoints,
     this.selectedRouteCodeForStopsStream,
@@ -38,6 +39,7 @@ class MapScreen extends StatefulWidget {
 
   /// Live operator positions for the current Near Me route filter (bus image marker).
   final List<NearbyOperator> nearbyOperators;
+  final Set<String> activeFreeRideOperatorIds;
 
   /// Called when the [GoogleMap] is ready; use for [GoogleMapController.animateCamera] from parent.
   final ValueChanged<GoogleMapController>? onMapControllerReady;
@@ -188,7 +190,11 @@ class _MapScreenState extends State<MapScreen> {
     )) {
       setState(() => _applyCatalogRouteHighlight(widget.routeCatalogHighlightPoints));
     }
-    if (!listEquals(oldWidget.nearbyOperators, widget.nearbyOperators)) {
+    if (!listEquals(oldWidget.nearbyOperators, widget.nearbyOperators) ||
+        !setEquals(
+          oldWidget.activeFreeRideOperatorIds,
+          widget.activeFreeRideOperatorIds,
+        )) {
       setState(_rebuildOverlayMarkers);
     }
     if (oldWidget.selectedRouteCodeForStopsStream !=
@@ -699,15 +705,18 @@ class _MapScreenState extends State<MapScreen> {
   void _rebuildOverlayMarkers() {
     final Set<Marker> next = {};
     final Set<Circle> nextCircles = {};
+    final activeFreeRideIds =
+        widget.activeFreeRideOperatorIds.map((id) => id.trim().toLowerCase()).toSet();
     for (final op in widget.nearbyOperators) {
+      final isFreeRide = activeFreeRideIds.contains(op.operatorId.trim().toLowerCase());
       next.add(
         Marker(
           markerId: MarkerId('operator_${op.operatorId}'),
           position: LatLng(op.latitude, op.longitude),
-          icon: _operatorBusIcon.icon,
+          icon: _operatorBusIcon.iconForOperator(isFreeRide: isFreeRide),
           anchor: const Offset(0.5, 0.92),
           infoWindow: InfoWindow(
-            title: 'Live bus',
+            title: isFreeRide ? 'Live bus (Free Ride)' : 'Live bus',
             snippet: op.routeCode != null && op.routeCode!.isNotEmpty
                 ? 'Route ${op.routeCode} · ${op.distanceLabel}'
                 : op.distanceLabel,
@@ -717,13 +726,6 @@ class _MapScreenState extends State<MapScreen> {
     }
     if (_currentPosition != null) {
       final pos = LatLng(_currentPosition!.latitude, _currentPosition!.longitude);
-      next.add(Marker(
-        markerId: const MarkerId('user_location'),
-        position: pos,
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-        infoWindow: const InfoWindow(title: 'Your Location', snippet: 'You are here'),
-        anchor: const Offset(0.5, 0.5),
-      ));
       // Faded blue glow so user knows where they are when away from a bus stop
       nextCircles.add(Circle(
         circleId: const CircleId('user_location_glow'),

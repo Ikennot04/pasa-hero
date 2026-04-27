@@ -18,7 +18,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController(
-    text: 'kentflores@gmail.com',
+    text: 'example@gmail.com',
   );
   final TextEditingController _passwordController = TextEditingController();
 
@@ -111,6 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     right: 0,
                     bottom: 0,
                     child: ClipRRect(
+
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(borderRadius),
                         topRight: Radius.circular(borderRadius),
