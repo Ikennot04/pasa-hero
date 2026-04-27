@@ -17,6 +17,7 @@ import UserSubscription from "../modules/user_subscription/user_subscription.mod
 import SystemLog from "../modules/system_log/system_log.model.js";
 import TerminalLog from "../modules/terminal_log/terminal_log.model.js";
 import seedHighPrioritySmTerminalNotifications from "./highPrioritySmTerminalNotifications.seeder.js";
+import seedUserNotifications from "./userNotifications.seeder.js";
 import { buildSystemLogDocuments } from "./systemLogs.seeder.js";
 import seedDevAdminUsers, {
   DEV_TERMINAL_ADMIN,
@@ -2627,6 +2628,9 @@ const seedData = async () => {
 
     await seedOperationalSummaryDemo();
     console.log("✅ Ran terminal operational summary seeder");
+
+    await seedUserNotifications();
+    console.log("✅ Ran user notifications seeder");
 
     console.log("\n✅ Seed data created successfully!");
   } catch (error) {

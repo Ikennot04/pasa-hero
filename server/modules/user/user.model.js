@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      default: "inactive",
+      default: "active",
       enum: ["active", "suspended"],
     },
     assigned_terminal: {
