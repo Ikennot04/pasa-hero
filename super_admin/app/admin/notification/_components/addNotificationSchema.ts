@@ -2,7 +2,7 @@ import * as yup from "yup";
 
 const notificationType = yup
   .string()
-  .oneOf(["delay", "full", "skipped_stop", "info"], "Invalid notification type")
+  .oneOf(["custom"], "Invalid notification type")
   .required("Notification type is required");
 
 const priority = yup
@@ -12,7 +12,7 @@ const priority = yup
 
 const scope = yup
   .string()
-  .oneOf(["bus", "route", "terminal", "system"], "Invalid scope")
+  .oneOf(["terminal", "system"], "Invalid scope")
   .required("Scope is required");
 
 export const addNotificationSchema = yup.object({

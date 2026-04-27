@@ -160,6 +160,11 @@ export default function Notification() {
 
   const [logs, setLogs] = useState<SystemLogProps[]>([]);
 
+  const refetchNotifications = useCallback(async () => {
+    const data = await getNotifications();
+    setNotifications(data);
+  }, [getNotifications]);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -362,7 +367,7 @@ export default function Notification() {
             {filteredNotifications.length} filtered ({notifications.length} total)
           </span>
         </div>
-        <AddNotificationModal />
+        <AddNotificationModal onCreated={refetchNotifications} />
       </div>
       <NotificationTable
         notifications={paginatedNotifications}
