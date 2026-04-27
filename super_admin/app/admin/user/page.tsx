@@ -53,7 +53,9 @@ export default function Users() {
   useEffect(() => {
     if (roleFilter === "all") return;
     if (!(ROLES as readonly string[]).includes(roleFilter)) {
-      setRoleFilter("all");
+      setTimeout(() => {
+        setRoleFilter("all");
+      }, 0);
     }
   }, [roleFilter]);
 

@@ -6,6 +6,8 @@ import User from "../modules/user/user.model.js";
 import Terminal from "../modules/terminal/terminal.model.js";
 import { getRoleId } from "../utils/roleMapper.js";
 
+const USER_STATUS_ACTIVE = "active";
+
 function requireMongoUri() {
   const uri = process.env.MONGO_DB_URI?.trim();
   if (!uri) {
@@ -65,7 +67,7 @@ async function upsertAdminUser({
         password,
         role,
         roleid,
-        status: "active",
+        status: USER_STATUS_ACTIVE,
         profile_image: "default.png",
         assigned_terminal,
         updatedAt: new Date(),

@@ -22,6 +22,19 @@ import seedDevAdminUsers, {
   DEV_TERMINAL_ADMIN,
 } from "./devAdminUsers.seeder.js";
 
+const ALLOWED_USER_STATUSES = new Set(["active", "suspended"]);
+
+function normalizeUserSeedStatus(status) {
+  if (status === "inactive") return "suspended";
+  if (!status) return "active";
+  if (!ALLOWED_USER_STATUSES.has(status)) {
+    throw new Error(
+      `Invalid user seed status "${status}". Allowed values: active, suspended.`,
+    );
+  }
+  return status;
+}
+
 async function ensureDbConnected() {
   if (mongoose.connection.readyState === 1) return;
   if (!process.env.MONGO_DB_URI) {
@@ -1046,7 +1059,7 @@ const seedData = async () => {
     // ==========================================
     // 1. CREATE USERS
     // ==========================================
-    const users = await User.insertMany([
+    const userSeedRows = [
       {
         f_name: "Juan",
         l_name: "Dela Cruz",
@@ -1177,7 +1190,14 @@ const seedData = async () => {
         firebase_id: "firebase_user_008",
         profile_image: "default.png",
       },
-    ]);
+    ];
+
+    const users = await User.insertMany(
+      userSeedRows.map((row) => ({
+        ...row,
+        status: normalizeUserSeedStatus(row.status),
+      })),
+    );
 
     console.log(`✅ Created ${users.length} users`);
 

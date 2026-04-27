@@ -1,5 +1,6 @@
 "use client";
 
+import axios from "axios";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -109,7 +110,28 @@ export default function AdminShell({
     );
   }, [userRole]);
 
-  const handleLogout = () => {
+  const setUserInactiveOnLogout = async () => {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+    if (!token || !baseUrl) return;
+
+    try {
+      const { data } = await axios.get<{ data?: { user?: { _id?: string; id?: string } } }>(
+        `${baseUrl}/api/users/auth/check`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const user = data?.data?.user;
+      const userId = user?._id ?? user?.id;
+      if (!userId) return;
+
+      await axios.patch(`${baseUrl}/api/users/auth/logout/${userId}`);
+    } catch {
+      // Still clear session locally if the API is unreachable.
+    }
+  };
+
+  const handleLogout = async () => {
+    await setUserInactiveOnLogout();
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(PROFILE_NAME_KEY);
     localStorage.removeItem(PROFILE_ROLE_KEY);

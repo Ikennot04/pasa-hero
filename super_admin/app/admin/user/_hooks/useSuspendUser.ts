@@ -11,7 +11,7 @@ function extractAxiosMessage(err: unknown): string | undefined {
 
 async function patchUserStatus(
   userId: string,
-  status: "suspended" | "inactive",
+  status: "suspended" | "active",
 ) {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
   const formData = new FormData();
@@ -27,7 +27,7 @@ async function patchUserStatus(
 export const useSuspendUser = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const run = useCallback(async (userId: string, status: "suspended" | "inactive") => {
+  const run = useCallback(async (userId: string, status: "suspended" | "active") => {
     try {
       setError(null);
       return await patchUserStatus(userId, status);
@@ -47,7 +47,7 @@ export const useSuspendUser = () => {
   );
 
   const unsuspendUser = useCallback(
-    (userId: string) => run(userId, "inactive"),
+    (userId: string) => run(userId, "active"),
     [run],
   );
 

@@ -25,7 +25,6 @@ const DEFAULT_PAGE_SIZE = 10;
 const USER_STATUS_BADGE_CLASS: Record<string, string> = {
   active: "badge-success",
   suspended: "badge-warning",
-  inactive: "badge-ghost",
 };
 
 function UserStatusBadge({ status }: { status: string }) {
