@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import type { UserRow } from "./UserTable";
 import { editUserSchema, type EditUserFormData } from "./createUserSchema";
+import { useUpdateUser } from "../_hooks/useUpdateUser";
 
 // ICONS
 import { MdOutlineSave, MdOutlineEdit } from "react-icons/md";
@@ -14,6 +15,7 @@ export const EDIT_USER_MODAL_ID = "edit-user-modal";
 type EditUserProps = {
   user: UserRow;
   modalId?: string;
+  onUpdated?: () => void | Promise<void>;
 };
 
 const defaultValues: EditUserFormData = {
@@ -26,19 +28,34 @@ const defaultValues: EditUserFormData = {
 export default function EditUserModal({
   user,
   modalId = `${EDIT_USER_MODAL_ID}-${user.id}`,
+  onUpdated,
 }: EditUserProps) {
+  const { updateUser, error: submitError, clearError } = useUpdateUser();
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<EditUserFormData>({
     resolver: yupResolver(editUserSchema),
     defaultValues,
   });
 
   const openModal = () => {
+    clearError();
     (document.getElementById(modalId) as HTMLDialogElement)?.showModal();
+  };
+
+  const closeModal = () => {
+    (document.getElementById(modalId) as HTMLDialogElement)?.close();
+  };
+
+  const onSubmit = async (data: EditUserFormData) => {
+    const res = await updateUser(user.id, data);
+    if (res?.success === true) {
+      closeModal();
+      await onUpdated?.();
+    }
   };
 
   useEffect(() => {
@@ -64,7 +81,12 @@ export default function EditUserModal({
       <dialog id={modalId} className="modal">
         <div className="modal-box">
           <h3 className="font-bold text-lg">Edit user</h3>
-          <form onSubmit={handleSubmit(() => {})} className="space-y-4 mt-4">
+          {submitError ? (
+            <div role="alert" className="alert alert-error text-sm mt-4">
+              {submitError}
+            </div>
+          ) : null}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="form-control">
                 <label className="label">
@@ -122,7 +144,6 @@ export default function EditUserModal({
               >
                 <option value="">Select role</option>
                 <option value="user">user</option>
-                <option value="super admin">super admin</option>
                 <option value="operator">operator</option>
                 <option value="terminal admin">terminal admin</option>
               </select>
@@ -134,19 +155,24 @@ export default function EditUserModal({
               <button
                 type="button"
                 className="btn btn-ghost"
-                onClick={() =>
-                  (
-                    document.getElementById(modalId) as HTMLDialogElement
-                  )?.close()
-                }
+                disabled={isSubmitting}
+                onClick={() => {
+                  clearError();
+                  closeModal();
+                }}
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 className="btn bg-[#008DF7] hover:bg-[#008DF7]/80 text-white"
+                disabled={isSubmitting}
               >
-                <MdOutlineSave className="w-5 h-5" />
+                {isSubmitting ? (
+                  <span className="loading loading-spinner loading-sm" />
+                ) : (
+                  <MdOutlineSave className="w-5 h-5" />
+                )}
                 Save
               </button>
             </div>

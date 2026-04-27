@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema(
     status: {
       type: String,
       default: "active",
-      enum: ["active", "inactive", "suspended"],
+      enum: ["active", "suspended"],
     },
     assigned_terminal: {
       type: mongoose.Schema.Types.ObjectId,

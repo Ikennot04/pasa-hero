@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import CreateTerminalAdmin from "./_components/CreateTerminalAdmin";
-import UserTable, { type UserRow } from "./_components/UserTable";
+import UserTable, {
+  type UserRow,
+  USER_TABLE_EXCLUDED_ROLES,
+} from "./_components/UserTable";
 import { useGetUsers } from "./_hooks/useGetUsers";
 
-const ROLES = ["user", "super admin", "operator", "terminal admin"] as const;
+const ROLES = ["user", "operator", "terminal admin"] as const;
 const STATUSES = ["active", "inactive", "suspended"] as const;
 
 type ApiUser = {
@@ -22,31 +25,51 @@ export default function Users() {
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const refreshUsers = useCallback(async () => {
+    const res = await getUsers();
+    if (res?.success === true && Array.isArray(res.data)) {
+      setUsers(res.data);
+    } else {
+      setUsers([]);
+    }
+  }, [getUsers]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const res = await getUsers();
-      if (cancelled) return;
-      if (res?.success === true && Array.isArray(res.data)) {
-        setUsers(res.data);
-      } else {
-        setUsers([]);
-      }
-      setLoading(false);
+      await refreshUsers();
+      if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [getUsers]);
+  }, [refreshUsers]);
 
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  useEffect(() => {
+    if (roleFilter === "all") return;
+    if (!(ROLES as readonly string[]).includes(roleFilter)) {
+      setTimeout(() => {
+        setRoleFilter("all");
+      }, 0);
+    }
+  }, [roleFilter]);
+
+  const listableUsers = useMemo(
+    () =>
+      users.filter(
+        (u) => !USER_TABLE_EXCLUDED_ROLES.has(u.role.trim().toLowerCase()),
+      ),
+    [users],
+  );
+
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return users.filter((user) => {
+    return listableUsers.filter((user) => {
       const matchRole = roleFilter === "all" || user.role === roleFilter;
       const matchStatus = statusFilter === "all" || user.status === statusFilter;
       const matchSearch =
@@ -55,7 +78,7 @@ export default function Users() {
         user.email.toLowerCase().includes(q);
       return matchRole && matchStatus && matchSearch;
     });
-  }, [users, roleFilter, statusFilter, searchQuery]);
+  }, [listableUsers, roleFilter, statusFilter, searchQuery]);
 
   const tableRows: UserRow[] = useMemo(
     () =>
@@ -118,12 +141,12 @@ export default function Users() {
           </div>
           <div className="flex items-end pb-2">
             <span className="text-sm text-base-content/70">
-              Showing {filteredUsers.length} of {users.length} users
+              Showing {filteredUsers.length} of {listableUsers.length} users
             </span>
           </div>
         </div>
         <div className="flex items-end gap-2">
-          <CreateTerminalAdmin />
+          <CreateTerminalAdmin onCreated={refreshUsers} />
         </div>
       </div>
       {loading ? (
@@ -131,7 +154,7 @@ export default function Users() {
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <UserTable users={tableRows} />
+        <UserTable users={tableRows} onUserUpdated={refreshUsers} />
       )}
     </div>
   );

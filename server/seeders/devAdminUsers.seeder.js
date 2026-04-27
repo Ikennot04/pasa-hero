@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import User from "../modules/user/user.model.js";
 
 const SALT_ROUNDS = 10;
+const USER_STATUS_ACTIVE = "active";
 
 /** Super admin login for local / staging (super_admin app). */
 export const DEV_SUPER_ADMIN = {
@@ -40,7 +41,7 @@ export default async function seedDevAdminUsers(smTerminalId) {
         l_name: DEV_SUPER_ADMIN.l_name,
         password: superHash,
         role: DEV_SUPER_ADMIN.role,
-        status: "active",
+        status: USER_STATUS_ACTIVE,
         firebase_id: "firebase_seed_super_indae",
         profile_image: "default.png",
         assigned_terminal: null,
@@ -57,7 +58,7 @@ export default async function seedDevAdminUsers(smTerminalId) {
         l_name: DEV_TERMINAL_ADMIN.l_name,
         password: terminalHash,
         role: DEV_TERMINAL_ADMIN.role,
-        status: "active",
+        status: USER_STATUS_ACTIVE,
         firebase_id: "firebase_seed_terminal_cha",
         profile_image: "default.png",
         assigned_terminal: smTerminalId,
