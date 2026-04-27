@@ -155,7 +155,6 @@ export default function Notification() {
   const { deleteNotifications } = useDeleteNotifications();
   const {
     getSystemLogs,
-    bulkDeleteSystemLogs,
     error: systemLogsError,
     isLoading: systemLogsLoading,
   } = useGetSystemLogs();
@@ -209,18 +208,6 @@ export default function Notification() {
       })();
     },
     [deleteNotifications, getNotifications],
-  );
-
-  const onBulkDeleteLogs = useCallback(
-    (ids: string[]) => {
-      void (async () => {
-        const ok = await bulkDeleteSystemLogs(ids);
-        if (!ok) return;
-        const data = await getSystemLogs();
-        setLogs(data);
-      })();
-    },
-    [bulkDeleteSystemLogs, getSystemLogs],
   );
 
   const actionTypes = useMemo(() => {
@@ -466,7 +453,7 @@ export default function Notification() {
       {!systemLogsLoading && systemLogsError && (
         <div className="text-sm text-error">{systemLogsError}</div>
       )}
-      <SystemLogTable logs={paginatedLogs} onBulkDelete={onBulkDeleteLogs} />
+      <SystemLogTable logs={paginatedLogs} />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <span className="text-sm text-base-content/70">
           Page {currentLogPage} of {totalLogPages}
