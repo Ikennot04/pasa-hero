@@ -13,6 +13,7 @@ import { SystemLogProps } from "./_components/SystemLogProps";
 import SystemLogTable from "./_components/SystemLogTable";
 import { useGetNotifications } from "./_hooks/useGetNotifications";
 import { useGetSystemLogs } from "./_hooks/useGetSystemLogs";
+import { useDeleteNotifications } from "./_hooks/useDeleteNotifications";
 
 // Static data for notifications (matches backend notification.model.js)
 const NOTIFICATIONS_STATIC: NotificationProps[] = [
@@ -151,6 +152,7 @@ export default function Notification() {
   const [logActionFilter, setLogActionFilter] = useState<string>("all");
   const { getNotifications, error: notificationsError, isLoading } =
     useGetNotifications();
+  const { deleteNotifications } = useDeleteNotifications();
   const {
     getSystemLogs,
     bulkDeleteSystemLogs,
@@ -197,9 +199,17 @@ export default function Notification() {
     };
   }, [getSystemLogs]);
 
-  const onBulkDelete = useCallback((ids: string[]) => {
-    setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
-  }, []);
+  const onBulkDelete = useCallback(
+    (ids: string[]) => {
+      void (async () => {
+        const response = await deleteNotifications(ids);
+        if (!response) return;
+        const data = await getNotifications();
+        setNotifications(data);
+      })();
+    },
+    [deleteNotifications, getNotifications],
+  );
 
   const onBulkDeleteLogs = useCallback(
     (ids: string[]) => {

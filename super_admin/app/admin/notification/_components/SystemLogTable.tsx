@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { SystemLogProps } from "./SystemLogProps";
+import { useDeleteNotifications } from "../_hooks/useDeleteNotifications";
 
 function formatDate(iso?: string) {
   if (!iso) return "—";
@@ -19,11 +20,13 @@ export default function SystemLogTable({
   onBulkDelete,
 }: {
   logs: SystemLogProps[];
-  onBulkDelete?: (ids: string[]) => void;
+  onBulkDelete?: (ids: string[]) => void | Promise<void>;
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const { deleteNotifications, error: deleteError } = useDeleteNotifications();
 
   useEffect(() => {
     const el = dialogRef.current;
@@ -58,16 +61,27 @@ export default function SystemLogTable({
     });
   }
 
-  function handleConfirmBulkDelete() {
-    if (onBulkDelete && selectedIds.size > 0) {
-      onBulkDelete(Array.from(selectedIds));
-      setSelectedIds(new Set());
+  async function handleConfirmBulkDelete() {
+    if (selectedIds.size === 0 || isDeleting) {
+      setShowDeleteModal(false);
+      return;
     }
-    setShowDeleteModal(false);
+
+    setIsDeleting(true);
+    const ids = Array.from(selectedIds);
+    const response = await deleteNotifications(ids);
+
+    if (response) {
+      await onBulkDelete?.(ids);
+      setSelectedIds(new Set());
+      setShowDeleteModal(false);
+    }
+
+    setIsDeleting(false);
   }
 
   const selectedCount = selectedIds.size;
-  const canBulkDelete = onBulkDelete && selectedCount > 0;
+  const canBulkDelete = selectedCount > 0;
 
   return (
     <>
@@ -88,6 +102,7 @@ export default function SystemLogTable({
               type="button"
               className="btn btn-error"
               onClick={() => setShowDeleteModal(true)}
+              disabled={isDeleting}
             >
               Delete selected
             </button>
@@ -102,17 +117,15 @@ export default function SystemLogTable({
                 <th>Action</th>
                 <th>Description</th>
                 <th>Date</th>
-                {onBulkDelete && (
-                  <th className="w-10">
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-sm"
-                      checked={allSelected}
-                      onChange={toggleAll}
-                      aria-label="Select all"
-                    />
-                  </th>
-                )}
+                <th className="w-10">
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-sm"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    aria-label="Select all"
+                  />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -143,17 +156,15 @@ export default function SystemLogTable({
                   <td className="text-sm text-base-content/70 whitespace-nowrap">
                     {formatDate(log.createdAt)}
                   </td>
-                  {onBulkDelete && (
-                    <td className="text-right">
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm"
-                        checked={selectedIds.has(log.id)}
-                        onChange={() => toggleOne(log.id)}
-                        aria-label={`Select log ${log.id}`}
-                      />
-                    </td>
-                  )}
+                  <td className="text-right">
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm"
+                      checked={selectedIds.has(log.id)}
+                      onChange={() => toggleOne(log.id)}
+                      aria-label={`Select log ${log.id}`}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -182,11 +193,17 @@ export default function SystemLogTable({
             Are you sure you want to delete {selectedCount} log
             {selectedCount !== 1 ? "s" : ""}? This action cannot be undone.
           </p>
+          {deleteError && (
+            <p className="text-sm text-error mb-2">
+              {deleteError}
+            </p>
+          )}
           <div className="modal-action">
             <button
               type="button"
               className="btn btn-ghost"
               onClick={() => setShowDeleteModal(false)}
+              disabled={isDeleting}
             >
               Cancel
             </button>
@@ -194,8 +211,11 @@ export default function SystemLogTable({
               type="button"
               className="btn btn-error"
               onClick={handleConfirmBulkDelete}
+              disabled={isDeleting}
             >
-              Delete {selectedCount} log{selectedCount !== 1 ? "s" : ""}
+              {isDeleting
+                ? "Deleting..."
+                : `Delete ${selectedCount} log${selectedCount !== 1 ? "s" : ""}`}
             </button>
           </div>
         </div>
