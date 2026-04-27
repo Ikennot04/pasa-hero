@@ -203,9 +203,9 @@ class FreeRideBanner extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
+              Expanded(
+                child: Row(
                 children: [
                   Container(
                     width: 48,
@@ -234,37 +234,44 @@ class FreeRideBanner extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Free Ride Ongoing',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F2937),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Free Ride Ongoing',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1F2937),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _routeSummaryLine(),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF6B7280),
-                          fontWeight: FontWeight.w500,
+                        const SizedBox(height: 2),
+                        Text(
+                          _routeSummaryLine(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _untilLine(),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF6B7280),
+                        const SizedBox(height: 2),
+                        Text(
+                          _untilLine(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
+              ),
               ),
               if (onClose != null)
                 IconButton(
@@ -299,34 +306,22 @@ class FreeRideBanner extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              _buildInfoItem(
-                icon: Icons.access_time,
-                text: _untilLine(),
-                color: const Color(0xFF6B7280),
-              ),
-            ],
+          _buildInfoItem(
+            icon: Icons.access_time,
+            text: _untilLine(),
+            color: const Color(0xFF6B7280),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              _buildInfoItem(
-                icon: Icons.people,
-                text: 'Coverage: All passengers',
-                color: const Color(0xFF6B7280),
-              ),
-            ],
+          _buildInfoItem(
+            icon: Icons.people,
+            text: 'Coverage: All passengers',
+            color: const Color(0xFF6B7280),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              _buildInfoItem(
-                icon: Icons.circle,
-                text: 'Status: Ongoing',
-                color: const Color(0xFF10B981),
-              ),
-            ],
+          _buildInfoItem(
+            icon: Icons.circle,
+            text: 'Status: Ongoing',
+            color: const Color(0xFF10B981),
           ),
         ],
       ),

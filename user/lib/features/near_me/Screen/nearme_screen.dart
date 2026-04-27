@@ -52,6 +52,7 @@ class _NearMeContentState extends State<_NearMeContent> {
   double _sheetExtent = 0.38;
   bool _showFreeRide = true;
   bool _hasActiveFreeRide = false;
+  Set<String> _activeFreeRideOperatorIds = <String>{};
   /// From `driver_status` when an operator has free ride on (see `_subscribeFreeRideStatus`).
   String? _freeRideRouteCode;
   DateTime? _freeRideUntil;
@@ -163,10 +164,16 @@ class _NearMeContentState extends State<_NearMeContent> {
 
     _freeRideSub = query.snapshots().listen((snapshot) {
       QueryDocumentSnapshot<Map<String, dynamic>>? firstActive;
+      final activeIds = <String>{};
       for (final doc in snapshot.docs) {
-        if (_isFreeRideActiveDoc(doc.data())) {
+        final data = doc.data();
+        if (_isFreeRideActiveDoc(data)) {
+          final operatorIdRaw = data['operator_id'] ?? data['operatorId'] ?? doc.id;
+          final operatorId = operatorIdRaw.toString().trim().toLowerCase();
+          if (operatorId.isNotEmpty) {
+            activeIds.add(operatorId);
+          }
           firstActive = doc;
-          break;
         }
       }
       final hasActive = firstActive != null;
@@ -182,6 +189,7 @@ class _NearMeContentState extends State<_NearMeContent> {
       if (!mounted) return;
       setState(() {
         _hasActiveFreeRide = hasActive;
+        _activeFreeRideOperatorIds = activeIds;
         _freeRideRouteCode = hasActive ? routeCode : null;
         _freeRideUntil = hasActive ? until : null;
         if (!hasActive) {
@@ -192,6 +200,7 @@ class _NearMeContentState extends State<_NearMeContent> {
       if (!mounted) return;
       setState(() {
         _hasActiveFreeRide = false;
+        _activeFreeRideOperatorIds = <String>{};
         _freeRideRouteCode = null;
         _freeRideUntil = null;
         _showFreeRideDetails = false;
@@ -674,6 +683,7 @@ class _NearMeContentState extends State<_NearMeContent> {
               routeOrigin: _routeOrigin,
               routeDestination: _routeDestination,
               nearbyOperators: _nearbyOperators,
+              activeFreeRideOperatorIds: _activeFreeRideOperatorIds,
               onMapControllerReady: _onMapControllerReady,
               routeCatalogHighlightPoints: _routeCatalogHighlightPoints,
               selectedRouteCodeForStopsStream: _selectedRouteCode,

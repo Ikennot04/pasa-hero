@@ -13,6 +13,7 @@ class MapWidget extends StatelessWidget {
     this.routeOrigin,
     this.routeDestination,
     this.nearbyOperators = const [],
+    this.activeFreeRideOperatorIds = const <String>{},
     this.onMapControllerReady,
     this.routeCatalogHighlightPoints,
     this.selectedRouteCodeForStopsStream,
@@ -26,6 +27,7 @@ class MapWidget extends StatelessWidget {
 
   /// Operators with live location (same list as Near Me / route filter; bus icon on map).
   final List<NearbyOperator> nearbyOperators;
+  final Set<String> activeFreeRideOperatorIds;
 
   final ValueChanged<GoogleMapController>? onMapControllerReady;
 
@@ -41,6 +43,7 @@ class MapWidget extends StatelessWidget {
       routeOrigin: routeOrigin,
       routeDestination: routeDestination,
       nearbyOperators: nearbyOperators,
+      activeFreeRideOperatorIds: activeFreeRideOperatorIds,
       onMapControllerReady: onMapControllerReady,
       routeCatalogHighlightPoints: routeCatalogHighlightPoints,
       selectedRouteCodeForStopsStream: selectedRouteCodeForStopsStream,

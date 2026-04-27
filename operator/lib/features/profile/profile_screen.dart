@@ -132,8 +132,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       stream: DriverStatusService.instance.freeRideDetailsStream(routeId),
       builder: (context, snapshot) {
         final details = snapshot.data;
-        final freeRideValue = details?.freeRideValue ?? 0;
-        final isActive = freeRideValue == 1;
+        final isActive = details?.isActive ?? false;
         final buttonText = isActive ? 'Stop the free ride' : 'Strat free ride';
         return Card(
           elevation: 2,
