@@ -51,3 +51,18 @@ export const updateRouteById = async (req, res) => {
     res.status(statusCode).json({ success: false, message: error.message });
   }
 };
+
+export const softDeleteRouteById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const route = await RouteService.softDeleteRouteById(id);
+    res.status(200).json({
+      success: true,
+      data: route,
+      message: "Route deleted successfully.",
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};

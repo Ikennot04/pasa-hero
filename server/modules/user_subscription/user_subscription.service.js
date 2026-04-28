@@ -23,7 +23,10 @@ export const UserSubscriptionService = {
     }
 
     if (hasRoute) {
-      const route = await Route.findById(route_id);
+      const route = await Route.findOne({
+        _id: route_id,
+        is_deleted: { $ne: true },
+      });
       if (!route) {
         const error = new Error("Route not found.");
         error.statusCode = 404;

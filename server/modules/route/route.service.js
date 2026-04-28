@@ -2,10 +2,12 @@ import Route from "./route.model.js"; // Model
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import RouteStop from "../route_stop/route_stop.model.js";
 
+const ACTIVE_ROUTE_FILTER = { is_deleted: { $ne: true } };
+
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
   async getAllRoutes() {
-    const routeFilter = { route_type: "normal" };
+    const routeFilter = { route_type: "normal", ...ACTIVE_ROUTE_FILTER };
 
     const [routes, totalRoutes, activeRoutes, inactiveRoutes] = await Promise.all([
       Route.find(routeFilter).populate("start_terminal_id").populate("end_terminal_id"),
@@ -55,6 +57,7 @@ export const RouteService = {
     const terminalFilter = {
       $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
       route_type: "normal",
+      ...ACTIVE_ROUTE_FILTER,
     };
 
     const routes = await Route.find(terminalFilter)
@@ -115,6 +118,7 @@ export const RouteService = {
     const duplicateRoute = await Route.findOne({
       start_terminal_id: routeData.start_terminal_id,
       end_terminal_id: routeData.end_terminal_id,
+      ...ACTIVE_ROUTE_FILTER,
     });
     if (duplicateRoute) {
       const error = new Error("This route already exists.");
@@ -124,6 +128,7 @@ export const RouteService = {
 
     const duplicateRouteCode = await Route.findOne({
       route_code: routeData.route_code,
+      ...ACTIVE_ROUTE_FILTER,
     });
     if (duplicateRouteCode) {
       const error = new Error("This route code already exists.");
@@ -154,6 +159,7 @@ export const RouteService = {
       const reverseExists = await Route.findOne({
         start_terminal_id: reverseRouteData.start_terminal_id,
         end_terminal_id: reverseRouteData.end_terminal_id,
+        ...ACTIVE_ROUTE_FILTER,
       });
       if (!reverseExists) {
         await Route.create(reverseRouteData);
@@ -174,6 +180,7 @@ export const RouteService = {
           {
             start_terminal_id: reverseRouteData.start_terminal_id,
             end_terminal_id: reverseRouteData.end_terminal_id,
+            ...ACTIVE_ROUTE_FILTER,
           },
           null,
           { session },
@@ -191,7 +198,7 @@ export const RouteService = {
   },
   // GET ROUTE BY ID ===================================================================
   async getRouteById(id) {
-    const route = await Route.findById(id)
+    const route = await Route.findOne({ _id: id, ...ACTIVE_ROUTE_FILTER })
       .populate("start_terminal_id")
       .populate("end_terminal_id");
     if (!route) {
@@ -214,7 +221,7 @@ export const RouteService = {
   },
   // UPDATE ROUTE BY ID ===================================================================
   async updateRouteById(id, updateData) {
-    const route = await Route.findById(id);
+    const route = await Route.findOne({ _id: id, ...ACTIVE_ROUTE_FILTER });
     if (!route) {
       const error = new Error("Route not found.");
       error.statusCode = 404;
@@ -234,6 +241,7 @@ export const RouteService = {
       start_terminal_id,
       end_terminal_id,
       _id: { $ne: id },
+      ...ACTIVE_ROUTE_FILTER,
     });
     if (duplicateRoute) {
       const error = new Error("This route already exists.");
@@ -241,12 +249,36 @@ export const RouteService = {
       throw error;
     }
 
-    const updated = await Route.findByIdAndUpdate(id, updateData, {
+    const updated = await Route.findOneAndUpdate({ _id: id, ...ACTIVE_ROUTE_FILTER }, updateData, {
       new: true,
       runValidators: true,
     })
       .populate("start_terminal_id")
       .populate("end_terminal_id");
     return updated;
+  },
+
+  // SOFT DELETE ROUTE BY ID ============================================================
+  async softDeleteRouteById(id) {
+    const route = await Route.findOne({ _id: id, ...ACTIVE_ROUTE_FILTER });
+    if (!route) {
+      const error = new Error("Route not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const deletedRoute = await Route.findByIdAndUpdate(
+      id,
+      {
+        is_deleted: true,
+        deleted_at: new Date(),
+        status: "inactive",
+      },
+      { new: true },
+    )
+      .populate("start_terminal_id")
+      .populate("end_terminal_id");
+
+    return deletedRoute;
   },
 };
