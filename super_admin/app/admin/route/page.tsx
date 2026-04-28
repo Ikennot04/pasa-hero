@@ -241,7 +241,7 @@ export default function Route() {
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <RouteTable routes={filteredRoutes} />
+        <RouteTable routes={filteredRoutes} onRouteUpdated={fetchRoutes} />
       )}
     </div>
   );

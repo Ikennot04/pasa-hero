@@ -137,7 +137,7 @@ export default function RoutesPage() {
         </div>
       </div>
 
-      <Routes routes={routes} />
+      <Routes routes={routes} onRouteUpdated={loadRoutes} />
     </div>
   );
 }

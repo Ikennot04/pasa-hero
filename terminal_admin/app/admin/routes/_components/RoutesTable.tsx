@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeleteRoute } from "../_hooks/useDeleteRoute";
 
 export type RouteStatus = "active" | "paused";
 
@@ -18,6 +19,7 @@ export type RouteRow = {
 
 type RoutesProps = {
   routes: RouteRow[];
+  onRouteUpdated?: () => void | Promise<void>;
 };
 
 function formatTimeAgo(iso: string) {
@@ -30,9 +32,13 @@ function formatTimeAgo(iso: string) {
   return `${days}d ago`;
 }
 
-export default function Routes({ routes }: RoutesProps) {
+export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
+  const { deleteRoute, error: deleteError } = useDeleteRoute();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | RouteStatus>("all");
+  const [routeToArchive, setRouteToArchive] = useState<RouteRow | null>(null);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   const filteredRoutes = useMemo(() => {
     const lowered = query.trim().toLowerCase();
@@ -44,6 +50,45 @@ export default function Routes({ routes }: RoutesProps) {
       return haystack.includes(lowered);
     });
   }, [routes, query, statusFilter]);
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    if (routeToArchive) {
+      el.showModal();
+    } else {
+      el.close();
+    }
+  }, [routeToArchive]);
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    const onClose = () => {
+      if (!isArchiving) {
+        setRouteToArchive(null);
+      }
+    };
+    el.addEventListener("close", onClose);
+    return () => el.removeEventListener("close", onClose);
+  }, [isArchiving]);
+
+  async function handleConfirmArchive() {
+    if (!routeToArchive) return;
+    setIsArchiving(true);
+    try {
+      const res = await deleteRoute(routeToArchive.id);
+      if (!res?.success) {
+        throw new Error(res?.message ?? deleteError ?? "Failed to archive route");
+      }
+      await onRouteUpdated?.();
+      setRouteToArchive(null);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to archive route");
+    } finally {
+      setIsArchiving(false);
+    }
+  }
 
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
@@ -121,13 +166,21 @@ export default function Routes({ routes }: RoutesProps) {
                   </td>
                   <td>{row.active_buses_count}</td>
                   <td className="text-sm text-base-content/70">{formatTimeAgo(row.updatedAt)}</td>
-                  <td>
+                  <td className="flex gap-2">
                     <Link
                       href={`/admin/routes/${encodeURIComponent(row.id)}`}
                       className="btn btn-sm btn-outline"
                     >
                       View details
                     </Link>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-error btn-outline"
+                      onClick={() => setRouteToArchive(row)}
+                      disabled={isArchiving}
+                    >
+                      Archive
+                    </button>
                   </td>
                 </tr>
               ))
@@ -135,6 +188,46 @@ export default function Routes({ routes }: RoutesProps) {
           </tbody>
         </table>
       </div>
+
+      <dialog
+        ref={dialogRef}
+        className="modal"
+        aria-labelledby="archive-route-confirm-title"
+        aria-describedby="archive-route-confirm-desc"
+      >
+        <div className="modal-box">
+          <h3 id="archive-route-confirm-title" className="font-bold text-lg">
+            Archive route?
+          </h3>
+          <p id="archive-route-confirm-desc" className="py-4 text-base-content/80">
+            Are you sure you want to archive{" "}
+            <strong>{routeToArchive?.routeName || routeToArchive?.routeCode || "this route"}</strong>?
+          </p>
+          <div className="modal-action">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setRouteToArchive(null)}
+              disabled={isArchiving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-error"
+              onClick={handleConfirmArchive}
+              disabled={isArchiving}
+            >
+              {isArchiving ? "Archiving..." : "Archive route"}
+            </button>
+          </div>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit" tabIndex={-1} aria-hidden>
+            close
+          </button>
+        </form>
+      </dialog>
     </div>
   );
 }
