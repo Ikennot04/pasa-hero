@@ -10,22 +10,11 @@ export const useGetUsers = () => {
     try {
       setError(null);
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("super_admin_auth_token")
-          : null;
-      const { data: response } = await axios.get(`${baseUrl}/api/users`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
+      const { data: response } = await axios.get(`${baseUrl}/api/users`);
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        const responseData = error.response?.data as
-          | { message?: string; error?: string }
-          | undefined;
-        setError(
-          responseData?.message ?? responseData?.error ?? "Failed to fetch users",
-        );
+        setError(error.response?.data.message);
       } else {
         setError("Unexpected error");
       }

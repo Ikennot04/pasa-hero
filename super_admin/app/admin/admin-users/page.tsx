@@ -14,6 +14,7 @@ import {
 import ConfirmSuspendModal from "../user/_components/ConfirmSuspend";
 import type { UserRow } from "../user/_components/UserTable";
 import { useGetUsers } from "./_hooks/useGetUsers";
+import { usePostUser } from "./_hooks/usePostUser";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { FaUserPlus } from "react-icons/fa6";
 import { MdOutlinePersonOff } from "react-icons/md";
@@ -48,6 +49,7 @@ export default function AdminUsersPage() {
   const router = useRouter();
   const { authToken } = useAuthToken();
   const { getUsers, error: usersFetchError } = useGetUsers();
+  const { postUser, error: createUserError, clearError } = usePostUser();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [userToSuspend, setUserToSuspend] = useState<UserRow | null>(null);
@@ -150,32 +152,15 @@ export default function AdminUsersPage() {
   }
 
   async function onSubmit(data: CreateUserFormData) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const formData = new FormData();
-      formData.append(
-        "data",
-        JSON.stringify({ ...data, role: "admin" }),
-      );
-      const token = localStorage.getItem("super_admin_auth_token");
-      const res = await fetch(`${baseUrl}/api/users`, {
-        method: "POST",
-        body: formData,
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(
-          (err as { message?: string })?.message ??
-            "Failed to create admin user",
-        );
-      }
+    clearError();
+    const res = await postUser({ ...data, role: "admin" });
+    if (res?.success) {
       reset();
       await refreshUsers();
-    } catch (err) {
-      alert(
-        err instanceof Error ? err.message : "Failed to create admin user",
-      );
+      return;
+    }
+    if (res && res.success === false) {
+      alert(res.message ?? "Failed to create admin user");
     }
   }
 
@@ -287,6 +272,11 @@ export default function AdminUsersPage() {
                 </span>
               </label>
             </div>
+            {createUserError ? (
+              <p className="text-error text-sm" role="alert">
+                {createUserError}
+              </p>
+            ) : null}
             <div className="flex justify-end pt-2">
               <button
                 type="submit"
