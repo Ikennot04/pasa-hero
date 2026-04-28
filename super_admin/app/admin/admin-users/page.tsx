@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -55,6 +55,15 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
 
+  const refreshUsers = useCallback(async () => {
+    const res = await getUsers();
+    if (res?.success === true && Array.isArray(res.data)) {
+      setUsers(res.data);
+    } else {
+      setUsers([]);
+    }
+  }, [getUsers]);
+
   const {
     register,
     handleSubmit,
@@ -84,13 +93,8 @@ export default function AdminUsersPage() {
     void (async () => {
       setUsersLoading(true);
       try {
-        const res = await getUsers();
+        await refreshUsers();
         if (cancelled) return;
-        if (res?.success === true && Array.isArray(res.data)) {
-          setUsers(res.data);
-        } else {
-          setUsers([]);
-        }
       } finally {
         if (!cancelled) setUsersLoading(false);
       }
@@ -98,7 +102,7 @@ export default function AdminUsersPage() {
     return () => {
       cancelled = true;
     };
-  }, [allowed, getUsers]);
+  }, [allowed, refreshUsers]);
 
   const portalAdmins = useMemo(
     () =>
@@ -142,10 +146,7 @@ export default function AdminUsersPage() {
       }
       throw err;
     }
-    const refresh = await getUsers();
-    if (refresh?.success === true && Array.isArray(refresh.data)) {
-      setUsers(refresh.data);
-    }
+    await refreshUsers();
   }
 
   async function onSubmit(data: CreateUserFormData) {
@@ -156,9 +157,11 @@ export default function AdminUsersPage() {
         "data",
         JSON.stringify({ ...data, role: "admin" }),
       );
-      const res = await fetch(`${baseUrl}/user`, {
+      const token = localStorage.getItem("super_admin_auth_token");
+      const res = await fetch(`${baseUrl}/api/users`, {
         method: "POST",
         body: formData,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -168,10 +171,7 @@ export default function AdminUsersPage() {
         );
       }
       reset();
-      const refresh = await getUsers();
-      if (refresh?.success === true && Array.isArray(refresh.data)) {
-        setUsers(refresh.data);
-      }
+      await refreshUsers();
     } catch (err) {
       alert(
         err instanceof Error ? err.message : "Failed to create admin user",
