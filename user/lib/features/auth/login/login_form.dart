@@ -26,6 +26,51 @@ class _LoginFormState extends State<LoginForm> {
   bool _obscurePassword = true;
   String? _validationError;
   bool _navigatedToGoogleOtp = false;
+  bool _acceptedTerms = false;
+  bool _attemptedSubmit = false;
+  bool _attemptedGoogle = false;
+
+  static const String _termsText =
+      'Effective Date: April 28, 2026\n\n'
+      'Welcome to PasaHero. By using the PasaHero mobile application ("App"), you agree to the following Terms and Conditions. Please read carefully.\n\n'
+      '1. Acceptance of Terms\n\n'
+      'By accessing or using PasaHero, you agree to be legally bound by these Terms. If you do not agree, please do not use the App.\n\n'
+      '2. Description of Service\n\n'
+      'PasaHero is a commuter assistance app that provides:\n\n'
+      'Real-time vehicle tracking\n'
+      'Route and location services\n'
+      'Estimated arrival information\n\n'
+      '3. User Data & Privacy\n\n'
+      'By using the App, you agree that we may collect and use the following:\n\n'
+      'Location Data (GPS) – to provide tracking and route services\n'
+      'Personal Information (e.g., name, email, device info)\n'
+      'Usage Data – for improving app performance\n\n'
+      'Your data may be processed using third-party services such as Google Maps API.\n\n'
+      'We do not sell your personal data. Data is used strictly for app functionality and improvement.\n\n'
+      '4. Location Tracking Consent\n\n'
+      'You explicitly consent to:\n\n'
+      'Real-time location tracking while using the app\n'
+      'Background location access (if enabled)\n\n'
+      'You can disable location permissions anytime, but some features may not function properly.\n\n'
+      '5. User Responsibilities\n\n'
+      'You agree to:\n\n'
+      'Provide accurate information\n'
+      'Use the app only for lawful purposes\n'
+      'Not misuse tracking features or attempt unauthorized access\n\n'
+      '6. Service Availability\n\n'
+      'We do not guarantee:\n\n'
+      'Continuous, error-free service\n'
+      '100% accurate tracking or arrival times\n\n'
+      '7. Limitation of Liability\n\n'
+      'PasaHero is not responsible for:\n\n'
+      'Delays, missed rides, or inaccurate data\n'
+      'Any damages resulting from reliance on app information\n\n'
+      '8. Termination\n\n'
+      'We reserve the right to suspend or terminate access if you violate these Terms.\n\n'
+      '9. Changes to Terms\n\n'
+      'We may update these Terms anytime. Continued use means you accept the updated Terms.\n\n'
+      '10. Contact\n\n'
+      'For concerns, contact: pasaherocommunity@gmail.com';
   
   // Scroll controller for automatic scrolling to focused fields
   final ScrollController _scrollController = ScrollController();
@@ -71,6 +116,28 @@ class _LoginFormState extends State<LoginForm> {
     _emailFocusNode.dispose();
     _passwordFocusNode.dispose();
     super.dispose();
+  }
+
+  void _showTermsDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Terms & Agreement'),
+          content: const SingleChildScrollView(
+            child: Text(
+              _termsText,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -157,6 +224,9 @@ class _LoginFormState extends State<LoginForm> {
             final baseSpacing = availableHeight < 600 ? 8.0 : (availableHeight < 700 ? 10.0 : 12.0);
             final titleSpacing = availableHeight < 600 ? 12.0 : (availableHeight < 700 ? 16.0 : 20.0);
             final fieldSpacing = availableHeight < 600 ? 14.0 : (availableHeight < 700 ? 16.0 : 18.0);
+
+            final showFieldErrors = _attemptedSubmit;
+            final showTermsError = _attemptedSubmit || _attemptedGoogle;
             
             return Scrollbar(
               controller: _scrollController,
@@ -265,10 +335,16 @@ class _LoginFormState extends State<LoginForm> {
                       focusNode: _emailFocusNode,
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
+                      onChanged: (_) {
+                        if (_attemptedSubmit) setState(() {});
+                      },
                       style: TextStyle(fontSize: inputFontSize),
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: Colors.white,
+                        errorText: showFieldErrors && widget.emailController.text.isEmpty
+                            ? 'Required'
+                            : null,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: const BorderSide(
@@ -289,6 +365,14 @@ class _LoginFormState extends State<LoginForm> {
                             color: Color(0xFF3B82F6),
                             width: 2,
                           ),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                        ),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.red, width: 2),
                         ),
                         contentPadding: EdgeInsets.symmetric(
                           horizontal: 18,
@@ -316,10 +400,16 @@ class _LoginFormState extends State<LoginForm> {
                       focusNode: _passwordFocusNode,
                       obscureText: _obscurePassword,
                       textInputAction: TextInputAction.done,
+                      onChanged: (_) {
+                        if (_attemptedSubmit) setState(() {});
+                      },
                       style: TextStyle(fontSize: inputFontSize),
                       decoration: InputDecoration(
                         filled: true,
                         fillColor: Colors.white,
+                        errorText: showFieldErrors && widget.passwordController.text.isEmpty
+                            ? 'Required'
+                            : null,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,
@@ -334,6 +424,14 @@ class _LoginFormState extends State<LoginForm> {
                             color: Color(0xFF3B82F6),
                             width: 2,
                           ),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.red, width: 1.5),
+                        ),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.red, width: 2),
                         ),
                         hintText: 'Enter your password',
                         hintStyle: TextStyle(
@@ -392,6 +490,59 @@ class _LoginFormState extends State<LoginForm> {
                     ),
                   ),
                   SizedBox(height: fieldSpacing),
+                  // Terms & Agreement checkbox (required)
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: showTermsError && !_acceptedTerms ? Colors.red : Colors.transparent,
+                        width: 1.5,
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Checkbox(
+                        value: _acceptedTerms,
+                        onChanged: (v) {
+                          setState(() => _acceptedTerms = v ?? false);
+                        },
+                        activeColor: const Color(0xFF3B82F6),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      Expanded(
+                        child: Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            const Text('I agree to the '),
+                            InkWell(
+                              onTap: _showTermsDialog,
+                              child: const Text(
+                                'Terms & Agreement',
+                                style: TextStyle(
+                                  color: Color(0xFF3B82F6),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            if (showTermsError && !_acceptedTerms) ...[
+                              const SizedBox(width: 8),
+                              const Text(
+                                '(required)',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  ),
+                  SizedBox(height: baseSpacing),
                   // Log In Button
                   BlocBuilder<AuthBlocBloc, AuthBlocState>(
                     builder: (context, state) {
@@ -403,9 +554,32 @@ class _LoginFormState extends State<LoginForm> {
                               ? null
                               : () {
                                   setState(() {
+                                    _attemptedSubmit = true;
+                                    _attemptedGoogle = false;
+                                    _validationError = null;
+                                  });
+
+                                  final missingEmail =
+                                      widget.emailController.text.isEmpty;
+                                  final missingPassword =
+                                      widget.passwordController.text.isEmpty;
+                                  final missingTerms = !_acceptedTerms;
+                                  if (missingEmail || missingPassword || missingTerms) {
+                                    return;
+                                  }
+
+                                  setState(() {
                                     _validationError = null;
                                   });
                                   
+                                  if (!_acceptedTerms) {
+                                    setState(() {
+                                      _validationError =
+                                          'Please accept the Terms & Agreement to continue';
+                                    });
+                                    return;
+                                  }
+
                                   if (widget.emailController.text.isEmpty ||
                                       widget.passwordController.text.isEmpty) {
                                     setState(() {
@@ -487,6 +661,11 @@ class _LoginFormState extends State<LoginForm> {
                           onPressed: state.isLoading
                               ? null
                               : () {
+                                  setState(() {
+                                    _attemptedGoogle = true;
+                                    _attemptedSubmit = false;
+                                  });
+                                  if (!_acceptedTerms) return;
                                   setState(() => _navigatedToGoogleOtp = false);
                                   context
                                       .read<AuthBlocBloc>()
