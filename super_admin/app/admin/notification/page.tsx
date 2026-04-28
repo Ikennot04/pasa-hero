@@ -13,6 +13,7 @@ import { SystemLogProps } from "./_components/SystemLogProps";
 import SystemLogTable from "./_components/SystemLogTable";
 import { useGetNotifications } from "./_hooks/useGetNotifications";
 import { useGetSystemLogs } from "./_hooks/useGetSystemLogs";
+import { useDeleteNotifications } from "./_hooks/useDeleteNotifications";
 
 // Static data for notifications (matches backend notification.model.js)
 const NOTIFICATIONS_STATIC: NotificationProps[] = [
@@ -151,14 +152,19 @@ export default function Notification() {
   const [logActionFilter, setLogActionFilter] = useState<string>("all");
   const { getNotifications, error: notificationsError, isLoading } =
     useGetNotifications();
+  const { deleteNotifications } = useDeleteNotifications();
   const {
     getSystemLogs,
-    bulkDeleteSystemLogs,
     error: systemLogsError,
     isLoading: systemLogsLoading,
   } = useGetSystemLogs();
 
   const [logs, setLogs] = useState<SystemLogProps[]>([]);
+
+  const refetchNotifications = useCallback(async () => {
+    const data = await getNotifications();
+    setNotifications(data);
+  }, [getNotifications]);
 
   useEffect(() => {
     let isMounted = true;
@@ -192,20 +198,16 @@ export default function Notification() {
     };
   }, [getSystemLogs]);
 
-  const onBulkDelete = useCallback((ids: string[]) => {
-    setNotifications((prev) => prev.filter((n) => !ids.includes(n.id)));
-  }, []);
-
-  const onBulkDeleteLogs = useCallback(
+  const onBulkDelete = useCallback(
     (ids: string[]) => {
       void (async () => {
-        const ok = await bulkDeleteSystemLogs(ids);
-        if (!ok) return;
-        const data = await getSystemLogs();
-        setLogs(data);
+        const response = await deleteNotifications(ids);
+        if (!response) return;
+        const data = await getNotifications();
+        setNotifications(data);
       })();
     },
-    [bulkDeleteSystemLogs, getSystemLogs],
+    [deleteNotifications, getNotifications],
   );
 
   const actionTypes = useMemo(() => {
@@ -362,7 +364,7 @@ export default function Notification() {
             {filteredNotifications.length} filtered ({notifications.length} total)
           </span>
         </div>
-        <AddNotificationModal />
+        <AddNotificationModal onCreated={refetchNotifications} />
       </div>
       <NotificationTable
         notifications={paginatedNotifications}
@@ -451,7 +453,7 @@ export default function Notification() {
       {!systemLogsLoading && systemLogsError && (
         <div className="text-sm text-error">{systemLogsError}</div>
       )}
-      <SystemLogTable logs={paginatedLogs} onBulkDelete={onBulkDeleteLogs} />
+      <SystemLogTable logs={paginatedLogs} />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <span className="text-sm text-base-content/70">
           Page {currentLogPage} of {totalLogPages}

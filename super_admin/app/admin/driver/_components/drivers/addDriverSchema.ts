@@ -4,20 +4,35 @@ export const addDriverSchema = yup.object({
   f_name: yup.string().required("First name is required").trim(),
   l_name: yup.string().required("Last name is required").trim(),
   license_number: yup.string().required("License number is required").trim(),
-  contact_number: yup.string().trim(),
+  contact_number: yup
+    .string()
+    .trim()
+    .test(
+      "positiveContactNumber",
+      "Contact number must be greater than zero",
+      (value) => {
+        if (!value) return true;
+        const normalized = value.trim();
+        if (!normalized) return true;
+        if (normalized.includes("-")) return false;
+        const digitsOnly = normalized.replace(/\D/g, "");
+        if (!digitsOnly) return true;
+        return BigInt(digitsOnly) > 0n;
+      },
+    ),
   profile_image: yup
     .mixed<FileList>()
-    .test("fileType", "Must be an image (JPEG, PNG, GIF, WebP)", (value) => {
+    .test("fileType", "Must be an image (JPEG, JPG, PNG)", (value) => {
       if (!value?.length) return true;
       const file = value[0];
-      return ["image/jpeg", "image/png", "image/gif", "image/webp"].includes(
+      return ["image/jpeg", "image/jpg", "image/png"].includes(
         file?.type ?? ""
       );
     })
-    .test("fileSize", "Image must be 5MB or less", (value) => {
+    .test("fileSize", "Image must be 3MB or less", (value) => {
       if (!value?.length) return true;
       const file = value[0];
-      return (file?.size ?? 0) <= 5 * 1024 * 1024;
+      return (file?.size ?? 0) <= 3 * 1024 * 1024;
     }),
 });
 

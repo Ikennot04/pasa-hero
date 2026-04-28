@@ -13,7 +13,7 @@ export const useGetUsers = () => {
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        setError(error.response?.data.error);
+        setError(error.response?.data.message);
       } else {
         setError("Unexpected error");
       }

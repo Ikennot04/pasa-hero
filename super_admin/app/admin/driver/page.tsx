@@ -10,7 +10,6 @@ import {
 import DriverTable from "./_components/drivers/DriverTable";
 import AssignmentsTable from "./_components/assignmens/AssignmentsTable";
 import AddDriverModal from "./_components/drivers/AddDriver";
-import AddAssignmentModal from "./_components/assignmens/AddAssignment";
 import { useGetDrivers } from "./_hooks/useGetDrivers";
 import { useGetBusAssignments } from "./_hooks/useGetBusAssignments";
 import {
@@ -34,6 +33,15 @@ export default function Driver() {
   const [driversLoading, setDriversLoading] = useState(true);
   const [assignments, setAssignments] = useState<AssignmentProps[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
+
+  const refreshDrivers = useCallback(async () => {
+    const res = await getDrivers();
+    if (res?.success === true && Array.isArray(res.data)) {
+      setDrivers((res.data as ApiDriver[]).map(mapApiDriverToProps));
+      return;
+    }
+    setDrivers([]);
+  }, [getDrivers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,13 +77,6 @@ export default function Driver() {
     return () => {
       cancelled = true;
     };
-  }, [getBusAssignments]);
-
-  const refreshAssignments = useCallback(async () => {
-    const res = await getBusAssignments();
-    if (res?.success === true && Array.isArray(res.data)) {
-      setAssignments((res.data as ApiBusAssignmentRow[]).map(mapApiBusAssignmentToProps));
-    }
   }, [getBusAssignments]);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -147,14 +148,14 @@ export default function Driver() {
             </span>
           </div>
         </div>
-        <AddDriverModal />
+        <AddDriverModal onDriverAdded={refreshDrivers} />
       </div>
       {driversLoading ? (
         <div className="flex justify-center py-16">
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <DriverTable drivers={filteredDrivers} />
+        <DriverTable drivers={filteredDrivers} onDriverUpdated={refreshDrivers} />
       )}
       <div className="text-xl font-bold mt-10">Assignment Management Table</div>
       {assignmentsError ? (
@@ -214,18 +215,13 @@ export default function Driver() {
           assignments
         </span>
         </div>
-        <AddAssignmentModal drivers={drivers} />
       </div>
       {assignmentsLoading ? (
         <div className="flex justify-center py-16">
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <AssignmentsTable
-          assignments={filteredAssignments}
-          drivers={drivers}
-          onAssignmentUpdated={refreshAssignments}
-        />
+        <AssignmentsTable assignments={filteredAssignments} />
       )}
     </div>
   );

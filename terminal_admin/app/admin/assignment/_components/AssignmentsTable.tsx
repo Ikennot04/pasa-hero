@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { AssignmentProps } from "./AssignmentProps";
-import { FaRegEye } from "react-icons/fa6";
+import EditAssignmentModal from "./EditAssignment";
+import type { AssignmentRow, DriverOption } from "./assignmentTypes";
 
 function StatusBadge({ status }: { status: string }) {
   const classMap: Record<string, string> = {
@@ -12,15 +11,12 @@ function StatusBadge({ status }: { status: string }) {
     pending: "badge-warning",
     completed: "badge-success",
     cancelled: "badge-error",
-    arrival_pending: "badge-warning",
-    arrived: "badge-success",
-    departure_pending: "badge-warning",
-    departed: "badge-success",
-    arrival: "badge-success",
+    arrival: "badge-info",
     departure: "badge-info",
     confirmed: "badge-success",
     rejected: "badge-error",
   };
+
   return (
     <span className={`badge badge-sm ${classMap[status] ?? "badge-ghost"}`}>
       {status.replace(/_/g, " ")}
@@ -28,28 +24,26 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatDate(s: string | null) {
-  if (!s) return "—";
-  const d = new Date(s);
-  return d.toLocaleString(undefined, {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
+function formatDate(value: string | null) {
+  if (!value) return "-";
+  const d = new Date(value);
+  return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 }
 
-const DEFAULT_PAGE_SIZE = 10;
-
 type AssignmentsTableProps = {
-  assignments: AssignmentProps[];
+  assignments: AssignmentRow[];
+  drivers: DriverOption[];
+  onAssignmentUpdated?: () => void;
   pageSize?: number;
 };
 
 export default function AssignmentsTable({
   assignments,
-  pageSize = DEFAULT_PAGE_SIZE,
+  drivers,
+  onAssignmentUpdated,
+  pageSize = 10,
 }: AssignmentsTableProps) {
   const [page, setPage] = useState(1);
-
   const totalPages = Math.max(1, Math.ceil(assignments.length / pageSize));
   const activePage = Math.min(Math.max(1, page), totalPages);
 
@@ -58,18 +52,17 @@ export default function AssignmentsTable({
     return assignments.slice(start, start + pageSize);
   }, [assignments, activePage, pageSize]);
 
-  const go = (next: number) => {
-    setPage(Math.min(Math.max(1, next), totalPages));
-  };
-
   const pageNumbers = useMemo(() => {
-    const window = 2;
-    const lo = Math.max(1, activePage - window);
-    const hi = Math.min(totalPages, activePage + window);
-    const nums: number[] = [];
-    for (let p = lo; p <= hi; p++) nums.push(p);
-    return nums;
+    const pages: number[] = [];
+    const lo = Math.max(1, activePage - 2);
+    const hi = Math.min(totalPages, activePage + 2);
+    for (let i = lo; i <= hi; i += 1) pages.push(i);
+    return pages;
   }, [activePage, totalPages]);
+
+  const go = (next: number) => {
+    setPage(Math.max(1, Math.min(totalPages, next)));
+  };
 
   return (
     <>
@@ -111,14 +104,10 @@ export default function AssignmentsTable({
                     {a.last_terminal_log ? (
                       <div className="flex flex-col gap-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <StatusBadge
-                            status={a.last_terminal_log.event_type}
-                          />
+                          <StatusBadge status={a.last_terminal_log.event_type} />
                           {a.last_terminal_log.log_status &&
                           a.last_terminal_log.log_status !== "confirmed" ? (
-                            <StatusBadge
-                              status={a.last_terminal_log.log_status}
-                            />
+                            <StatusBadge status={a.last_terminal_log.log_status} />
                           ) : null}
                         </div>
                         <span className="text-xs font-medium">
@@ -129,17 +118,15 @@ export default function AssignmentsTable({
                         </span>
                       </div>
                     ) : (
-                      <span className="text-base-content/60">—</span>
+                      <span className="text-base-content/60">-</span>
                     )}
                   </td>
-                  <td className="flex gap-2 flex-wrap">
-                    <Link
-                      href={`/admin/driver/assignment/${a.id}`}
-                      className="btn"
-                    >
-                      <FaRegEye className="w-5 h-5" />
-                      View
-                    </Link>
+                  <td>
+                    <EditAssignmentModal
+                      assignment={a}
+                      drivers={drivers}
+                      onUpdated={onAssignmentUpdated}
+                    />
                   </td>
                 </tr>
               ))
@@ -151,7 +138,7 @@ export default function AssignmentsTable({
       {assignments.length > 0 ? (
         <div className="flex flex-col items-stretch gap-3 border-t border-base-content/10 bg-base-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-base-content/70">
-            {(activePage - 1) * pageSize + 1}–
+            {(activePage - 1) * pageSize + 1}-
             {Math.min(activePage * pageSize, assignments.length)} of{" "}
             {assignments.length}
           </p>

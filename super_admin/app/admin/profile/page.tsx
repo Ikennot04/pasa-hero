@@ -1,9 +1,9 @@
 "use client";
 
-import axios from "axios";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useGetUserDetails } from "./_hooks/useGetUserDetails";
+import { useUpdateUser } from "./_hooks/useUpdateUser";
 
 const AUTH_TOKEN_KEY = "super_admin_auth_token";
 const PROFILE_NAME_KEY = "super_admin_f_name";
@@ -46,6 +46,7 @@ function splitFullName(full: string): { f_name: string; l_name: string } {
 
 export default function Profile() {
   const { getUserDetails, error: fetchError } = useGetUserDetails();
+  const { updateUser, error: updateUserError } = useUpdateUser();
 
   const [userId, setUserId] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
@@ -138,7 +139,6 @@ export default function Profile() {
     setSaving(true);
     setSaveError(null);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
       const formData = new FormData();
       formData.append(
         "data",
@@ -148,15 +148,11 @@ export default function Profile() {
           email: nextEmail,
         }),
       );
-      const { data: res } = await axios.patch<{ success?: boolean; data?: ApiUser; message?: string }>(
-        `${baseUrl}/api/users/${userId}`,
-        formData,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const res = (await updateUser(userId, formData, token)) as
+        | { success?: boolean; data?: ApiUser; message?: string }
+        | null;
 
-      if (res.success && res.data) {
+      if (res && res.success && res.data) {
         const u = res.data;
         setFullName(displayNameFromUser(u));
         setEmail(u.email?.trim() ? u.email : nextEmail);
@@ -166,15 +162,10 @@ export default function Profile() {
         setIsEditing(false);
         setSaveMessage("Profile updated.");
       } else {
-        setSaveError(res.message ?? "Update failed");
+        setSaveError(res?.message ?? updateUserError ?? "Update failed");
       }
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        const msg = (err.response?.data as { message?: string })?.message;
-        setSaveError(msg ?? err.message ?? "Update failed");
-      } else {
-        setSaveError("Unexpected error");
-      }
+    } catch {
+      setSaveError(updateUserError ?? "Update failed");
     } finally {
       setSaving(false);
     }

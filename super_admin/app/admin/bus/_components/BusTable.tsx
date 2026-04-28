@@ -66,11 +66,13 @@ const DEFAULT_PAGE_SIZE = 10;
 type BusTableProps = {
   buses: BusProps[];
   pageSize?: number;
+  onBusUpdated?: () => void | Promise<void>;
 };
 
 export default function BusTable({
   buses,
   pageSize = DEFAULT_PAGE_SIZE,
+  onBusUpdated,
 }: BusTableProps) {
   const router = useRouter();
   const [page, setPage] = useState(1);
@@ -158,7 +160,7 @@ export default function BusTable({
                   <FaRegEye className="w-5 h-5" />
                   View
                 </button>
-                <EditBusModal bus={bus} />
+                <EditBusModal bus={bus} onBusUpdated={onBusUpdated} />
               </td>
             </tr>
             );
