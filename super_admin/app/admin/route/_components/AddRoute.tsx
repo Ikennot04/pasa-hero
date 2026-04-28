@@ -272,7 +272,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
         title: `${m.type.toUpperCase()} (${m.lat.toFixed(4)}, ${m.lng.toFixed(4)})`,
         content: pin,
       });
-      marker.addListener("click", () => removeMarker(m.id));
+      marker.addEventListener("gmp-click", () => removeMarker(m.id));
       advancedMarkersRef.current.push(marker);
     });
 
@@ -352,8 +352,8 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
       };
     });
 
-    console.log("[AddRoute] form data:", payload);
-    console.log("[AddRoute] route stops:", routeStops);
+    // console.log("[AddRoute] form data:", payload);
+    // console.log("[AddRoute] route stops:", routeStops);
 
     const response = await postRoutes(payload);
     if (!response?.success) {

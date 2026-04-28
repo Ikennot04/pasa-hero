@@ -1,6 +1,6 @@
 import * as yup from "yup";
 
-import type { RouteRow } from "./_components/Routes";
+import type { RouteRow } from "./_components/RoutesTable";
 
 export function buildAddRouteSchema(
   existingRoutes: RouteRow[],

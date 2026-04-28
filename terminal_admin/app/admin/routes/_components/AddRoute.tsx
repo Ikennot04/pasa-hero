@@ -1,38 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import * as yup from "yup";
-import { GoogleMap, LoadScript } from "@react-google-maps/api";
-
-import { buildAddRouteSchema, yupErrorsToFieldMap, type AddRouteFormValues } from "../addRouteSchema";
-import { useCreateRoute } from "../_hooks/useCreateRoute";
-import { useGetTerminalNames } from "../_hooks/useGetTerminalNames";
+import { useState, useRef, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import {
+  GoogleMap,
+  useJsApiLoader,
+  type Libraries,
+} from "@react-google-maps/api";
+import { addRouteSchema, type AddRouteFormData } from "./addRouteSchema";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
-import type { RouteRow } from "./Routes";
+import { useGetTerminalNames } from "../_hooks/getTerminalNames";
+import { usePostRoutes } from "../_hooks/usePostRoutes";
+import { usePostRouteStop } from "../_hooks/usePostRouteStop";
 
-type NewRouteForm = {
-  route_code: string;
-  route_name: string;
-  start_terminal_id: string;
-  end_terminal_id: string;
-};
-
-type AddRouteProps = {
-  routes: RouteRow[];
-  setRoutes: React.Dispatch<React.SetStateAction<RouteRow[]>>;
-  setToast: React.Dispatch<React.SetStateAction<string | null>>;
-  onCreated?: () => void | Promise<void>;
-};
-
-const EMPTY_FORM: NewRouteForm = {
-  route_code: "",
-  route_name: "",
-  start_terminal_id: "",
-  end_terminal_id: "",
-};
-
-type TerminalNameRow = { _id?: string; terminal_name?: string };
 type MarkerType = "start" | "end" | "stop";
+
 type DroppedMarker = {
   id: string;
   type: MarkerType;
@@ -40,79 +23,228 @@ type DroppedMarker = {
   lng: number;
 };
 
-const MAP_CENTER = { lat: 12.8797, lng: 121.774 };
-const MAP_ZOOM = 6;
-const GOOGLE_MAPS_LIBRARIES: ("marker")[] = ["marker"];
+type TerminalOption = {
+  id: string;
+  terminal_name: string;
+  lat: number;
+  lng: number;
+};
 
-export default function AddRoute({ routes, setRoutes, setToast, onCreated }: AddRouteProps) {
-  const [openAddModal, setOpenAddModal] = useState(false);
-  const [form, setForm] = useState<NewRouteForm>(EMPTY_FORM);
-  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof NewRouteForm, string>>>({});
-  const [endTerminalOptions, setEndTerminalOptions] = useState<TerminalNameRow[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+const MAP_CENTER = { lat: 10.3313, lng: 123.9362 }; // Parkmall Mandaue area
+const MAP_ZOOM = 14.5;
+const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
+
+type AddRouteModalProps = {
+  onRouteAdded?: () => void | Promise<void>;
+};
+
+export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
+  const [open, setOpen] = useState(false);
   const [droppedMarkers, setDroppedMarkers] = useState<DroppedMarker[]>([]);
   const [selectedTool, setSelectedTool] = useState<MarkerType>("start");
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
-  const advancedMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const [terminalOptions, setTerminalOptions] = useState<TerminalOption[]>([]);
+  const [isLoadingTerminalOptions, setIsLoadingTerminalOptions] =
+    useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [assignedTerminalId, setAssignedTerminalId] = useState("");
+  const [assignedTerminalName, setAssignedTerminalName] = useState("");
+  const advancedMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>(
+    [],
+  );
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { getTerminalNames } = useGetTerminalNames();
-  const { createRoute } = useCreateRoute();
+  const { postRoutes, error: postRoutesError } = usePostRoutes();
+  const { postRouteStop, error: postRouteStopError } = usePostRouteStop();
+  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } =
+    useJsApiLoader({
+      id: "pasahero-admin-map-script",
+      googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
+      libraries: GOOGLE_MAPS_LIBRARIES,
+    });
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<AddRouteFormData>({
+    resolver: yupResolver(addRouteSchema),
+    mode: "onTouched",
+    defaultValues: {
+      route_name: "",
+      route_code: "",
+      start_terminal_id: "",
+      end_terminal_id: "",
+      start_location: "",
+      end_location: "",
+      estimated_duration: undefined,
+    },
+  });
+
+  useEffect(() => {
+    const terminalId = localStorage.getItem("assigned_terminal") ?? "";
+    const terminalName = localStorage.getItem("assigned_terminal_name") ?? "";
+    setAssignedTerminalId(terminalId);
+    setAssignedTerminalName(terminalName);
+    if (terminalId) {
+      setValue("start_terminal_id", terminalId, {
+        shouldValidate: true,
+        shouldTouch: true,
+      });
+    }
+  }, [setValue]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function fetchTerminalOptions() {
+      setIsLoadingTerminalOptions(true);
+      try {
+        const response = await getTerminalNames();
+        const rawOptions = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.data)
+            ? response.data
+            : [];
+
+        if (!isMounted) return;
+
+        const parsedOptions: TerminalOption[] = rawOptions
+          .map((terminal: unknown) => {
+            const option = terminal as {
+              _id?: string | number;
+              id?: string | number;
+              terminal_name?: string;
+              lat?: number | string;
+              lng?: number | string;
+            };
+            const terminalName = String(option.terminal_name ?? "").trim();
+            if (!terminalName) return null;
+            const terminalId = String(option._id ?? option.id ?? "").trim();
+            if (!terminalId) return null;
+            return {
+              id: terminalId,
+              terminal_name: terminalName,
+              lat: Number(option.lat ?? 0),
+              lng: Number(option.lng ?? 0),
+            };
+          })
+          .filter(
+            (option: TerminalOption | null): option is TerminalOption =>
+              option !== null,
+          );
+
+        setTerminalOptions(parsedOptions);
+      } finally {
+        if (isMounted) setIsLoadingTerminalOptions(false);
+      }
+    }
+
+    fetchTerminalOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getTerminalNames]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (openAddModal) dialog.showModal();
-    else dialog.close();
-    const onClose = () => setOpenAddModal(false);
+    if (open) {
+      dialog.showModal();
+    } else {
+      dialog.close();
+    }
+    const onClose = () => setOpen(false);
     dialog.addEventListener("close", onClose);
     return () => dialog.removeEventListener("close", onClose);
-  }, [openAddModal]);
+  }, [open]);
 
-  async function onOpenAddModal() {
-    setFieldErrors({});
-    setForm({
-      ...EMPTY_FORM,
-      start_terminal_id: localStorage.getItem("assigned_terminal") ?? "",
-    });
-    setDroppedMarkers([]);
-    setSelectedTool("start");
-    setOpenAddModal(true);
-    const assignedId = localStorage.getItem("assigned_terminal") ?? "";
-    const res = await getTerminalNames();
-    if (res?.success && Array.isArray(res.data)) {
-      const rows = (res.data as TerminalNameRow[])
-        .filter((row) => {
-          const id = row._id != null ? String(row._id) : "";
-          return id && id !== assignedId && Boolean(row.terminal_name?.trim());
-        })
-        .sort((a, b) => (a.terminal_name ?? "").localeCompare(b.terminal_name ?? ""));
-      setEndTerminalOptions(rows);
-    } else {
-      setEndTerminalOptions([]);
-      const message =
-        typeof res === "object" && res !== null && "message" in res
-          ? String((res as { message: unknown }).message)
-          : "Could not load terminal names.";
-      setToast(message);
+  function parseCoordinatePair(
+    value: string,
+  ): { latitude: number; longitude: number } | null {
+    const [latRaw, lngRaw] = value.split(",").map((part) => part.trim());
+    const latitude = Number(latRaw);
+    const longitude = Number(lngRaw);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
     }
+    return { latitude, longitude };
   }
 
-  function onChange<K extends keyof NewRouteForm>(key: K, value: NewRouteForm[K]) {
-    setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
-    setForm((prev) => ({ ...prev, [key]: value }));
+  function openModal() {
+    setOpen(true);
+    reset();
+    if (assignedTerminalId) {
+      setValue("start_terminal_id", assignedTerminalId, {
+        shouldValidate: true,
+        shouldTouch: true,
+      });
+    }
+    setDroppedMarkers([]);
+    setSelectedTool("start");
+    setSubmitError(null);
+  }
+
+  function closeModal() {
+    setOpen(false);
+    reset();
+    setDroppedMarkers([]);
+    setSubmitError(null);
+  }
+
+  function nearestTerminal(lat: number, lng: number): TerminalOption | null {
+    if (terminalOptions.length === 0) return null;
+
+    let best: TerminalOption | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const t of terminalOptions) {
+      if (!Number.isFinite(t.lat) || !Number.isFinite(t.lng)) continue;
+      const d = Math.hypot(t.lat - lat, t.lng - lng);
+      if (d < bestDist) {
+        bestDist = d;
+        best = t;
+      }
+    }
+    return best;
   }
 
   function putMarker(tool: MarkerType, lat: number, lng: number) {
     if (!tool) return;
     console.log(
-      `[TerminalAddRoute][${tool.toUpperCase()}] lat=${lat.toFixed(6)}, lng=${lng.toFixed(6)}`,
+      `[AddRoute][${tool.toUpperCase()}] lat=${lat.toFixed(6)}, lng=${lng.toFixed(6)}`,
     );
+
     setDroppedMarkers((prev) => {
       const withoutSingle = prev.filter(
-        (m) => !(tool === "start" && m.type === "start") && !(tool === "end" && m.type === "end"),
+        (m) =>
+          !(tool === "start" && m.type === "start") &&
+          !(tool === "end" && m.type === "end"),
       );
-      return [...withoutSingle, { id: `${tool}-${Date.now()}`, type: tool, lat, lng }];
+      return [
+        ...withoutSingle,
+        { id: `${tool}-${Date.now()}`, type: tool, lat, lng },
+      ];
     });
+
+    if (tool === "start" || tool === "end") {
+      setValue(
+        tool === "start" ? "start_location" : "end_location",
+        `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+        { shouldValidate: true, shouldTouch: true },
+      );
+      if (tool === "end") {
+        const nearest = nearestTerminal(lat, lng);
+        if (nearest) {
+          setValue("end_terminal_id", nearest.id, {
+            shouldValidate: true,
+            shouldTouch: true,
+          });
+        }
+      }
+    }
   }
 
   function onMapClick(e: google.maps.MapMouseEvent) {
@@ -125,16 +257,18 @@ export default function AddRoute({ routes, setRoutes, setToast, onCreated }: Add
   }
 
   useEffect(() => {
-    if (!mapInstance || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    if (!mapInstance || !window.google?.maps?.marker?.AdvancedMarkerElement)
+      return;
 
+    // Clear previous markers on each refresh.
     for (const m of advancedMarkersRef.current) {
       m.map = null;
     }
     advancedMarkersRef.current = [];
 
     droppedMarkers.forEach((m, idx) => {
-      const stopIndex = droppedMarkers.slice(0, idx + 1).filter((x) => x.type === "stop").length;
-      const label = m.type === "stop" ? `${stopIndex}` : m.type === "start" ? "S" : "E";
+      const label =
+        m.type === "stop" ? `${idx + 1}` : m.type === "start" ? "S" : "E";
       const pin = document.createElement("div");
       pin.style.width = "28px";
       pin.style.height = "28px";
@@ -147,7 +281,11 @@ export default function AddRoute({ routes, setRoutes, setToast, onCreated }: Add
       pin.style.fontSize = "11px";
       pin.style.boxShadow = "0 2px 6px rgba(0,0,0,0.25)";
       pin.style.background =
-        m.type === "start" ? "#16a34a" : m.type === "end" ? "#dc2626" : "#2563eb";
+        m.type === "start"
+          ? "#16a34a"
+          : m.type === "end"
+            ? "#dc2626"
+            : "#2563eb";
       pin.textContent = label;
 
       const marker = new google.maps.marker.AdvancedMarkerElement({
@@ -156,7 +294,7 @@ export default function AddRoute({ routes, setRoutes, setToast, onCreated }: Add
         title: `${m.type.toUpperCase()} (${m.lat.toFixed(4)}, ${m.lng.toFixed(4)})`,
         content: pin,
       });
-      marker.addListener("click", () => removeMarker(m.id));
+      marker.addEventListener("gmp-click", () => removeMarker(m.id));
       advancedMarkersRef.current.push(marker);
     });
 
@@ -166,135 +304,159 @@ export default function AddRoute({ routes, setRoutes, setToast, onCreated }: Add
     };
   }, [mapInstance, droppedMarkers]);
 
-  async function onCreateRoute(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  useEffect(() => {
+    if (!open || !mapInstance || !window.google?.maps) return;
+    // Ensure map renders correctly after dialog becomes visible.
+    window.google.maps.event.trigger(mapInstance, "resize");
+    mapInstance.setCenter(MAP_CENTER);
+  }, [open, mapInstance]);
 
-    const assignedId = localStorage.getItem("assigned_terminal") ?? "";
-    if (!assignedId) {
-      setToast("Assigned terminal is missing. Please sign in again.");
+  const startMarker = droppedMarkers.find((m) => m.type === "start");
+  const endMarker = droppedMarkers.find((m) => m.type === "end");
+  const stopMarkers = droppedMarkers.filter((m) => m.type === "stop");
+
+  const routeCoverageLabel =
+    startMarker && endMarker
+      ? `Start (${startMarker.lat.toFixed(4)}, ${startMarker.lng.toFixed(4)}) → End (${endMarker.lat.toFixed(4)}, ${endMarker.lng.toFixed(4)})`
+      : "Place start and end points on the map (end point optional).";
+
+  async function onSubmit(data: AddRouteFormData) {
+    setSubmitError(null);
+
+    const typedStartLocation = parseCoordinatePair(data.start_location);
+    const typedEndLocation = parseCoordinatePair(data.end_location);
+
+    const startLocation = startMarker
+      ? {
+          latitude: Number(startMarker.lat.toFixed(6)),
+          longitude: Number(startMarker.lng.toFixed(6)),
+        }
+      : typedStartLocation;
+    const endLocation = endMarker
+      ? {
+          latitude: Number(endMarker.lat.toFixed(6)),
+          longitude: Number(endMarker.lng.toFixed(6)),
+        }
+      : typedEndLocation;
+
+    if (!startLocation || !endLocation) {
+      alert(
+        "Please provide valid start and end locations (map marker or lat,lng input).",
+      );
       return;
     }
 
-    const endIds = endTerminalOptions
-      .map((t) => (t._id != null ? String(t._id) : ""))
-      .filter(Boolean);
-    const schema = buildAddRouteSchema(routes, endIds, assignedId);
+    const payload = {
+      route_name: data.route_name,
+      route_code: data.route_code,
+      start_terminal_id: (assignedTerminalId || data.start_terminal_id).trim(),
+      end_terminal_id: data.end_terminal_id
+        ? data.end_terminal_id.trim()
+        : null,
+      start_location: startLocation,
+      end_location: endLocation,
+      estimated_duration:
+        data.estimated_duration != null
+          ? Number(data.estimated_duration)
+          : undefined,
+      status: "active" as const,
+      route_type: "normal" as const,
+    };
 
-    try {
-      const validated = schema.validateSync(form, {
-        abortEarly: false,
-        stripUnknown: true,
-      }) as AddRouteFormValues;
-      setFieldErrors({});
+    const routeStops = stopMarkers.map((stop, index) => {
+      const stopOrder = index + 1;
+      const nearest = nearestTerminal(stop.lat, stop.lng);
+      return {
+        stop_name: `${nearest?.terminal_name ?? "Stop"} ${stopOrder}`,
+        stop_order: stopOrder,
+        latitude: Number(stop.lat.toFixed(6)),
+        longitude: Number(stop.lng.toFixed(6)),
+      };
+    });
 
-      const route_code = validated.route_code.trim().toUpperCase();
-      const assignedName = localStorage.getItem("assigned_terminal_name")?.trim() ?? "";
-      const endName =
-        endTerminalOptions.find((t) => String(t._id) === validated.end_terminal_id)?.terminal_name?.trim() ??
-        validated.end_terminal_id;
-      const route_name =
-        validated.route_name?.trim() ||
-        (assignedName && endName ? `${assignedName} – ${endName}` : `${validated.start_terminal_id} – ${endName}`);
+    console.log("[AddRoute] form data:", payload);
+    console.log("[AddRoute] route stops:", routeStops);
 
-      const startMarker = droppedMarkers.find((m) => m.type === "start");
-      const endMarker = droppedMarkers.find((m) => m.type === "end");
-      const stopMarkers = droppedMarkers.filter((m) => m.type === "stop");
-      if (!startMarker || !endMarker) {
-        setToast("Please place both start and end markers on the map.");
-        return;
-      }
+    const response = await postRoutes(payload);
+    if (!response?.success) {
+      setSubmitError(
+        response?.message ??
+          postRoutesError ??
+          "Failed to create route. Please try again.",
+      );
+      return;
+    }
 
-      const payload = {
-        route_name,
-        route_code,
-        start_terminal_id: validated.start_terminal_id,
-        end_terminal_id: validated.end_terminal_id,
-        status: "active",
-        route_type: "normal",
-        pointA: {
-          latitude: Number(startMarker.lat.toFixed(6)),
-          longitude: Number(startMarker.lng.toFixed(6)),
-        },
-        pointB: {
-          latitude: Number(endMarker.lat.toFixed(6)),
-          longitude: Number(endMarker.lng.toFixed(6)),
-        },
-        busStops: stopMarkers.map((s, idx) => ({
-          name: `Stop ${idx + 1}`,
-          latitude: Number(s.lat.toFixed(6)),
-          longitude: Number(s.lng.toFixed(6)),
-        })),
+    const routeId = String(
+      response?.data?._id ?? response?.data?.id ?? response?.data?.route_id ?? "",
+    ).trim();
+    if (!routeId) {
+      setSubmitError("Route created, but route ID was missing for stop creation.");
+      return;
+    }
+
+    for (const routeStop of routeStops) {
+      const routeStopPayload = {
+        route_id: routeId,
+        stop_name: routeStop.stop_name,
+        stop_order: routeStop.stop_order,
+        latitude: routeStop.latitude,
+        longitude: routeStop.longitude,
       };
 
-      setIsSubmitting(true);
-      try {
-        const res = await createRoute(payload);
-        if (res && typeof res === "object" && "success" in res && res.success === true) {
-          const doc = res.data as
-            | { _id?: string; route_code?: string; route_name?: string; status?: string; updatedAt?: string }
-            | undefined;
-          await onCreated?.();
-          if (!onCreated && doc?._id) {
-            const next: RouteRow = {
-              id: String(doc._id),
-              routeCode: doc.route_code ?? route_code,
-              routeName: doc.route_name ?? route_name,
-              startRoute: assignedName || validated.start_terminal_id,
-              endRoute: endName,
-              status: doc.status === "active" ? "active" : "paused",
-              active_buses_count: 0,
-              updatedAt: doc.updatedAt ?? new Date().toISOString(),
-            };
-            setRoutes((prev) => [next, ...prev]);
-          }
-          setOpenAddModal(false);
-          setToast(`Route ${route_code} added.`);
-          return;
-        }
-        const message =
-          res && typeof res === "object" && "message" in res
-            ? String((res as { message: unknown }).message)
-            : "Could not create route.";
-        setToast(message);
-      } finally {
-        setIsSubmitting(false);
-      }
-    } catch (err) {
-      if (err instanceof yup.ValidationError) {
-        setFieldErrors(yupErrorsToFieldMap(err) as Partial<Record<keyof NewRouteForm, string>>);
-        setToast(err.errors[0] ?? "Please fix the form errors.");
+      const routeStopResponse = await postRouteStop(routeStopPayload);
+      if (!routeStopResponse?.success) {
+        setSubmitError(
+          routeStopResponse?.message ??
+            postRouteStopError ??
+            `Route was created, but failed to create stop #${routeStop.stop_order}.`,
+        );
         return;
       }
-      throw err;
     }
+
+    await onRouteAdded?.();
+    closeModal();
   }
 
   return (
     <>
-      <button type="button" className="btn bg-[#0062CA] text-white" onClick={onOpenAddModal}>
+      <button
+        type="button"
+        className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80"
+        onClick={openModal}
+      >
         Add route
       </button>
-
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box max-w-6xl rounded-md p-5">
-          <h3 className="text-xl font-bold">Add route</h3>
-          <p className="mt-1 text-sm text-base-content/70">
+          <h3 className="text-xl font-semibold text-[#222222]">Add route</h3>
+          <p className="mt-1 text-sm text-[#6B7280]">
             Build route geometry by selecting a tool, then clicking the map.
           </p>
 
-          <form className="mt-4 space-y-3" onSubmit={onCreateRoute}>
-            <section className="rounded-md border border-base-300 p-3.5">
-              <h4 className="text-sm font-semibold text-base-content/80">Map</h4>
+          <form onSubmit={handleSubmit(onSubmit)} className="mt-4 space-y-3">
+            <section className="rounded-md border border-[#E5E7EB] p-3.5">
+              <h4 className="text-sm font-semibold text-[#4B5563]">Map</h4>
               <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_250px]">
-                <div className="relative min-h-[360px] overflow-hidden rounded-xl border border-base-300 bg-base-200">
+                <div className="relative min-h-[360px] overflow-hidden rounded-xl border border-[#D1D5DB] bg-[#F3F4F6]">
                   {isGoogleMapsConfigured ? (
-                    <LoadScript googleMapsApiKey={googleMapsApiKey} libraries={GOOGLE_MAPS_LIBRARIES}>
+                    googleMapsLoadError ? (
+                      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-error">
+                        Failed to load Google Maps script. Check your API key
+                        and map restrictions.
+                      </div>
+                    ) : isGoogleMapsLoaded ? (
                       <GoogleMap
                         center={MAP_CENTER}
                         zoom={MAP_ZOOM}
-                        mapContainerStyle={{ width: "100%", minHeight: "360px" }}
+                        mapContainerStyle={{
+                          width: "100%",
+                          minHeight: "360px",
+                        }}
                         options={{
                           mapId: "DEMO_MAP_ID",
+                          mapTypeId: "hybrid",
                           streetViewControl: false,
                           mapTypeControl: false,
                           fullscreenControl: false,
@@ -303,18 +465,27 @@ export default function AddRoute({ routes, setRoutes, setToast, onCreated }: Add
                         onUnmount={() => setMapInstance(null)}
                         onClick={onMapClick}
                       />
-                    </LoadScript>
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6B7280]">
+                        Loading map...
+                      </div>
+                    )
                   ) : (
-                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-base-content/70">
-                      Add <code className="mx-1">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6B7280]">
+                      Add{" "}
+                      <code className="mx-1">
+                        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+                      </code>
                       to show Google Map preview.
                     </div>
                   )}
                 </div>
 
-                <aside className="rounded-xl border border-base-300 bg-base-100 p-3">
-                  <p className="text-sm font-semibold text-base-content/80">Marker Toolbox</p>
-                  <p className="mt-1 text-xs text-base-content/60">
+                <aside className="rounded-xl border border-[#D1D5DB] bg-white p-3">
+                  <p className="text-sm font-semibold text-[#374151]">
+                    Marker Toolbox
+                  </p>
+                  <p className="mt-1 text-xs text-[#6B7280]">
                     Choose marker type, then click on the map.
                   </p>
                   <div className="mt-3 space-y-2">
@@ -331,17 +502,6 @@ export default function AddRoute({ routes, setRoutes, setToast, onCreated }: Add
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSelectedTool("end")}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                        selectedTool === "end"
-                          ? "border-red-500 bg-red-100 text-red-900"
-                          : "border-red-300 bg-red-50 text-red-800"
-                      }`}
-                    >
-                      End point
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setSelectedTool("stop")}
                       className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
                         selectedTool === "stop"
@@ -351,118 +511,201 @@ export default function AddRoute({ routes, setRoutes, setToast, onCreated }: Add
                     >
                       Bus stop
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTool("end")}
+                      className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
+                        selectedTool === "end"
+                          ? "border-red-500 bg-red-100 text-red-900"
+                          : "border-red-300 bg-red-50 text-red-800"
+                      }`}
+                    >
+                      End point
+                    </button>
                   </div>
-                  <div className="mt-3 rounded-md bg-base-200 p-2 text-xs text-base-content/80">
-                    Stops: {droppedMarkers.filter((m) => m.type === "stop").length}
+                  <div className="mt-3 rounded-md bg-[#F9FAFB] p-2 text-xs text-[#4B5563]">
+                    Stops: {stopMarkers.length}
                     <br />
-                    {(() => {
-                      const s = droppedMarkers.find((m) => m.type === "start");
-                      const e = droppedMarkers.find((m) => m.type === "end");
-                      if (!s || !e) return "Place start and end points on the map.";
-                      return `Start (${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}) -> End (${e.lat.toFixed(4)}, ${e.lng.toFixed(4)})`;
-                    })()}
+                    {routeCoverageLabel}
                   </div>
                 </aside>
               </div>
             </section>
 
-            <section className="rounded-md border border-base-300 p-3.5">
-              <h4 className="text-sm font-semibold text-base-content/80">Route identity</h4>
-              <div className="mt-3">
-                <label className="label-text font-medium">Route code</label>
-                <input
-                  className={`input input-bordered mt-1 w-full${fieldErrors.route_code ? " input-error" : ""}`}
-                  placeholder="e.g. PITX-QC-05"
-                  value={form.route_code}
-                  onChange={(e) => onChange("route_code", e.target.value)}
-                  aria-invalid={fieldErrors.route_code ? true : undefined}
-                />
-                {fieldErrors.route_code ? (
-                  <span className="label-text-alt text-error">{fieldErrors.route_code}</span>
-                ) : null}
-              </div>
-              <div className="mt-3">
-                <label className="label-text font-medium">Route name (optional)</label>
-                <input
-                  className={`input input-bordered mt-1 w-full${fieldErrors.route_name ? " input-error" : ""}`}
-                  placeholder="e.g. PITX - Fairview; leave blank to use start - end"
-                  value={form.route_name}
-                  onChange={(e) => onChange("route_name", e.target.value)}
-                  aria-invalid={fieldErrors.route_name ? true : undefined}
-                />
-                {fieldErrors.route_name ? (
-                  <span className="label-text-alt text-error">{fieldErrors.route_name}</span>
-                ) : null}
-              </div>
-            </section>
-
-            <section className="rounded-md border border-base-300 p-3.5">
-              <h4 className="text-sm font-semibold text-base-content/80">Route coverage</h4>
-              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="form-control w-full">
-                  <span className="label-text font-medium">Start terminal</span>
+            <section className="rounded-md border border-[#E5E7EB] p-3.5">
+              <h4 className="text-sm font-semibold text-[#4B5563]">
+                Route identity
+              </h4>
+              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Route name
+                  </label>
                   <input
-                    className={`input input-bordered w-full${fieldErrors.start_terminal_id ? " input-error" : ""}`}
-                    placeholder="Assigned terminal"
-                    value={
-                      typeof window !== "undefined"
-                        ? localStorage.getItem("assigned_terminal_name")?.trim() || form.start_terminal_id
-                        : form.start_terminal_id
-                    }
-                    disabled
-                    readOnly
-                    aria-invalid={fieldErrors.start_terminal_id ? true : undefined}
+                    type="text"
+                    placeholder="e.g. North Terminal - South Terminal"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.route_name ? "input-error" : ""}`}
+                    {...register("route_name")}
                   />
-                  {fieldErrors.start_terminal_id ? (
-                    <span className="label-text-alt text-error">{fieldErrors.start_terminal_id}</span>
-                  ) : null}
-                </label>
-                <label className="form-control w-full">
-                  <span className="label-text font-medium">End terminal</span>
-                  <select
-                    className={`select select-bordered w-full${fieldErrors.end_terminal_id ? " select-error" : ""}`}
-                    value={form.end_terminal_id}
-                    onChange={(e) => onChange("end_terminal_id", e.target.value)}
-                    aria-invalid={fieldErrors.end_terminal_id ? true : undefined}
-                  >
-                    <option value="">Select end terminal</option>
-                    {endTerminalOptions.map((row) => {
-                      const id = row._id != null ? String(row._id) : "";
-                      if (!id) return null;
-                      return (
-                        <option key={id} value={id}>
-                          {row.terminal_name?.trim() ?? id}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  {fieldErrors.end_terminal_id ? (
-                    <span className="label-text-alt text-error">{fieldErrors.end_terminal_id}</span>
-                  ) : null}
-                </label>
+                  {errors.route_name && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.route_name.message}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Route code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PITX-QC-05"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.route_code ? "input-error" : ""}`}
+                    {...register("route_code")}
+                  />
+                  {errors.route_code && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.route_code.message}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    ETA (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.estimated_duration ? "input-error" : ""}`}
+                    {...register("estimated_duration", { valueAsNumber: true })}
+                  />
+                  {errors.estimated_duration && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.estimated_duration.message}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
 
-            <div className="modal-action flex-wrap gap-2">
+            <section className="rounded-md border border-[#E5E7EB] p-3.5">
+              <h4 className="text-sm font-semibold text-[#4B5563]">
+                Route coverage
+              </h4>
+              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Start terminal
+                  </label>
+                  <select
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_terminal_id ? "input-error" : ""}`}
+                    {...register("start_terminal_id")}
+                    disabled
+                  >
+                    <option value={assignedTerminalId || ""}>
+                      {assignedTerminalName || "Assigned terminal"}
+                    </option>
+                  </select>
+                  {errors.start_terminal_id && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.start_terminal_id.message}
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-[#6B7280]">
+                    Start terminal is fixed to your assigned terminal.
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    End terminal (optional)
+                  </label>
+                  <select
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.end_terminal_id ? "input-error" : ""}`}
+                    {...register("end_terminal_id")}
+                    disabled={isLoadingTerminalOptions}
+                  >
+                    <option value="">
+                      {isLoadingTerminalOptions
+                        ? "Loading terminals..."
+                        : "Select end terminal (optional)"}
+                    </option>
+                    {terminalOptions.map((terminal) => (
+                      <option key={terminal.id} value={terminal.id}>
+                        {terminal.terminal_name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.end_terminal_id && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.end_terminal_id.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2 rounded-md bg-[#F9FAFB] p-2 text-xs text-[#6B7280]">
+                {routeCoverageLabel}
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Start location (lat, lng)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 14.554700, 120.984200"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_location ? "input-error" : ""}`}
+                    {...register("start_location")}
+                  />
+                  {errors.start_location && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.start_location.message}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    End location (lat, lng)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 14.733300, 121.050000"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.end_location ? "input-error" : ""}`}
+                    {...register("end_location")}
+                  />
+                  {errors.end_location && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.end_location.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {errors.route_name && (
+              <p className="text-sm text-error">{errors.route_name.message}</p>
+            )}
+            {submitError && <p className="text-sm text-error">{submitError}</p>}
+
+            <div className="mt-5 flex items-center justify-end gap-3">
               <button
                 type="button"
-                className="btn btn-ghost"
-                disabled={isSubmitting}
-                onClick={() => setOpenAddModal(false)}
+                className="text-sm font-semibold text-[#242424] hover:text-[#111111]"
+                onClick={closeModal}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className={`btn bg-[#0062CA] text-white${isSubmitting ? " loading" : ""}`}
+                className="btn h-10 min-h-10 rounded-md border-none bg-[#0062CA] px-5 text-sm font-semibold text-white hover:bg-[#0052A8]"
                 disabled={isSubmitting}
               >
-                Add route
+                {isSubmitting ? "Adding…" : "Add route"}
               </button>
             </div>
           </form>
         </div>
-        <form method="dialog" className="modal-backdrop">
+        <form method="dialog" className="modal-backdrop" onSubmit={closeModal}>
           <button type="submit" aria-label="Close">
             close
           </button>
