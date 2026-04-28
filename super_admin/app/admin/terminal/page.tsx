@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   TerminalProps,
   TerminalLogProps,
@@ -102,6 +102,17 @@ export default function Terminal() {
     TerminalLogStatus | "all"
   >("all");
   const [logCurrentPage, setLogCurrentPage] = useState(1);
+
+  const refetchTerminals = useCallback(async () => {
+    setTerminalsLoading(true);
+    const res = await getTerminals();
+    if (res?.success === true && Array.isArray(res.data)) {
+      setTerminals((res.data as ApiTerminal[]).map(mapApiTerminalToProps));
+    } else {
+      setTerminals([]);
+    }
+    setTerminalsLoading(false);
+  }, [getTerminals]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,7 +237,7 @@ export default function Terminal() {
             Showing {filteredTerminals.length} of {terminals.length} terminals
           </span>
         </div>
-        <AddTerminalModal />
+        <AddTerminalModal onCreated={refetchTerminals} />
       </div>
       {terminalsLoading ? (
         <div className="flex justify-center py-16">

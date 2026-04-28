@@ -85,8 +85,8 @@ export const TerminalService = {
     }
 
     const nearTerminal = await Terminal.findOne({
-      location_lat: { $gte: terminalData.location_lat - 0.0001, $lte: terminalData.location_lat + 0.0001 },
-      location_lng: { $gte: terminalData.location_lng - 0.0001, $lte: terminalData.location_lng + 0.0001 },
+      location_lat: { $gte: terminalData.location_lat - 0.0012, $lte: terminalData.location_lat + 0.0012 },
+      location_lng: { $gte: terminalData.location_lng - 0.0012, $lte: terminalData.location_lng + 0.0012 },
     });
     if (nearTerminal) {
       throw new Error('A terminal is already registered at or very near this location.');
