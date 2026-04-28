@@ -12,6 +12,7 @@ import { addRouteSchema, type AddRouteFormData } from "./addRouteSchema";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
 import { useGetTerminalNames } from "../_hooks/getTerminalNames";
 import { usePostRoutes } from "../_hooks/usePostRoutes";
+import { usePostRouteStop } from "../_hooks/usePostRouteStop";
 
 type MarkerType = "start" | "end" | "stop";
 
@@ -52,6 +53,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { getTerminalNames } = useGetTerminalNames();
   const { postRoutes, error: postRoutesError } = usePostRoutes();
+  const { postRouteStop, error: postRouteStopError } = usePostRouteStop();
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } =
     useJsApiLoader({
       id: "pasahero-admin-map-script",
@@ -339,11 +341,16 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
       route_type: "normal" as const,
     };
 
-    const routeStops = stopMarkers.map((stop, index) => ({
-      order: index + 1,
-      latitude: Number(stop.lat.toFixed(6)),
-      longitude: Number(stop.lng.toFixed(6)),
-    }));
+    const routeStops = stopMarkers.map((stop, index) => {
+      const stopOrder = index + 1;
+      const nearest = nearestTerminal(stop.lat, stop.lng);
+      return {
+        stop_name: `${nearest?.terminal_name ?? "Stop"} ${stopOrder}`,
+        stop_order: stopOrder,
+        latitude: Number(stop.lat.toFixed(6)),
+        longitude: Number(stop.lng.toFixed(6)),
+      };
+    });
 
     console.log("[AddRoute] form data:", payload);
     console.log("[AddRoute] route stops:", routeStops);
@@ -356,6 +363,34 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
           "Failed to create route. Please try again.",
       );
       return;
+    }
+
+    const routeId = String(
+      response?.data?._id ?? response?.data?.id ?? response?.data?.route_id ?? "",
+    ).trim();
+    if (!routeId) {
+      setSubmitError("Route created, but route ID was missing for stop creation.");
+      return;
+    }
+
+    for (const routeStop of routeStops) {
+      const routeStopPayload = {
+        route_id: routeId,
+        stop_name: routeStop.stop_name,
+        stop_order: routeStop.stop_order,
+        latitude: routeStop.latitude,
+        longitude: routeStop.longitude,
+      };
+
+      const routeStopResponse = await postRouteStop(routeStopPayload);
+      if (!routeStopResponse?.success) {
+        setSubmitError(
+          routeStopResponse?.message ??
+            postRouteStopError ??
+            `Route was created, but failed to create stop #${routeStop.stop_order}.`,
+        );
+        return;
+      }
     }
 
     await onRouteAdded?.();
