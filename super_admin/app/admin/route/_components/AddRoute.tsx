@@ -50,7 +50,7 @@ export default function AddRouteModal() {
   const advancedMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
-    id: "pasahero-admin-route-map-script",
+    id: "pasahero-admin-map-script",
     googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
     libraries: GOOGLE_MAPS_LIBRARIES,
   });

@@ -24,7 +24,7 @@ export default function AddTerminalModal({ onCreated }: AddTerminalModalProps) {
   const terminalMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const { postTerminal, error: postError } = usePostTerminal();
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
-    id: "pasahero-admin-terminal-map-script",
+    id: "pasahero-admin-map-script",
     googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
     libraries: GOOGLE_MAPS_LIBRARIES,
   });
