@@ -3,9 +3,15 @@
 import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { GoogleMap, useJsApiLoader, type Libraries } from "@react-google-maps/api";
+import {
+  GoogleMap,
+  useJsApiLoader,
+  type Libraries,
+} from "@react-google-maps/api";
 import { addRouteSchema, type AddRouteFormData } from "./addRouteSchema";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
+import { useGetTerminalNames } from "../_hooks/getTerminalNames";
+import { usePostRoutes } from "../_hooks/usePostRoutes";
 
 type MarkerType = "start" | "end" | "stop";
 
@@ -23,44 +29,41 @@ type TerminalOption = {
   lng: number;
 };
 
-// Terminal options for dropdowns (ids align with backend/terminal static data)
-const TERMINAL_OPTIONS: TerminalOption[] = [
-  {
-    id: "1",
-    terminal_name: "PITX (Parañaque Integrated Terminal Exchange)",
-    lat: 14.5547,
-    lng: 120.9842,
-  },
-  { id: "2", terminal_name: "SM North EDSA", lat: 14.6568, lng: 121.0312 },
-  { id: "3", terminal_name: "Monumento", lat: 14.6548, lng: 120.9845 },
-  { id: "4", terminal_name: "Fairview", lat: 14.7333, lng: 121.05 },
-  { id: "5", terminal_name: "Tamiya Terminal", lat: 10.3157, lng: 123.8854 },
-  { id: "6", terminal_name: "Pacific Terminal", lat: 10.3128, lng: 123.8912 },
-];
-
-const MAP_CENTER = { lat: 10.3236, lng: 123.9229 };
-const MAP_ZOOM = 14;
+const MAP_CENTER = { lat: 10.3313, lng: 123.9362 }; // Parkmall Mandaue area
+const MAP_ZOOM = 14.5;
 const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
 
-export default function AddRouteModal() {
+type AddRouteModalProps = {
+  onRouteAdded?: () => void | Promise<void>;
+};
+
+export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
   const [open, setOpen] = useState(false);
   const [droppedMarkers, setDroppedMarkers] = useState<DroppedMarker[]>([]);
   const [selectedTool, setSelectedTool] = useState<MarkerType>("start");
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
-  const advancedMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const [terminalOptions, setTerminalOptions] = useState<TerminalOption[]>([]);
+  const [isLoadingTerminalOptions, setIsLoadingTerminalOptions] =
+    useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const advancedMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>(
+    [],
+  );
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
-    id: "pasahero-admin-map-script",
-    googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
-    libraries: GOOGLE_MAPS_LIBRARIES,
-  });
+  const { getTerminalNames } = useGetTerminalNames();
+  const { postRoutes, error: postRoutesError } = usePostRoutes();
+  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } =
+    useJsApiLoader({
+      id: "pasahero-admin-map-script",
+      googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
+      libraries: GOOGLE_MAPS_LIBRARIES,
+    });
 
   const {
     register,
     handleSubmit,
     reset,
     setValue,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm<AddRouteFormData>({
     resolver: yupResolver(addRouteSchema),
@@ -77,6 +80,59 @@ export default function AddRouteModal() {
   });
 
   useEffect(() => {
+    let isMounted = true;
+
+    async function fetchTerminalOptions() {
+      setIsLoadingTerminalOptions(true);
+      try {
+        const response = await getTerminalNames();
+        const rawOptions = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.data)
+            ? response.data
+            : [];
+
+        if (!isMounted) return;
+
+        const parsedOptions: TerminalOption[] = rawOptions
+          .map((terminal: unknown) => {
+            const option = terminal as {
+              _id?: string | number;
+              id?: string | number;
+              terminal_name?: string;
+              lat?: number | string;
+              lng?: number | string;
+            };
+            const terminalName = String(option.terminal_name ?? "").trim();
+            if (!terminalName) return null;
+            const terminalId = String(option._id ?? option.id ?? "").trim();
+            if (!terminalId) return null;
+            return {
+              id: terminalId,
+              terminal_name: terminalName,
+              lat: Number(option.lat ?? 0),
+              lng: Number(option.lng ?? 0),
+            };
+          })
+          .filter(
+            (option: TerminalOption | null): option is TerminalOption =>
+              option !== null,
+          );
+
+        setTerminalOptions(parsedOptions);
+      } finally {
+        if (isMounted) setIsLoadingTerminalOptions(false);
+      }
+    }
+
+    fetchTerminalOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [getTerminalNames]);
+
+  useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open) {
@@ -88,10 +144,6 @@ export default function AddRouteModal() {
     dialog.addEventListener("close", onClose);
     return () => dialog.removeEventListener("close", onClose);
   }, [open]);
-
-  const startTerminalValue = watch("start_terminal_id");
-  const endTerminalValue = watch("end_terminal_id");
-  const endLocationValue = watch("end_location");
 
   function parseCoordinatePair(
     value: string,
@@ -105,49 +157,28 @@ export default function AddRouteModal() {
     return { latitude, longitude };
   }
 
-  function resolveTerminalId(value: string) {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) return "";
-
-    const match = TERMINAL_OPTIONS.find((t) => {
-      const terminalName = t.terminal_name.toLowerCase();
-      return (
-        t.id.toLowerCase() === normalized ||
-        terminalName === normalized ||
-        terminalName.includes(normalized)
-      );
-    });
-
-    return match?.id ?? value.trim();
-  }
-
-  useEffect(() => {
-    const startLabel = String(startTerminalValue ?? "").trim() || "Start";
-    const endLabel =
-      String(endTerminalValue ?? "").trim() ||
-      String(endLocationValue ?? "").trim() ||
-      "End location";
-    const generatedRouteName = `${startLabel} - ${endLabel}`;
-    setValue("route_name", generatedRouteName, { shouldValidate: false });
-  }, [endLocationValue, endTerminalValue, setValue, startTerminalValue]);
-
   function openModal() {
     setOpen(true);
     reset();
     setDroppedMarkers([]);
     setSelectedTool("start");
+    setSubmitError(null);
   }
 
   function closeModal() {
     setOpen(false);
     reset();
     setDroppedMarkers([]);
+    setSubmitError(null);
   }
 
   function nearestTerminal(lat: number, lng: number): TerminalOption | null {
+    if (terminalOptions.length === 0) return null;
+
     let best: TerminalOption | null = null;
     let bestDist = Number.POSITIVE_INFINITY;
-    for (const t of TERMINAL_OPTIONS) {
+    for (const t of terminalOptions) {
+      if (!Number.isFinite(t.lat) || !Number.isFinite(t.lng)) continue;
       const d = Math.hypot(t.lat - lat, t.lng - lng);
       if (d < bestDist) {
         bestDist = d;
@@ -165,7 +196,9 @@ export default function AddRouteModal() {
 
     setDroppedMarkers((prev) => {
       const withoutSingle = prev.filter(
-        (m) => !(tool === "start" && m.type === "start") && !(tool === "end" && m.type === "end"),
+        (m) =>
+          !(tool === "start" && m.type === "start") &&
+          !(tool === "end" && m.type === "end"),
       );
       return [
         ...withoutSingle,
@@ -183,7 +216,7 @@ export default function AddRouteModal() {
       if (nearest) {
         setValue(
           tool === "start" ? "start_terminal_id" : "end_terminal_id",
-          nearest.terminal_name,
+          nearest.id,
           { shouldValidate: true, shouldTouch: true },
         );
       }
@@ -200,7 +233,8 @@ export default function AddRouteModal() {
   }
 
   useEffect(() => {
-    if (!mapInstance || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    if (!mapInstance || !window.google?.maps?.marker?.AdvancedMarkerElement)
+      return;
 
     // Clear previous markers on each refresh.
     for (const m of advancedMarkersRef.current) {
@@ -223,7 +257,11 @@ export default function AddRouteModal() {
       pin.style.fontSize = "11px";
       pin.style.boxShadow = "0 2px 6px rgba(0,0,0,0.25)";
       pin.style.background =
-        m.type === "start" ? "#16a34a" : m.type === "end" ? "#dc2626" : "#2563eb";
+        m.type === "start"
+          ? "#16a34a"
+          : m.type === "end"
+            ? "#dc2626"
+            : "#2563eb";
       pin.textContent = label;
 
       const marker = new google.maps.marker.AdvancedMarkerElement({
@@ -259,69 +297,78 @@ export default function AddRouteModal() {
       : "Place start and end points on the map (end point optional).";
 
   async function onSubmit(data: AddRouteFormData) {
+    setSubmitError(null);
+
     const typedStartLocation = parseCoordinatePair(data.start_location);
     const typedEndLocation = parseCoordinatePair(data.end_location);
 
-    const startPoint = startMarker
+    const startLocation = startMarker
       ? {
           latitude: Number(startMarker.lat.toFixed(6)),
           longitude: Number(startMarker.lng.toFixed(6)),
         }
       : typedStartLocation;
-    const endPoint = endMarker
+    const endLocation = endMarker
       ? {
           latitude: Number(endMarker.lat.toFixed(6)),
           longitude: Number(endMarker.lng.toFixed(6)),
         }
       : typedEndLocation;
-    const busStops = stopMarkers.map((s, idx) => ({
-      name: `Stop ${idx + 1}`,
-      latitude: Number(s.lat.toFixed(6)),
-      longitude: Number(s.lng.toFixed(6)),
-    }));
 
-    const routeName = data.route_name;
-
-    if (!startPoint || !endPoint) {
-      alert("Please provide valid start and end locations (map marker or lat,lng input).");
+    if (!startLocation || !endLocation) {
+      alert(
+        "Please provide valid start and end locations (map marker or lat,lng input).",
+      );
       return;
     }
 
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/routes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          route_name: routeName,
-          route_code: data.route_code,
-          start_terminal_id: resolveTerminalId(data.start_terminal_id),
-          end_terminal_id: data.end_terminal_id
-            ? resolveTerminalId(data.end_terminal_id)
-            : undefined,
-          start_location: startPoint,
-          end_location: endPoint,
-          estimated_duration:
-            data.estimated_duration != null ? data.estimated_duration : undefined,
-          status: "active",
-          route_type: "normal",
-          busStops,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to add route");
-      }
-      closeModal();
-      window.location.reload();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to add route");
+    const payload = {
+      route_name: data.route_name,
+      route_code: data.route_code,
+      start_terminal_id: data.start_terminal_id.trim(),
+      end_terminal_id: data.end_terminal_id
+        ? data.end_terminal_id.trim()
+        : null,
+      start_location: startLocation,
+      end_location: endLocation,
+      estimated_duration:
+        data.estimated_duration != null
+          ? Number(data.estimated_duration)
+          : undefined,
+      status: "active" as const,
+      route_type: "normal" as const,
+    };
+
+    const routeStops = stopMarkers.map((stop, index) => ({
+      order: index + 1,
+      latitude: Number(stop.lat.toFixed(6)),
+      longitude: Number(stop.lng.toFixed(6)),
+    }));
+
+    console.log("[AddRoute] form data:", payload);
+    console.log("[AddRoute] route stops:", routeStops);
+
+    const response = await postRoutes(payload);
+    if (!response?.success) {
+      setSubmitError(
+        response?.message ??
+          postRoutesError ??
+          "Failed to create route. Please try again.",
+      );
+      return;
     }
+
+    await onRouteAdded?.();
+    closeModal();
   }
 
   return (
     <>
-      <button type="button" className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80" onClick={openModal}>
+      <button
+        type="button"
+        className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80"
+        onClick={openModal}
+      >
         Add route
       </button>
       <dialog ref={dialogRef} className="modal">
@@ -332,26 +379,27 @@ export default function AddRouteModal() {
           </p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="mt-4 space-y-3">
-            <input type="hidden" {...register("route_name")} />
-
             <section className="rounded-md border border-[#E5E7EB] p-3.5">
               <h4 className="text-sm font-semibold text-[#4B5563]">Map</h4>
               <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_250px]">
-                <div
-                  className="relative min-h-[360px] overflow-hidden rounded-xl border border-[#D1D5DB] bg-[#F3F4F6]"
-                >
+                <div className="relative min-h-[360px] overflow-hidden rounded-xl border border-[#D1D5DB] bg-[#F3F4F6]">
                   {isGoogleMapsConfigured ? (
                     googleMapsLoadError ? (
                       <div className="flex h-full items-center justify-center px-6 text-center text-sm text-error">
-                        Failed to load Google Maps script. Check your API key and map restrictions.
+                        Failed to load Google Maps script. Check your API key
+                        and map restrictions.
                       </div>
                     ) : isGoogleMapsLoaded ? (
                       <GoogleMap
                         center={MAP_CENTER}
                         zoom={MAP_ZOOM}
-                        mapContainerStyle={{ width: "100%", minHeight: "360px" }}
+                        mapContainerStyle={{
+                          width: "100%",
+                          minHeight: "360px",
+                        }}
                         options={{
                           mapId: "DEMO_MAP_ID",
+                          mapTypeId: "hybrid",
                           streetViewControl: false,
                           mapTypeControl: false,
                           fullscreenControl: false,
@@ -367,14 +415,19 @@ export default function AddRouteModal() {
                     )
                   ) : (
                     <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6B7280]">
-                      Add <code className="mx-1">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>
+                      Add{" "}
+                      <code className="mx-1">
+                        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+                      </code>
                       to show Google Map preview.
                     </div>
                   )}
                 </div>
 
                 <aside className="rounded-xl border border-[#D1D5DB] bg-white p-3">
-                  <p className="text-sm font-semibold text-[#374151]">Marker Toolbox</p>
+                  <p className="text-sm font-semibold text-[#374151]">
+                    Marker Toolbox
+                  </p>
                   <p className="mt-1 text-xs text-[#6B7280]">
                     Choose marker type, then click on the map.
                   </p>
@@ -392,17 +445,6 @@ export default function AddRouteModal() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSelectedTool("end")}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                        selectedTool === "end"
-                          ? "border-red-500 bg-red-100 text-red-900"
-                          : "border-red-300 bg-red-50 text-red-800"
-                      }`}
-                    >
-                      End point
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setSelectedTool("stop")}
                       className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
                         selectedTool === "stop"
@@ -411,6 +453,17 @@ export default function AddRouteModal() {
                       }`}
                     >
                       Bus stop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTool("end")}
+                      className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
+                        selectedTool === "end"
+                          ? "border-red-500 bg-red-100 text-red-900"
+                          : "border-red-300 bg-red-50 text-red-800"
+                      }`}
+                    >
+                      End point
                     </button>
                   </div>
                   <div className="mt-3 rounded-md bg-[#F9FAFB] p-2 text-xs text-[#4B5563]">
@@ -423,41 +476,118 @@ export default function AddRouteModal() {
             </section>
 
             <section className="rounded-md border border-[#E5E7EB] p-3.5">
-              <h4 className="text-sm font-semibold text-[#4B5563]">Route identity</h4>
-              <div className="mt-3">
-                <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">Route code</label>
-                <input
-                  type="text"
-                  placeholder="e.g. PITX-QC-05"
-                  className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.route_code ? "input-error" : ""}`}
-                  {...register("route_code")}
-                />
-                {errors.route_code && <p className="mt-1 text-sm text-error">{errors.route_code.message}</p>}
+              <h4 className="text-sm font-semibold text-[#4B5563]">
+                Route identity
+              </h4>
+              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Route name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. North Terminal - South Terminal"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.route_name ? "input-error" : ""}`}
+                    {...register("route_name")}
+                  />
+                  {errors.route_name && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.route_name.message}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Route code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PITX-QC-05"
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.route_code ? "input-error" : ""}`}
+                    {...register("route_code")}
+                  />
+                  {errors.route_code && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.route_code.message}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    ETA (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.estimated_duration ? "input-error" : ""}`}
+                    {...register("estimated_duration", { valueAsNumber: true })}
+                  />
+                  {errors.estimated_duration && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.estimated_duration.message}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
 
             <section className="rounded-md border border-[#E5E7EB] p-3.5">
-              <h4 className="text-sm font-semibold text-[#4B5563]">Route coverage</h4>
+              <h4 className="text-sm font-semibold text-[#4B5563]">
+                Route coverage
+              </h4>
               <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">Start terminal</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. PITX"
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Start terminal
+                  </label>
+                  <select
                     className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_terminal_id ? "input-error" : ""}`}
                     {...register("start_terminal_id")}
-                  />
-                  {errors.start_terminal_id && <p className="mt-1 text-sm text-error">{errors.start_terminal_id.message}</p>}
+                    disabled={isLoadingTerminalOptions}
+                  >
+                    <option value="">
+                      {isLoadingTerminalOptions
+                        ? "Loading terminals..."
+                        : "Select start terminal"}
+                    </option>
+                    {terminalOptions.map((terminal) => (
+                      <option key={terminal.id} value={terminal.id}>
+                        {terminal.terminal_name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.start_terminal_id && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.start_terminal_id.message}
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">End terminal (optional)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Fairview (leave blank if none)"
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    End terminal (optional)
+                  </label>
+                  <select
                     className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.end_terminal_id ? "input-error" : ""}`}
                     {...register("end_terminal_id")}
-                  />
-                  {errors.end_terminal_id && <p className="mt-1 text-sm text-error">{errors.end_terminal_id.message}</p>}
+                    disabled={isLoadingTerminalOptions}
+                  >
+                    <option value="">
+                      {isLoadingTerminalOptions
+                        ? "Loading terminals..."
+                        : "Select end terminal (optional)"}
+                    </option>
+                    {terminalOptions.map((terminal) => (
+                      <option key={terminal.id} value={terminal.id}>
+                        {terminal.terminal_name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.end_terminal_id && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.end_terminal_id.message}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="mt-2 rounded-md bg-[#F9FAFB] p-2 text-xs text-[#6B7280]">
@@ -465,46 +595,44 @@ export default function AddRouteModal() {
               </div>
               <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">Start location (lat, lng)</label>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Start location (lat, lng)
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. 14.554700, 120.984200"
                     className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_location ? "input-error" : ""}`}
                     {...register("start_location")}
                   />
-                  {errors.start_location && <p className="mt-1 text-sm text-error">{errors.start_location.message}</p>}
+                  {errors.start_location && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.start_location.message}
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">End location (lat, lng)</label>
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    End location (lat, lng)
+                  </label>
                   <input
                     type="text"
                     placeholder="e.g. 14.733300, 121.050000"
                     className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.end_location ? "input-error" : ""}`}
                     {...register("end_location")}
                   />
-                  {errors.end_location && <p className="mt-1 text-sm text-error">{errors.end_location.message}</p>}
+                  {errors.end_location && (
+                    <p className="mt-1 text-sm text-error">
+                      {errors.end_location.message}
+                    </p>
+                  )}
                 </div>
               </div>
             </section>
 
-            <section className="rounded-md border border-[#E5E7EB] p-3.5">
-              <h4 className="text-sm font-semibold text-[#4B5563]">Operations setup</h4>
-              <div className="mt-3">
-                <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">ETA (minutes)</label>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.estimated_duration ? "input-error" : ""}`}
-                  {...register("estimated_duration", { valueAsNumber: true })}
-                />
-                {errors.estimated_duration && (
-                  <p className="mt-1 text-sm text-error">{errors.estimated_duration.message}</p>
-                )}
-              </div>
-            </section>
-
-            {errors.route_name && <p className="text-sm text-error">{errors.route_name.message}</p>}
+            {errors.route_name && (
+              <p className="text-sm text-error">{errors.route_name.message}</p>
+            )}
+            {submitError && <p className="text-sm text-error">{submitError}</p>}
 
             <div className="mt-5 flex items-center justify-end gap-3">
               <button

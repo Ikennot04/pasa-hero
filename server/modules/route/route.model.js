@@ -8,7 +8,6 @@ const routeSchema = new mongoose.Schema(
       type: String,
       ref: "Terminal",
       default: null,
-      required: true,
     },
     end_terminal_id: {
       type: String,

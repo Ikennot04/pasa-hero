@@ -12,9 +12,7 @@ function RouteStatusBadge({ status }: { status: string }) {
     suspended: "badge-warning",
   };
   return (
-    <span className={`badge ${map[status] ?? "badge-ghost"}`}>
-      {status}
-    </span>
+    <span className={`badge ${map[status] ?? "badge-ghost"}`}>{status}</span>
   );
 }
 
@@ -39,9 +37,15 @@ export default function RouteTable({ routes }: { routes: RouteProps[] }) {
             <tr key={route.id}>
               <th>{i + 1}</th>
               <td className="font-medium">{route.route_name}</td>
-              <td><code className="text-sm">{route.route_code}</code></td>
-              <td>{route.start_terminal_name ?? route.start_terminal_id}</td>
-              <td>{route.end_terminal_name ?? route.end_terminal_id}</td>
+              <td>
+                <code className="text-sm">{route.route_code}</code>
+              </td>
+              <td>
+                {route.start_terminal_name ? route.start_terminal_name : "—"}
+              </td>
+              <td>
+                {route.end_terminal_name ? route.start_terminal_name : "—"}
+              </td>
               <td>
                 {route.estimated_duration != null
                   ? `${route.estimated_duration} min`
@@ -51,14 +55,14 @@ export default function RouteTable({ routes }: { routes: RouteProps[] }) {
                 <RouteStatusBadge status={route.status} />
               </td>
               <td className="flex gap-2">
-                <Link
-                  href={`/admin/route/${route.id}`}
-                  className="btn"
-                >
+                <Link href={`/admin/route/${route.id}`} className="btn">
                   <FaRegEye className="w-5 h-5" />
                   View
                 </Link>
-                <EditRoute route={route} modalId={`edit-route-modal-${route.id}`} />
+                <EditRoute
+                  route={route}
+                  modalId={`edit-route-modal-${route.id}`}
+                />
               </td>
             </tr>
           ))}

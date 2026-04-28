@@ -5,23 +5,24 @@ import RouteStop from "../route_stop/route_stop.model.js";
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
   async getAllRoutes() {
-    const [
-      routes,
-      totalRoutes,
-      activeRoutes,
-      inactiveRoutes,
-      activeBusesAcrossRoutes,
-      activeBusesByRoute,
-    ] = await Promise.all([
-      Route.find().populate("start_terminal_id").populate("end_terminal_id"),
-      Route.countDocuments(),
-      Route.countDocuments({ status: "active" }),
-      Route.countDocuments({ status: "inactive" }),
-      BusAssignment.distinct("bus_id", { assignment_status: "active" }).then(
-        (busIds) => busIds.length,
-      ),
+    const routeFilter = { route_type: "normal" };
+
+    const [routes, totalRoutes, activeRoutes, inactiveRoutes] = await Promise.all([
+      Route.find(routeFilter).populate("start_terminal_id").populate("end_terminal_id"),
+      Route.countDocuments(routeFilter),
+      Route.countDocuments({ ...routeFilter, status: "active" }),
+      Route.countDocuments({ ...routeFilter, status: "inactive" }),
+    ]);
+
+    const routeIds = routes.map((route) => route._id);
+
+    const [activeBusesAcrossRoutes, activeBusesByRoute] = await Promise.all([
+      BusAssignment.distinct("bus_id", {
+        assignment_status: "active",
+        route_id: { $in: routeIds },
+      }).then((busIds) => busIds.length),
       BusAssignment.aggregate([
-        { $match: { assignment_status: "active" } },
+        { $match: { assignment_status: "active", route_id: { $in: routeIds } } },
         { $group: { _id: "$route_id", busIds: { $addToSet: "$bus_id" } } },
         { $project: { active_buses_count: { $size: "$busIds" } } },
       ]),

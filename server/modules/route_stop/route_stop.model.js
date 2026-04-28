@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const routeStopSchema = new mongoose.Schema(
   {
     route_id: { type: String, ref: "Route", required: true },
-    stop_name: { type: String, required: true },
+    stop_name: { type: String, },
     stop_order: { type: Number, required: true },
     latitude: { type: Number, required: true },
     longitude: { type: Number, required: true },
