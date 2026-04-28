@@ -43,8 +43,8 @@ class _LoginScreenState extends State<LoginScreen> {
     // Responsive header height
     final headerHeight = isSmallScreen ? screenHeight * 0.35 : screenHeight * 0.4;
     
-    // Responsive form start position - moved lower
-    final formTop = isSmallScreen ? screenHeight * 0.40 : screenHeight * 0.48;
+    // Responsive form start position (slightly higher so the form box is taller)
+    final formTop = isSmallScreen ? screenHeight * 0.36 : screenHeight * 0.44;
     
     // Responsive border radius
     final borderRadius = isSmallScreen ? 30.0 : 50.0;

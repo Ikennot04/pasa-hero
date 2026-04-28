@@ -274,7 +274,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       onRefresh: _loadInbox,
       child: ListView.separated(
         itemCount: _inboxItems.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 12),
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
           final item = _inboxItems[index];
           return _buildNotificationCard(

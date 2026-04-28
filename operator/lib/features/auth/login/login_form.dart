@@ -44,12 +44,86 @@ class _LoginFormState extends State<LoginForm> {
   bool _obscurePassword = true;
   bool _isLoading = false;
   bool _isRegistering = false; // Toggle between login and registration
+  bool _acceptedTerms = false;
+  bool _attemptedSubmit = false;
+  bool _attemptedTermsOnly = false;
+
+  static const String _termsText =
+      'Effective Date: April 28, 2026\n\n'
+      'These Terms apply to all drivers using the PasaHero platform.\n\n'
+      '1. Acceptance of Terms\n\n'
+      'By registering as a driver, you agree to comply with these Terms.\n\n'
+      '2. Driver Role\n\n'
+      'PasaHero provides a platform for drivers to:\n\n'
+      'Share real-time location\n'
+      'Assist commuters with route visibility\n\n'
+      'PasaHero does not employ drivers and is not a transport operator.\n\n'
+      '3. Data Collection & Usage\n\n'
+      'We collect:\n\n'
+      'Real-time GPS location\n'
+      'Personal Information (name, contact, vehicle details)\n'
+      'Device and usage data\n\n'
+      'Data is processed using third-party services such as Google Maps API.\n\n'
+      '4. Location Sharing Requirement\n\n'
+      'Drivers must:\n\n'
+      'Keep GPS/location services ON while active\n'
+      'Ensure location accuracy for commuters\n\n'
+      'Failure to do so may result in account suspension.\n\n'
+      '5. Driver Responsibilities\n\n'
+      'Drivers agree to:\n\n'
+      'Provide accurate and updated information\n'
+      'Operate legally registered vehicles\n'
+      'Follow traffic laws and local regulations\n'
+      'Not manipulate location data\n\n'
+      '6. Prohibited Actions\n\n'
+      'Drivers must NOT:\n\n'
+      'Fake or alter GPS location\n'
+      'Use the app for illegal activities\n'
+      'Share accounts with others\n\n'
+      '7. Service Disclaimer\n\n'
+      'PasaHero:\n\n'
+      'Does not guarantee passenger volume\n'
+      'Is not liable for earnings, losses, or disputes\n\n'
+      '8. Account Suspension\n\n'
+      'We may suspend or terminate accounts for:\n\n'
+      'Violations of these Terms\n'
+      'Fraudulent or suspicious activity\n\n'
+      '9. Limitation of Liability\n\n'
+      'PasaHero is not responsible for:\n\n'
+      'Accidents, damages, or incidents أثناء driving\n'
+      'Loss of income or operational issues\n\n'
+      '10. Changes to Terms\n\n'
+      'We may update these Terms at any time. Continued use means acceptance.\n\n'
+      '11. Contact\n\n'
+      'For support: pasaherocommunity@gmail.com';
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _showTermsDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Terms & Agreement'),
+          content: const SingleChildScrollView(
+            child: Text(
+              _termsText,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   bool get _hasFirebase {
@@ -613,6 +687,8 @@ class _LoginFormState extends State<LoginForm> {
 
   @override
   Widget build(BuildContext context) {
+    final showFieldErrors = _attemptedSubmit;
+    final showTermsError = _attemptedSubmit || _attemptedTermsOnly;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -650,11 +726,66 @@ class _LoginFormState extends State<LoginForm> {
               ),
               const SizedBox(height: 40),
               // Email Field
-              _buildEmailField(),
+              _buildEmailField(showError: showFieldErrors && _emailController.text.trim().isEmpty),
               const SizedBox(height: 24),
               // Password Field
-              _buildPasswordField(),
-              const SizedBox(height: 40),
+              _buildPasswordField(showError: showFieldErrors && _passwordController.text.isEmpty),
+              const SizedBox(height: 20),
+              // Terms & Agreement checkbox (required)
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: showTermsError && !_acceptedTerms
+                        ? Colors.red
+                        : Colors.transparent,
+                    width: 1.5,
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Checkbox(
+                      value: _acceptedTerms,
+                      onChanged: (v) {
+                        setState(() => _acceptedTerms = v ?? false);
+                      },
+                      activeColor: Colors.blue,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    Expanded(
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          const Text('I agree to the '),
+                          InkWell(
+                            onTap: _showTermsDialog,
+                            child: const Text(
+                              'Terms & Agreement',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (showTermsError && !_acceptedTerms) ...[
+                            const SizedBox(width: 8),
+                            const Text(
+                              '(required)',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
               // Login/Register Button
               _buildLoginButton(),
               const SizedBox(height: 12),
@@ -680,7 +811,7 @@ class _LoginFormState extends State<LoginForm> {
     );
   }
 
-  Widget _buildEmailField() {
+  Widget _buildEmailField({required bool showError}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -697,10 +828,17 @@ class _LoginFormState extends State<LoginForm> {
           decoration: BoxDecoration(
             color: const Color(0xFFE8F0FE),
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: showError ? Colors.red : Colors.transparent,
+              width: 1.5,
+            ),
           ),
           child: TextField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
+            onChanged: (_) {
+              if (_attemptedSubmit) setState(() {});
+            },
             decoration: const InputDecoration(
               hintText: 'Enter email',
               hintStyle: TextStyle(color: Colors.grey),
@@ -709,11 +847,19 @@ class _LoginFormState extends State<LoginForm> {
             ),
           ),
         ),
+        if (showError)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'Required',
+              style: TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildPasswordField() {
+  Widget _buildPasswordField({required bool showError}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -730,10 +876,17 @@ class _LoginFormState extends State<LoginForm> {
           decoration: BoxDecoration(
             color: const Color(0xFFE8F0FE),
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: showError ? Colors.red : Colors.transparent,
+              width: 1.5,
+            ),
           ),
           child: TextField(
             controller: _passwordController,
             obscureText: _obscurePassword,
+            onChanged: (_) {
+              if (_attemptedSubmit) setState(() {});
+            },
             decoration: InputDecoration(
               hintText: 'Enter password',
               hintStyle: const TextStyle(color: Colors.grey),
@@ -753,6 +906,14 @@ class _LoginFormState extends State<LoginForm> {
             ),
           ),
         ),
+        if (showError)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'Required',
+              style: TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ),
       ],
     );
   }
@@ -761,7 +922,24 @@ class _LoginFormState extends State<LoginForm> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _isLoading ? null : (_isRegistering ? _register : _login),
+        onPressed: _isLoading
+            ? null
+            : () {
+                setState(() {
+                  _attemptedSubmit = true;
+                  _attemptedTermsOnly = false;
+                });
+                if (_emailController.text.trim().isEmpty ||
+                    _passwordController.text.isEmpty ||
+                    !_acceptedTerms) {
+                  return;
+                }
+                if (_isRegistering) {
+                  _register();
+                } else {
+                  _login();
+                }
+              },
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.blue,
           padding: const EdgeInsets.symmetric(vertical: 16),
