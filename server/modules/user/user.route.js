@@ -7,6 +7,7 @@ import {
   logoutUser,
   getUserById,
   getAllUsers,
+  getOperatorsByAssignedTerminal,
   createAdminUser,
   updateUser,
 } from "./user.controller.js";
@@ -25,6 +26,7 @@ router.patch("/:id", upload.single("image"), updateUser);
 
 // User Management Routes
 router.get("/", getAllUsers);
+router.get("/operators/terminal/:terminalId", getOperatorsByAssignedTerminal);
 router.post("/", upload.single("image"), createAdminUser);
 
 export default router;

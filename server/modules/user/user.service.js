@@ -155,6 +155,23 @@ export const UserService = {
       .populate({ path: "created_by", select: "f_name l_name email role" });
     return users;
   },
+  // GET OPERATORS BY TERMINAL ========================================================
+  async getOperatorsByAssignedTerminal(terminalId) {
+    if (!terminalId) {
+      const error = new Error("Terminal ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const operators = await User.find({
+      role: "operator",
+      assigned_terminal: terminalId,
+    })
+      .populate({ path: "assigned_terminal", select: "terminal_name" })
+      .populate({ path: "created_by", select: "f_name l_name email role" });
+
+    return operators;
+  },
   // CREATE ADMIN USER ===============================================================
   /** @param {import("mongoose").Types.ObjectId|string|null} [creatorUserId] - JWT user creating the record (for operators) */
   async createAdminUser(data, userImage, creatorUserId = null) {
