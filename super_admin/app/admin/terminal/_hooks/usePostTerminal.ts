@@ -2,25 +2,27 @@
 
 import axios from "axios";
 import { useCallback, useState } from "react";
+import { AddTerminalFormData } from "../_components/addTerminalSchema";
 
-export const useGetRoutes = () => {
+export const usePostTerminal = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getRoutes = useCallback(async () => {
+  const postTerminal = useCallback(async (data: AddTerminalFormData) => {
+    setError(null);
     try {
-      setError(null);
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.get(`${baseUrl}/api/routes`);
+      const { data: response } = await axios.post(`${baseUrl}/api/terminals`, data);
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const data = error.response?.data as { message?: string; error?: string };
-        setError(data?.message ?? data?.error ?? "Failed to fetch routes");
+        setError(data?.message ?? data?.error ?? "Request failed");
       } else {
         setError("Unexpected error");
       }
       return null;
     }
   }, []);
-  return { getRoutes, error };
+
+  return { postTerminal, error };
 }

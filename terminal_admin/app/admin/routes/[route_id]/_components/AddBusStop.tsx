@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { GoogleMap, useJsApiLoader, type Libraries } from "@react-google-maps/api";
+import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
 
 type RouteStopRow = {
   id: string;
@@ -21,25 +23,22 @@ type AddBusStopProps = {
   onToast: (message: string) => void;
 };
 
-function toMapPercent(lat: number, lng: number) {
-  const minLat = 14.45;
-  const maxLat = 14.8;
-  const minLng = 120.9;
-  const maxLng = 121.12;
-  const x = ((lng - minLng) / (maxLng - minLng)) * 100;
-  const y = ((maxLat - lat) / (maxLat - minLat)) * 100;
-  return {
-    left: `${Math.min(100, Math.max(0, x))}%`,
-    top: `${Math.min(100, Math.max(0, y))}%`,
-  };
-}
+const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
+const DEFAULT_MAP_ZOOM = 14.5;
 
 export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }: AddBusStopProps) {
   const [openAddStopModal, setOpenAddStopModal] = useState(false);
   const [newStopName, setNewStopName] = useState("");
   const [newStopLatitude, setNewStopLatitude] = useState<number>(14.5995);
   const [newStopLongitude, setNewStopLongitude] = useState<number>(120.9842);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+  const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const addStopDialogRef = useRef<HTMLDialogElement>(null);
+  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
+    id: "pasahero-admin-map-script",
+    googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
+    libraries: GOOGLE_MAPS_LIBRARIES,
+  });
 
   useEffect(() => {
     const dialog = addStopDialogRef.current;
@@ -61,22 +60,42 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
     setOpenAddStopModal(true);
   }
 
-  function onMiniMapClick(event: React.MouseEvent<HTMLDivElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
-    const y = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
-    const xRatio = rect.width === 0 ? 0 : x / rect.width;
-    const yRatio = rect.height === 0 ? 0 : y / rect.height;
-
-    const minLat = 14.45;
-    const maxLat = 14.8;
-    const minLng = 120.9;
-    const maxLng = 121.12;
-    const lat = maxLat - yRatio * (maxLat - minLat);
-    const lng = minLng + xRatio * (maxLng - minLng);
-    setNewStopLatitude(Number(lat.toFixed(6)));
-    setNewStopLongitude(Number(lng.toFixed(6)));
+  function setCoordinateSelection(latitude: number, longitude: number) {
+    const roundedLatitude = Number(latitude.toFixed(6));
+    const roundedLongitude = Number(longitude.toFixed(6));
+    setNewStopLatitude(roundedLatitude);
+    setNewStopLongitude(roundedLongitude);
+    console.log(
+      `[AddBusStop] longitude=${roundedLongitude}, latitude=${roundedLatitude}`,
+    );
   }
+
+  function onMapClick(event: google.maps.MapMouseEvent) {
+    if (!event.latLng) return;
+    setCoordinateSelection(event.latLng.lat(), event.latLng.lng());
+  }
+
+  useEffect(() => {
+    if (!openAddStopModal || !mapInstance || !window.google?.maps) return;
+    window.google.maps.event.trigger(mapInstance, "resize");
+    mapInstance.setCenter({ lat: newStopLatitude, lng: newStopLongitude });
+  }, [openAddStopModal, mapInstance, newStopLatitude, newStopLongitude]);
+
+  useEffect(() => {
+    if (!mapInstance || !window.google?.maps?.marker?.AdvancedMarkerElement) return;
+    if (markerRef.current) markerRef.current.map = null;
+
+    markerRef.current = new google.maps.marker.AdvancedMarkerElement({
+      map: mapInstance,
+      position: { lat: newStopLatitude, lng: newStopLongitude },
+      title: `Bus stop (${newStopLatitude.toFixed(6)}, ${newStopLongitude.toFixed(6)})`,
+    });
+
+    return () => {
+      if (markerRef.current) markerRef.current.map = null;
+      markerRef.current = null;
+    };
+  }, [mapInstance, newStopLatitude, newStopLongitude]);
 
   async function onSubmitAddStop() {
     const stopName = newStopName.trim();
@@ -85,7 +104,7 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
       return;
     }
     if (!Number.isFinite(newStopLatitude) || !Number.isFinite(newStopLongitude)) {
-      onToast("Please select a valid location on the mini map.");
+      onToast("Please select a valid location on the map.");
       return;
     }
 
@@ -112,7 +131,7 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
         <div className="modal-box w-11/12 max-w-4xl">
           <h3 className="text-xl font-bold">Add route stop</h3>
           <p className="mt-1 text-sm text-base-content/70">
-            Enter the stop name and pick location from the mini map.
+            Enter the stop name and pick location from the map.
           </p>
 
           <div className="mt-4 space-y-3">
@@ -128,31 +147,43 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
             </label>
 
             <div className="rounded-lg border border-base-300 p-3">
-              <p className="mb-2 text-sm font-medium">Mini map picker</p>
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={onMiniMapClick}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                  }
-                }}
-                className="relative h-96 w-full cursor-crosshair overflow-hidden rounded-md border border-base-300 bg-linear-to-br from-sky-100 via-emerald-100 to-slate-200"
-                aria-label="Mini map picker"
-              >
-                <div className="absolute inset-0 opacity-40">
-                  <div className="h-full w-full bg-[linear-gradient(to_right,rgba(0,0,0,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.08)_1px,transparent_1px)] bg-size-[24px_24px]" />
-                </div>
-                <div
-                  className="absolute -translate-x-1/2 -translate-y-1/2"
-                  style={toMapPercent(newStopLatitude, newStopLongitude)}
-                >
-                  <span className="inline-block h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow" />
-                </div>
+              <p className="mb-2 text-sm font-medium">Map picker</p>
+              <div className="relative h-96 w-full overflow-hidden rounded-md border border-base-300 bg-base-200">
+                {isGoogleMapsConfigured ? (
+                  googleMapsLoadError ? (
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-error">
+                      Failed to load Google Maps script. Check your API key and map restrictions.
+                    </div>
+                  ) : isGoogleMapsLoaded ? (
+                    <GoogleMap
+                      center={{ lat: newStopLatitude, lng: newStopLongitude }}
+                      zoom={DEFAULT_MAP_ZOOM}
+                      mapContainerStyle={{ width: "100%", height: "100%" }}
+                      options={{
+                        mapId: "DEMO_MAP_ID",
+                        mapTypeId: "hybrid",
+                        streetViewControl: false,
+                        mapTypeControl: false,
+                        fullscreenControl: false,
+                      }}
+                      onLoad={(map) => setMapInstance(map)}
+                      onUnmount={() => setMapInstance(null)}
+                      onClick={onMapClick}
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-6 text-center text-sm text-base-content/70">
+                      Loading map...
+                    </div>
+                  )
+                ) : (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-sm text-base-content/70">
+                    Add <code className="mx-1">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to show Google Map
+                    preview.
+                  </div>
+                )}
               </div>
               <p className="mt-2 text-xs text-base-content/70">
-                Click anywhere on the mini map to set the stop coordinates.
+                Click anywhere on the map to set the stop coordinates.
               </p>
             </div>
 
@@ -164,7 +195,9 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
                   step="0.000001"
                   className="input input-bordered w-full"
                   value={newStopLatitude}
-                  onChange={(e) => setNewStopLatitude(Number(e.target.value))}
+                  onChange={(e) =>
+                    setCoordinateSelection(Number(e.target.value), newStopLongitude)
+                  }
                 />
               </label>
               <label className="form-control w-full">
@@ -174,7 +207,9 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
                   step="0.000001"
                   className="input input-bordered w-full"
                   value={newStopLongitude}
-                  onChange={(e) => setNewStopLongitude(Number(e.target.value))}
+                  onChange={(e) =>
+                    setCoordinateSelection(newStopLatitude, Number(e.target.value))
+                  }
                 />
               </label>
             </div>

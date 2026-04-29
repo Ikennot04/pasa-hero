@@ -3,23 +3,23 @@
 import axios from "axios";
 import { useCallback, useState } from "react";
 
-export const useGetUsers = () => {
+export const useGetTerminalNames = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getUsers = useCallback(async () => {
+  const getTerminalNames = useCallback(async () => {
     try {
-      setError(null);
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.get(`${baseUrl}/api/users`);
+      const { data: response } = await axios.get(
+        `${baseUrl}/api/terminals/terminal-names`,
+      );
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         setError(error.response?.data.message);
-      } else {
-        setError("Unexpected error");
+        return error.response?.data;
       }
       return null;
     }
   }, []);
-  return { getUsers, error };
-}
+  return { getTerminalNames, error };
+};

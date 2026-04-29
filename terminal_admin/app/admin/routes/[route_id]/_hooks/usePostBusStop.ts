@@ -3,23 +3,25 @@
 import axios from "axios";
 import { useCallback, useState } from "react";
 
-export const useGetUsers = () => {
+export const usePostBusStop = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getUsers = useCallback(async () => {
+  const postBusStop = useCallback(async (busStop: unknown) => {
+    setError(null);
     try {
-      setError(null);
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.get(`${baseUrl}/api/users`);
+      const { data: response } = await axios.post(
+        `${baseUrl}/api/route-stops`,
+        busStop,
+      );
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        setError(error.response?.data.message);
+        setError(error.response?.data?.message);
       } else {
         setError("Unexpected error");
       }
-      return null;
     }
   }, []);
-  return { getUsers, error };
-}
+  return { postBusStop, error };
+};

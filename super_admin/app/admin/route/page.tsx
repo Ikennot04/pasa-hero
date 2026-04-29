@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { RouteProps, type RouteStatus } from "./RouteProps";
 import RouteTable from "./_components/RouteTable";
 import AddRouteModal from "./_components/AddRoute";
@@ -86,10 +86,28 @@ export default function Route() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<RouteStatus | "all">("all");
 
+  const fetchRoutes = useCallback(async () => {
+    setRoutesLoading(true);
+    const res = await getRoutes();
+
+    if (res?.success === true && Array.isArray(res.data)) {
+      setRoutes((res.data as ApiRoute[]).map(mapApiRouteToProps));
+      setRouteCounts({
+        total_routes: Number(res.counts?.total_routes ?? res.data.length ?? 0),
+        active_routes: Number(res.counts?.active_routes ?? 0),
+        inactive_routes: Number(res.counts?.inactive_routes ?? 0),
+        active_buses: Number(res.counts?.active_buses ?? 0),
+      });
+    } else {
+      setRoutes([]);
+      setRouteCounts(DEFAULT_COUNTS);
+    }
+    setRoutesLoading(false);
+  }, [getRoutes]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setRoutesLoading(true);
       const res = await getRoutes();
       if (cancelled) return;
 
@@ -216,7 +234,7 @@ export default function Route() {
             Showing {filteredRoutes.length} of {routes.length} routes
           </span>
         </div>
-        <AddRouteModal />
+        <AddRouteModal onRouteAdded={fetchRoutes} />
       </div>
       {routesLoading ? (
         <div className="flex justify-center py-16">

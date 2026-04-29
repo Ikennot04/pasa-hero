@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import axios from "axios";
 
 import { useAuthToken } from "../../useAuthToken.hook";
 import {
@@ -14,6 +13,8 @@ import {
 import ConfirmSuspendModal from "../user/_components/ConfirmSuspend";
 import type { UserRow } from "../user/_components/UserTable";
 import { useGetUsers } from "./_hooks/useGetUsers";
+import { usePostUser } from "./_hooks/usePostUser";
+import { useSuspendUser } from "./_hooks/useSuspendUser";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { FaUserPlus } from "react-icons/fa6";
 import { MdOutlinePersonOff } from "react-icons/md";
@@ -48,12 +49,26 @@ export default function AdminUsersPage() {
   const router = useRouter();
   const { authToken } = useAuthToken();
   const { getUsers, error: usersFetchError } = useGetUsers();
+  const { postUser, error: createUserError, clearError } = usePostUser();
+  const { suspendUser, unsuspendUser, error: suspendError } = useSuspendUser();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [userToSuspend, setUserToSuspend] = useState<UserRow | null>(null);
+  const [statusModalMode, setStatusModalMode] = useState<
+    "suspend" | "unsuspend"
+  >("suspend");
   const [showPassword, setShowPassword] = useState(false);
   const [users, setUsers] = useState<ApiUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+
+  const refreshUsers = useCallback(async () => {
+    const res = await getUsers();
+    if (res?.success === true && Array.isArray(res.data)) {
+      setUsers(res.data);
+    } else {
+      setUsers([]);
+    }
+  }, [getUsers]);
 
   const {
     register,
@@ -84,13 +99,8 @@ export default function AdminUsersPage() {
     void (async () => {
       setUsersLoading(true);
       try {
-        const res = await getUsers();
+        await refreshUsers();
         if (cancelled) return;
-        if (res?.success === true && Array.isArray(res.data)) {
-          setUsers(res.data);
-        } else {
-          setUsers([]);
-        }
       } finally {
         if (!cancelled) setUsersLoading(false);
       }
@@ -98,7 +108,7 @@ export default function AdminUsersPage() {
     return () => {
       cancelled = true;
     };
-  }, [allowed, getUsers]);
+  }, [allowed, refreshUsers]);
 
   const portalAdmins = useMemo(
     () =>
@@ -109,6 +119,7 @@ export default function AdminUsersPage() {
   );
 
   function openSuspendModal(user: ApiUser) {
+    setStatusModalMode("suspend");
     setUserToSuspend(toUserRow(user));
     (
       document.getElementById(
@@ -117,65 +128,35 @@ export default function AdminUsersPage() {
     )?.showModal();
   }
 
-  async function confirmSuspendUser(row: UserRow) {
-    const token = localStorage.getItem("super_admin_auth_token");
-    if (!token) {
-      throw new Error("Not signed in");
+  function openUnsuspendModal(user: ApiUser) {
+    setStatusModalMode("unsuspend");
+    setUserToSuspend(toUserRow(user));
+    (
+      document.getElementById(
+        ADMIN_USERS_SUSPEND_MODAL_ID,
+      ) as HTMLDialogElement
+    )?.showModal();
+  }
+
+  async function confirmChangeUserStatus(row: UserRow) {
+    if (statusModalMode === "unsuspend") {
+      await unsuspendUser(row.id);
+    } else {
+      await suspendUser(row.id);
     }
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-    const formData = new FormData();
-    formData.append("data", JSON.stringify({ status: "suspended" }));
-    try {
-      const { data: res } = await axios.patch<{
-        success?: boolean;
-        message?: string;
-      }>(`${baseUrl}/api/users/${row.id}`, formData, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.success) {
-        throw new Error(res.message ?? "Failed to suspend user");
-      }
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        const msg = (err.response?.data as { message?: string })?.message;
-        throw new Error(msg ?? err.message ?? "Failed to suspend user");
-      }
-      throw err;
-    }
-    const refresh = await getUsers();
-    if (refresh?.success === true && Array.isArray(refresh.data)) {
-      setUsers(refresh.data);
-    }
+    await refreshUsers();
   }
 
   async function onSubmit(data: CreateUserFormData) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const formData = new FormData();
-      formData.append(
-        "data",
-        JSON.stringify({ ...data, role: "admin" }),
-      );
-      const res = await fetch(`${baseUrl}/user`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(
-          (err as { message?: string })?.message ??
-            "Failed to create admin user",
-        );
-      }
+    clearError();
+    const res = await postUser({ ...data, role: "admin" });
+    if (res?.success) {
       reset();
-      const refresh = await getUsers();
-      if (refresh?.success === true && Array.isArray(refresh.data)) {
-        setUsers(refresh.data);
-      }
-    } catch (err) {
-      alert(
-        err instanceof Error ? err.message : "Failed to create admin user",
-      );
+      await refreshUsers();
+      return;
+    }
+    if (res && res.success === false) {
+      alert(res.message ?? "Failed to create admin user");
     }
   }
 
@@ -200,6 +181,12 @@ export default function AdminUsersPage() {
       {usersFetchError ? (
         <div role="alert" className="alert alert-error text-sm">
           {usersFetchError}
+        </div>
+      ) : null}
+
+      {suspendError ? (
+        <div role="alert" className="alert alert-error text-sm">
+          {suspendError}
         </div>
       ) : null}
 
@@ -287,6 +274,11 @@ export default function AdminUsersPage() {
                 </span>
               </label>
             </div>
+            {createUserError ? (
+              <p className="text-error text-sm" role="alert">
+                {createUserError}
+              </p>
+            ) : null}
             <div className="flex justify-end pt-2">
               <button
                 type="submit"
@@ -351,22 +343,36 @@ export default function AdminUsersPage() {
                         <td>{user.role}</td>
                         <td>{user.status}</td>
                         <td>
-                          <button
-                            type="button"
-                            className="btn bg-[#D0393A] hover:bg-[#D0393A]/90 text-white"
-                            disabled={isSelf || isSuspended}
-                            title={
-                              isSelf
-                                ? "You cannot suspend your own account"
-                                : isSuspended
-                                  ? "Already suspended"
+                          {isSuspended ? (
+                            <button
+                              type="button"
+                              className="btn btn-success text-white"
+                              disabled={isSelf}
+                              title={
+                                isSelf
+                                  ? "You cannot restore your own account"
                                   : undefined
-                            }
-                            onClick={() => openSuspendModal(user)}
-                          >
-                            <MdOutlinePersonOff className="h-5 w-5" />
-                            Suspend
-                          </button>
+                              }
+                              onClick={() => openUnsuspendModal(user)}
+                            >
+                              Restore access
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn bg-[#D0393A] hover:bg-[#D0393A]/90 text-white"
+                              disabled={isSelf}
+                              title={
+                                isSelf
+                                  ? "You cannot suspend your own account"
+                                  : undefined
+                              }
+                              onClick={() => openSuspendModal(user)}
+                            >
+                              <MdOutlinePersonOff className="h-5 w-5" />
+                              Suspend
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -381,7 +387,8 @@ export default function AdminUsersPage() {
       <ConfirmSuspendModal
         user={userToSuspend}
         modalId={ADMIN_USERS_SUSPEND_MODAL_ID}
-        onConfirm={confirmSuspendUser}
+        mode={statusModalMode}
+        onConfirm={confirmChangeUserStatus}
       />
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import AddRoute from "./_components/AddRoute";
-import Routes, { type RouteRow, type RouteStatus } from "./_components/Routes";
+import Routes, { type RouteRow, type RouteStatus } from "./_components/RoutesTable";
 import { useGetRoutes } from "./_hooks/useGetRoutes";
 
 type ApiTerminal = { terminal_name?: string } | string | null | undefined;
@@ -81,6 +81,17 @@ export default function RoutesPage() {
     loadRoutes();
   }, [loadRoutes]);
 
+  const handleRouteAdded = useCallback(async () => {
+    await loadRoutes();
+    setToast("Route added successfully. Routes table is now updated.");
+  }, [loadRoutes]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timeoutId = window.setTimeout(() => setToast(null), 2500);
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
+
   return (
     <div className="space-y-6 pb-6 pt-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -93,12 +104,7 @@ export default function RoutesPage() {
             routes for terminal operations.
           </p>
         </div>
-        <AddRoute
-          routes={routes}
-          setRoutes={setRoutes}
-          setToast={setToast}
-          onCreated={loadRoutes}
-        />
+        <AddRoute onRouteAdded={handleRouteAdded} />
       </div>
 
       {toast ? (

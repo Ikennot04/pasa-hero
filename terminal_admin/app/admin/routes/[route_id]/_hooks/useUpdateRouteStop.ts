@@ -6,7 +6,14 @@ import { useState } from "react";
 export const useUpdateRouteStop = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const updateRouteStop = async (stopId: string, body: { stop_name: string }) => {
+  const updateRouteStop = async (
+    stopId: string,
+    body: {
+      stop_name: string;
+      latitude?: number;
+      longitude?: number;
+    },
+  ) => {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
       const { data: response } = await axios.patch(
