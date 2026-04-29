@@ -4,6 +4,8 @@ export type RouteProps = {
   id: string;
   route_name: string;
   route_code: string;
+  start_location?: { latitude: number; longitude: number } | null;
+  end_location?: { latitude: number; longitude: number } | null;
   start_terminal_id: string;
   end_terminal_id: string;
   /** Display name (e.g. from populated ref or static data) */

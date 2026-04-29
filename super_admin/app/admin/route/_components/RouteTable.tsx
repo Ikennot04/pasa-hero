@@ -114,6 +114,7 @@ export default function RouteTable({ routes, onRouteUpdated }: RouteTableProps) 
                   <EditRoute
                     route={route}
                     modalId={`edit-route-modal-${route.id}`}
+                    onRouteUpdated={onRouteUpdated}
                   />
                   <button
                     type="button"

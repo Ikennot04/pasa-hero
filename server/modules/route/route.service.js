@@ -3,6 +3,11 @@ import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import RouteStop from "../route_stop/route_stop.model.js";
 
 const ACTIVE_ROUTE_FILTER = { is_deleted: { $ne: true } };
+const normalizeTerminalId = (value) => {
+  if (value == null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  return value;
+};
 
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
@@ -104,20 +109,25 @@ export const RouteService = {
   },
   // CREATE ROUTE ===================================================================
   async createRoute(routeData) {
+    const normalizedRouteData = {
+      ...routeData,
+      start_terminal_id: normalizeTerminalId(routeData.start_terminal_id),
+      end_terminal_id: normalizeTerminalId(routeData.end_terminal_id),
+    };
     const normalizedRouteType =
-      routeData.route_type === "vice_versa" ? "vice_versa" : "normal";
-    const primaryRouteData = { ...routeData, route_type: normalizedRouteType };
+      normalizedRouteData.route_type === "vice_versa" ? "vice_versa" : "normal";
+    const primaryRouteData = { ...normalizedRouteData, route_type: normalizedRouteType };
     const reverseRouteType = normalizedRouteType === "normal" ? "vice_versa" : "normal";
 
-    if (routeData.start_terminal_id == routeData.end_terminal_id) {
+    if (normalizedRouteData.start_terminal_id == normalizedRouteData.end_terminal_id) {
       const error = new Error("Start and end terminals cannot be the same.");
       error.statusCode = 400;
       throw error;
     }
 
     const duplicateRoute = await Route.findOne({
-      start_terminal_id: routeData.start_terminal_id,
-      end_terminal_id: routeData.end_terminal_id,
+      start_terminal_id: normalizedRouteData.start_terminal_id,
+      end_terminal_id: normalizedRouteData.end_terminal_id,
       ...ACTIVE_ROUTE_FILTER,
     });
     if (duplicateRoute) {
@@ -138,15 +148,18 @@ export const RouteService = {
 
     const reverseRouteData = {
       ...primaryRouteData,
-      start_terminal_id: routeData.end_terminal_id,
-      end_terminal_id: routeData.start_terminal_id ?? null,
-      start_location: routeData.end_location ?? null,
-      end_location: routeData.start_location ?? null,
+      start_terminal_id: normalizedRouteData.end_terminal_id,
+      end_terminal_id: normalizedRouteData.start_terminal_id ?? null,
+      start_location: normalizedRouteData.end_location ?? null,
+      end_location: normalizedRouteData.start_location ?? null,
       route_type: reverseRouteType,
     };
 
-    if (typeof routeData.route_name === "string") {
-      const parts = routeData.route_name.split("-").map((p) => p.trim()).filter(Boolean);
+    if (typeof normalizedRouteData.route_name === "string") {
+      const parts = normalizedRouteData.route_name
+        .split("-")
+        .map((p) => p.trim())
+        .filter(Boolean);
       if (parts.length === 2) {
         reverseRouteData.route_name = `${parts[1]} - ${parts[0]}`;
       }
@@ -228,8 +241,34 @@ export const RouteService = {
       throw error;
     }
 
-    const start_terminal_id = updateData.start_terminal_id ?? route.start_terminal_id;
-    const end_terminal_id = updateData.end_terminal_id ?? route.end_terminal_id;
+    const normalizedUpdateData = { ...updateData };
+    if (Object.prototype.hasOwnProperty.call(normalizedUpdateData, "start_terminal_id")) {
+      normalizedUpdateData.start_terminal_id = normalizeTerminalId(
+        normalizedUpdateData.start_terminal_id,
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedUpdateData, "end_terminal_id")) {
+      normalizedUpdateData.end_terminal_id = normalizeTerminalId(
+        normalizedUpdateData.end_terminal_id,
+      );
+    }
+
+    const hasStartTerminalUpdate = Object.prototype.hasOwnProperty.call(
+      normalizedUpdateData,
+      "start_terminal_id",
+    );
+    const hasEndTerminalUpdate = Object.prototype.hasOwnProperty.call(
+      normalizedUpdateData,
+      "end_terminal_id",
+    );
+    const start_terminal_id = hasStartTerminalUpdate
+      ? normalizedUpdateData.start_terminal_id
+      : normalizeTerminalId(route.start_terminal_id);
+    const end_terminal_id = hasEndTerminalUpdate
+      ? normalizedUpdateData.end_terminal_id
+      : normalizeTerminalId(route.end_terminal_id);
+    normalizedUpdateData.start_terminal_id = start_terminal_id;
+    normalizedUpdateData.end_terminal_id = end_terminal_id;
 
     if (start_terminal_id === end_terminal_id) {
       const error = new Error("Start and end terminals cannot be the same.");
@@ -249,10 +288,14 @@ export const RouteService = {
       throw error;
     }
 
-    const updated = await Route.findOneAndUpdate({ _id: id, ...ACTIVE_ROUTE_FILTER }, updateData, {
-      new: true,
-      runValidators: true,
-    })
+    const updated = await Route.findOneAndUpdate(
+      { _id: id, ...ACTIVE_ROUTE_FILTER },
+      normalizedUpdateData,
+      {
+        new: true,
+        runValidators: true,
+      },
+    )
       .populate("start_terminal_id")
       .populate("end_terminal_id");
     return updated;
