@@ -11,8 +11,11 @@ type ApiRouteDoc = {
   _id: string;
   route_code: string;
   route_name?: string;
-  start_terminal_id?: ApiTerminal;
-  end_terminal_id?: ApiTerminal;
+  start_terminal_id?: ApiTerminal | { _id?: string; id?: string; terminal_name?: string };
+  end_terminal_id?: ApiTerminal | { _id?: string; id?: string; terminal_name?: string };
+  start_location?: string | { latitude?: number; longitude?: number };
+  end_location?: string | { latitude?: number; longitude?: number };
+  estimated_duration?: number;
   status?: string;
   updatedAt?: string;
   active_buses_count?: number;
@@ -25,8 +28,22 @@ function terminalLabel(terminal: ApiTerminal): string {
   return typeof terminal === "string" ? terminal : "";
 }
 
+function terminalId(terminal: ApiRouteDoc["start_terminal_id"]): string {
+  if (terminal && typeof terminal === "object") {
+    if ("_id" in terminal && terminal._id) return String(terminal._id);
+    if ("id" in terminal && terminal.id) return String(terminal.id);
+  }
+  return "";
+}
+
 function mapApiStatusToRow(status: string | undefined): RouteStatus {
-  return status === "active" ? "active" : "paused";
+  if (status === "active" || status === "inactive" || status === "suspended") {
+    return status;
+  }
+  if (status === "paused") {
+    return "inactive";
+  }
+  return "inactive";
 }
 
 function mapApiRouteToRow(route: ApiRouteDoc): RouteRow {
@@ -41,6 +58,15 @@ function mapApiRouteToRow(route: ApiRouteDoc): RouteRow {
     status: mapApiStatusToRow(route.status),
     active_buses_count: route.active_buses_count ?? 0,
     updatedAt: route.updatedAt ?? new Date().toISOString(),
+    route_code: route.route_code,
+    route_name: route.route_name?.trim() ?? "",
+    start_terminal_id: terminalId(route.start_terminal_id),
+    start_terminal_name: start || "",
+    end_terminal_id: terminalId(route.end_terminal_id),
+    end_terminal_name: end || "",
+    start_location: route.start_location ?? "",
+    end_location: route.end_location ?? "",
+    estimated_duration: route.estimated_duration,
   };
 }
 

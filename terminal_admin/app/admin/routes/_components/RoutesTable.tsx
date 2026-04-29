@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeleteRoute } from "../_hooks/useDeleteRoute";
+import EditRoute from "./EditRoute";
 
-export type RouteStatus = "active" | "paused";
+export type RouteStatus = "active" | "inactive" | "suspended";
 
 export type RouteRow = {
   id: string;
@@ -15,6 +16,15 @@ export type RouteRow = {
   status: RouteStatus;
   active_buses_count: number;
   updatedAt: string;
+  route_code: string;
+  route_name: string;
+  start_terminal_id: string;
+  start_terminal_name: string;
+  end_terminal_id: string;
+  end_terminal_name: string;
+  start_location: string | { latitude?: number; longitude?: number };
+  end_location: string | { latitude?: number; longitude?: number };
+  estimated_duration?: number;
 };
 
 type RoutesProps = {
@@ -117,7 +127,8 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
           >
             <option value="all">All statuses</option>
             <option value="active">Active</option>
-            <option value="paused">Paused</option>
+            <option value="inactive">Inactive</option>
+            <option value="suspended">Suspended</option>
           </select>
         </label>
       </div>
@@ -159,7 +170,13 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
                   </td>
                   <td>
                     <span
-                      className={`badge badge-outline capitalize ${row.status === "active" ? "badge-success" : "badge-warning"}`}
+                      className={`badge badge-outline capitalize ${
+                        row.status === "active"
+                          ? "badge-success"
+                          : row.status === "suspended"
+                            ? "badge-warning"
+                            : "badge-ghost"
+                      }`}
                     >
                       {row.status}
                     </span>
@@ -173,6 +190,11 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
                     >
                       View details
                     </Link>
+                    <EditRoute
+                      route={row}
+                      modalId={`edit-route-modal-${row.id}`}
+                      onRouteUpdated={onRouteUpdated}
+                    />
                     <button
                       type="button"
                       className="btn btn-sm btn-error btn-outline"
