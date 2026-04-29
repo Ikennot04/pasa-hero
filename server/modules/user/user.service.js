@@ -208,7 +208,7 @@ export const UserService = {
 
     // Validate admin role
     const validAdminRoles = ["super admin", "admin", "operator", "terminal admin"];
-    const role = data?.role || "user";
+    const role = data?.role ? data.role : "user";
     if (!validAdminRoles.includes(role)) {
       if (img_path) {
         await unlinkUserUploadQuietly(img_path);
