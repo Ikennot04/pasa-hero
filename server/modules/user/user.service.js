@@ -279,6 +279,9 @@ export const UserService = {
   async updateUser(id, data) {
     // Get current user data to check existing profile_image
     const user = await User.findById(id);
+    if (!user) {
+      throw new Error("User not found");
+    }
     let oldImage = user?.profile_image;
 
     console.log(data?.profile_image);
@@ -304,6 +307,26 @@ export const UserService = {
     if (data?.role) {
       updateData.roleid = getRoleId(data.role);
     }
+    if (data?.password) {
+      if (!data?.old_password) {
+        throw new Error("Current password is required");
+      }
+
+      const isMatch = await bcrypt.compare(data.old_password, user.password);
+      if (!isMatch) {
+        throw new Error("Current password is incorrect");
+      }
+      if (!validator.isStrongPassword(data.password)) {
+        throw new Error(
+          "Password must contains one capital letter and one special character",
+        );
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      updateData.password = await bcrypt.hash(data.password, salt);
+    }
+
+    delete updateData.old_password;
 
     const updatedUser = await User.findByIdAndUpdate(
       id,

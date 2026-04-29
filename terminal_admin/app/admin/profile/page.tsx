@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGetUserDetails } from "./_hooks/useGetUserDetails";
 import { useUpdateUser } from "./_hooks/useUpdateUser";
 
-const AUTH_TOKEN_KEY = "super_admin_auth_token";
-const PROFILE_NAME_KEY = "super_admin_f_name";
-const PROFILE_ROLE_KEY = "super_admin_role";
-const PROFILE_EMAIL_KEY = "super_admin_email";
+const AUTH_TOKEN_KEY = "terminal_admin_auth_token";
+const PROFILE_NAME_KEY = "f_name";
+const PROFILE_ROLE_KEY = "terminal_admin_role";
+const PROFILE_EMAIL_KEY = "terminal_admin_email";
 
 type ApiUser = {
   _id?: string;

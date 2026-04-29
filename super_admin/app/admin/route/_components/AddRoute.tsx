@@ -3,13 +3,18 @@
 import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
+import { renderToStaticMarkup } from "react-dom/server";
+import { FaBus } from "react-icons/fa";
 import {
   GoogleMap,
   useJsApiLoader,
-  type Libraries,
 } from "@react-google-maps/api";
 import { addRouteSchema, type AddRouteFormData } from "./addRouteSchema";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
+import {
+  GOOGLE_MAPS_LIBRARIES,
+  GOOGLE_MAPS_SCRIPT_ID,
+} from "@/lib/googleMaps";
 import { useGetTerminalNames } from "../_hooks/getTerminalNames";
 import { usePostRoutes } from "../_hooks/usePostRoutes";
 import { usePostRouteStop } from "../_hooks/usePostRouteStop";
@@ -32,7 +37,7 @@ type TerminalOption = {
 
 const MAP_CENTER = { lat: 10.3313, lng: 123.9362 }; // Parkmall Mandaue area
 const MAP_ZOOM = 14.5;
-const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
+const BUS_ICON_MARKUP = renderToStaticMarkup(<FaBus size={14} color="#fff" />);
 
 type AddRouteModalProps = {
   onRouteAdded?: () => void | Promise<void>;
@@ -56,7 +61,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
   const { postRouteStop, error: postRouteStopError } = usePostRouteStop();
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } =
     useJsApiLoader({
-      id: "pasahero-admin-map-script",
+      id: GOOGLE_MAPS_SCRIPT_ID,
       googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
       libraries: GOOGLE_MAPS_LIBRARIES,
     });
@@ -245,8 +250,6 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
     advancedMarkersRef.current = [];
 
     droppedMarkers.forEach((m, idx) => {
-      const label =
-        m.type === "stop" ? `${idx + 1}` : m.type === "start" ? "S" : "E";
       const pin = document.createElement("div");
       pin.style.width = "28px";
       pin.style.height = "28px";
@@ -264,7 +267,11 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
           : m.type === "end"
             ? "#dc2626"
             : "#2563eb";
-      pin.textContent = label;
+      if (m.type === "start" || m.type === "end") {
+        pin.innerHTML = BUS_ICON_MARKUP;
+      } else {
+        pin.textContent = `${idx + 1}`;
+      }
 
       const marker = new google.maps.marker.AdvancedMarkerElement({
         map: mapInstance,

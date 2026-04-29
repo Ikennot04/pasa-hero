@@ -9,7 +9,6 @@ import { FaBus } from "react-icons/fa";
 import {
   GoogleMap,
   useJsApiLoader,
-  type Libraries,
 } from "@react-google-maps/api";
 import type { RouteProps } from "../RouteProps";
 import {
@@ -17,13 +16,16 @@ import {
   type EditRouteFormData,
 } from "./addRouteSchema";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
+import {
+  GOOGLE_MAPS_LIBRARIES,
+  GOOGLE_MAPS_SCRIPT_ID,
+} from "@/lib/googleMaps";
 import { useUpdateRoute } from "../_hooks/useUpdateRoute";
 import { useGetTerminalNames } from "../_hooks/getTerminalNames";
 
 const EDIT_ROUTE_MODAL_ID = "edit-route-modal";
 const MAP_CENTER = { lat: 10.3313, lng: 123.9362 };
 const MAP_ZOOM = 14.5;
-const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
 const BUS_ICON_MARKUP = renderToStaticMarkup(<FaBus size={14} color="#fff" />);
 
 type TerminalOption = {
@@ -36,6 +38,7 @@ type EditRouteProps = {
   modalId?: string;
   onCloseModal?: () => void;
   onRouteUpdated?: () => void | Promise<void>;
+  hideStartTerminalInput?: boolean;
 };
 
 type MarkerType = "start" | "end";
@@ -56,6 +59,7 @@ export default function EditRoute({
   modalId = EDIT_ROUTE_MODAL_ID,
   onCloseModal,
   onRouteUpdated,
+  hideStartTerminalInput = false,
 }: EditRouteProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedTool, setSelectedTool] = useState<MarkerType>("start");
@@ -71,7 +75,7 @@ export default function EditRoute({
   const { getTerminalNames } = useGetTerminalNames();
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } =
     useJsApiLoader({
-      id: "pasahero-admin-map-script",
+      id: GOOGLE_MAPS_SCRIPT_ID,
       googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
       libraries: GOOGLE_MAPS_LIBRARIES,
     });
@@ -483,33 +487,37 @@ export default function EditRoute({
 
             <section className="rounded-md border border-[#E5E7EB] p-3.5">
               <h4 className="text-sm font-semibold text-[#4B5563]">Route coverage</h4>
-              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-3">
-                <div>
-                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
-                    Start terminal
-                  </label>
-                  <select
-                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_terminal_id ? "input-error" : ""}`}
-                    {...register("start_terminal_id")}
-                    disabled={isLoadingTerminalOptions}
-                  >
-                    <option value="">
-                      {isLoadingTerminalOptions
-                        ? "Loading terminals..."
-                        : "Select start terminal"}
-                    </option>
-                    {terminalOptions.map((terminal) => (
-                      <option key={terminal.id} value={terminal.id}>
-                        {terminal.terminal_name}
+              <div
+                className={`mt-3 grid grid-cols-1 gap-2.5 ${hideStartTerminalInput ? "md:grid-cols-2" : "md:grid-cols-3"}`}
+              >
+                {!hideStartTerminalInput && (
+                  <div>
+                    <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                      Start terminal
+                    </label>
+                    <select
+                      className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_terminal_id ? "input-error" : ""}`}
+                      {...register("start_terminal_id")}
+                      disabled={isLoadingTerminalOptions}
+                    >
+                      <option value="">
+                        {isLoadingTerminalOptions
+                          ? "Loading terminals..."
+                          : "Select start terminal"}
                       </option>
-                    ))}
-                  </select>
-                  {errors.start_terminal_id && (
-                    <p className="mt-1 text-sm text-error">
-                      {errors.start_terminal_id.message}
-                    </p>
-                  )}
-                </div>
+                      {terminalOptions.map((terminal) => (
+                        <option key={terminal.id} value={terminal.id}>
+                          {terminal.terminal_name}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.start_terminal_id && (
+                      <p className="mt-1 text-sm text-error">
+                        {errors.start_terminal_id.message}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
                     End terminal (optional)
