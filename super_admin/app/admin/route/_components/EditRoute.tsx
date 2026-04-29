@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
+import { renderToStaticMarkup } from "react-dom/server";
 import { MdOutlineEdit } from "react-icons/md";
+import { FaBus } from "react-icons/fa";
 import {
   GoogleMap,
   useJsApiLoader,
@@ -22,6 +24,7 @@ const EDIT_ROUTE_MODAL_ID = "edit-route-modal";
 const MAP_CENTER = { lat: 10.3313, lng: 123.9362 };
 const MAP_ZOOM = 14.5;
 const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
+const BUS_ICON_MARKUP = renderToStaticMarkup(<FaBus size={14} color="#fff" />);
 
 type TerminalOption = {
   id: string;
@@ -278,10 +281,9 @@ export default function EditRoute({
       key: MarkerType;
       point: { lat: number; lng: number } | null;
       color: string;
-      label: string;
     }> = [
-      { key: "start", point: startMarker, color: "#16a34a", label: "S" },
-      { key: "end", point: endMarker, color: "#dc2626", label: "E" },
+      { key: "start", point: startMarker, color: "#16a34a" },
+      { key: "end", point: endMarker, color: "#dc2626" },
     ];
 
     markerData.forEach((item) => {
@@ -294,11 +296,9 @@ export default function EditRoute({
       pin.style.alignItems = "center";
       pin.style.justifyContent = "center";
       pin.style.color = "#fff";
-      pin.style.fontWeight = "700";
-      pin.style.fontSize = "11px";
       pin.style.boxShadow = "0 2px 6px rgba(0,0,0,0.25)";
       pin.style.background = item.color;
-      pin.textContent = item.label;
+      pin.innerHTML = BUS_ICON_MARKUP;
 
       const marker = new google.maps.marker.AdvancedMarkerElement({
         map: mapInstance,
@@ -367,7 +367,7 @@ export default function EditRoute({
                         }}
                         options={{
                           mapId: "DEMO_MAP_ID",
-                          mapTypeId: "hybrid",
+                          mapTypeId: "roadmap",
                           streetViewControl: false,
                           mapTypeControl: false,
                           fullscreenControl: false,
