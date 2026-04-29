@@ -1,6 +1,7 @@
 "use client";
 
 import CreateOperator from "./_components/CreateOperator";
+import OperatorTable from "./_components/OperatorTable";
 
 export default function OperatorsPage() {
   return (
@@ -15,6 +16,7 @@ export default function OperatorsPage() {
         </div>
         <CreateOperator />
       </div>
+      <OperatorTable />
     </div>
   );
 }

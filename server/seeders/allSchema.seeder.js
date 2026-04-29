@@ -22,6 +22,7 @@ import { buildSystemLogDocuments } from "./systemLogs.seeder.js";
 import seedDevAdminUsers, {
   DEV_TERMINAL_ADMIN,
 } from "./devAdminUsers.seeder.js";
+import seedAssignedOperators from "./assignedOperators.seeder.js";
 
 const ALLOWED_USER_STATUSES = new Set(["active", "suspended"]);
 
@@ -1280,15 +1281,6 @@ const seedData = async () => {
 
     await seedDevAdminUsers(smTerminal._id);
 
-    const operatorCreatedBy = await User.findOne({
-      email: DEV_TERMINAL_ADMIN.email,
-    }).select("_id");
-    if (!operatorCreatedBy) {
-      throw new Error(
-        `Expected terminal admin ${DEV_TERMINAL_ADMIN.email} after seedDevAdminUsers.`,
-      );
-    }
-
     await User.updateOne(
       { email: "pedro.reyes@email.com" },
       { $set: { assigned_terminal: smTerminal._id } },
@@ -1298,20 +1290,10 @@ const seedData = async () => {
       { $set: { assigned_terminal: ayalaTerminal._id } },
     );
 
-    await User.updateMany(
-      {
-        role: "operator",
-        email: {
-          $in: ["maria.santos@email.com", "rico.alvarez@email.com"],
-        },
-      },
-      {
-        $set: {
-          created_by: operatorCreatedBy._id,
-          assigned_terminal: smTerminal._id,
-        },
-      },
-    );
+    await seedAssignedOperators({
+      terminalAdminEmail: DEV_TERMINAL_ADMIN.email,
+      fallbackTerminalId: smTerminal._id,
+    });
 
     // ==========================================
     // 3. CREATE ROUTES
