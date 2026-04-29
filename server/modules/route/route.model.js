@@ -36,6 +36,14 @@ const routeSchema = new mongoose.Schema(
       default: "normal",
       enum: ["normal", "vice_versa"],
     },
+    is_deleted: {
+      type: Boolean,
+      default: false,
+    },
+    deleted_at: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true },
 );

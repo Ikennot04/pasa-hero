@@ -132,6 +132,7 @@ export const NotificationService = {
           { start_terminal_id: terminalId },
           { end_terminal_id: terminalId },
         ],
+        is_deleted: { $ne: true },
       })
         .select("_id")
         .lean()

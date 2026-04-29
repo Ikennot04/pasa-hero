@@ -190,6 +190,7 @@ export const TerminalService = {
         { end_terminal_id: terminalId },
         { end_terminal_id: terminalObjectId },
       ],
+      is_deleted: { $ne: true },
     })
       .select("_id")
       .lean();
@@ -426,6 +427,7 @@ export const TerminalService = {
         { end_terminal_id: terminalId },
         { end_terminal_id: terminalObjectId },
       ],
+      is_deleted: { $ne: true },
     })
       .select("_id")
       .lean();

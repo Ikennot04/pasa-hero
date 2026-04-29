@@ -15,6 +15,7 @@ import { type RouteProps, type RouteStatus } from "../../route/RouteProps";
 import TerminalLogTable from "../_components/TerminalLogTable";
 import { useGetTerminalDetails } from "../_hooks/useGetTerminalDetails";
 import { useGetRoutes } from "../../route/_hooks/useGetRoutes";
+import EditRoute from "../../route/_components/EditRoute";
 import {
   getGoogleMapsEmbedUrl,
   getGoogleMapsLink,
@@ -87,6 +88,8 @@ type ApiRoute = {
   route_code: string;
   start_terminal_id: string | ApiTerminalRef | null;
   end_terminal_id: string | ApiTerminalRef | null;
+  start_location?: { latitude?: number; longitude?: number } | null;
+  end_location?: { latitude?: number; longitude?: number } | null;
   estimated_duration?: number | null;
   status?: string;
 };
@@ -196,6 +199,18 @@ function mapApiRouteToProps(route: ApiRoute): RouteProps {
     id: String(route._id),
     route_name: route.route_name,
     route_code: route.route_code,
+    start_location: route.start_location
+      ? {
+          latitude: Number(route.start_location.latitude),
+          longitude: Number(route.start_location.longitude),
+        }
+      : null,
+    end_location: route.end_location
+      ? {
+          latitude: Number(route.end_location.latitude),
+          longitude: Number(route.end_location.longitude),
+        }
+      : null,
     start_terminal_id: startTerminal.id,
     end_terminal_id: endTerminal.id,
     start_terminal_name: startTerminal.name,
@@ -554,6 +569,7 @@ export default function TerminalDetailsPage() {
                   <th>Other terminal</th>
                   <th>Duration</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -581,6 +597,14 @@ export default function TerminalDetailsPage() {
                       <span className={`badge badge-sm ${route.status === "active" ? "badge-success" : route.status === "suspended" ? "badge-warning" : "badge-ghost"}`}>
                         {route.status}
                       </span>
+                    </td>
+                    <td>
+                      <EditRoute
+                        route={route}
+                        modalId={`edit-route-modal-terminal-${route.id}`}
+                        hideStartTerminalInput
+                        onRouteUpdated={() => window.location.reload()}
+                      />
                     </td>
                   </tr>
                 ))}

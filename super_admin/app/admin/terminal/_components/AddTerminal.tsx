@@ -3,9 +3,13 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { GoogleMap, useJsApiLoader, type Libraries } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
 import { addTerminalSchema, type AddTerminalFormData } from "./addTerminalSchema";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
+import {
+  GOOGLE_MAPS_LIBRARIES,
+  GOOGLE_MAPS_SCRIPT_ID,
+} from "@/lib/googleMaps";
 import { usePostTerminal } from "../_hooks/usePostTerminal";
 
 type AddTerminalModalProps = {
@@ -15,7 +19,6 @@ type AddTerminalModalProps = {
 // Mandaue City, Cebu (default focus for terminal picking)
 const MAP_CENTER = { lat: 10.3236, lng: 123.9229 };
 const MAP_ZOOM = 14.5;
-const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
 
 export default function AddTerminalModal({ onCreated }: AddTerminalModalProps) {
   const [open, setOpen] = useState(false);
@@ -24,7 +27,7 @@ export default function AddTerminalModal({ onCreated }: AddTerminalModalProps) {
   const terminalMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const { postTerminal, error: postError } = usePostTerminal();
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
-    id: "pasahero-admin-map-script",
+    id: GOOGLE_MAPS_SCRIPT_ID,
     googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
     libraries: GOOGLE_MAPS_LIBRARIES,
   });

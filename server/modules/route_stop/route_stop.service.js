@@ -4,7 +4,10 @@ import Route from "../route/route.model.js";
 export const RouteStopService = {
   // CREATE ROUTE STOP ===================================================================
   async createRouteStop(routeStopData) {
-    const route = await Route.findById(routeStopData?.route_id);
+    const route = await Route.findOne({
+      _id: routeStopData?.route_id,
+      is_deleted: { $ne: true },
+    });
     if (!route) {
       const error = new Error("This route does not exist.");
       error.statusCode = 404;
@@ -28,6 +31,13 @@ export const RouteStopService = {
 
   // GET ROUTE STOPS BY ROUTE ID ===================================================================
   async getRouteStopsByRouteId(routeId) {
+    const route = await Route.findOne({ _id: routeId, is_deleted: { $ne: true } });
+    if (!route) {
+      const error = new Error("This route does not exist.");
+      error.statusCode = 404;
+      throw error;
+    }
+
     const routeStops = await RouteStop.find({ route_id: routeId }).sort({
       stop_order: 1,
     });
@@ -44,7 +54,10 @@ export const RouteStopService = {
     }
 
     if (updateData.route_id) {
-      const route = await Route.findById(updateData.route_id);
+      const route = await Route.findOne({
+        _id: updateData.route_id,
+        is_deleted: { $ne: true },
+      });
       if (!route) {
         const error = new Error("This route does not exist.");
         error.statusCode = 404;
@@ -73,7 +86,7 @@ export const RouteStopService = {
 
   // REORDER STOPS FOR A ROUTE (sets stop_order 1..n from ordered_stop_ids) ===================================================================
   async reorderRouteStops(routeId, orderedStopIds) {
-    const route = await Route.findById(routeId);
+    const route = await Route.findOne({ _id: routeId, is_deleted: { $ne: true } });
     if (!route) {
       const error = new Error("This route does not exist.");
       error.statusCode = 404;

@@ -10,6 +10,8 @@ import UserSubscription from "../user_subscription/user_subscription.model.js";
 
 export const DashboardService = {
   async getDashboardCounts() {
+    const activeRouteFilter = { status: "active", is_deleted: { $ne: true } };
+
     const [
       activeBuses,
       activeRoutes,
@@ -25,7 +27,7 @@ export const DashboardService = {
       latestAlerts,
     ] = await Promise.all([
       Bus.countDocuments({ is_deleted: false, status: "active" }),
-      Route.countDocuments({ status: "active" }),
+      Route.countDocuments(activeRouteFilter),
       Terminal.countDocuments({ status: "active" }),
       Driver.countDocuments({ is_deleted: false, status: "active" }),
       BusAssignment.distinct("bus_id", {
@@ -77,8 +79,10 @@ export const DashboardService = {
   },
 
   async getActiveBusesPerRouteCount() {
+    const activeRouteFilter = { status: "active", is_deleted: { $ne: true } };
+
     const [activeRoutes, activeBusesByRoute] = await Promise.all([
-      Route.find({ status: "active" }).select("_id route_name route_code").lean(),
+      Route.find(activeRouteFilter).select("_id route_name route_code").lean(),
       BusAssignment.aggregate([
         {
           $match: {
@@ -104,8 +108,10 @@ export const DashboardService = {
   },
 
   async getTotalOccupancyCountPerRoute() {
+    const activeRouteFilter = { status: "active", is_deleted: { $ne: true } };
+
     const [activeRoutes, busesByRoute] = await Promise.all([
-      Route.find({ status: "active" }).select("_id route_name route_code").lean(),
+      Route.find(activeRouteFilter).select("_id route_name route_code").lean(),
       BusAssignment.aggregate([
         {
           $match: {
@@ -186,7 +192,7 @@ export const DashboardService = {
 
     const [routeDocs, busDocs] = await Promise.all([
       routeObjectIds.length
-        ? Route.find({ _id: { $in: routeObjectIds } })
+        ? Route.find({ _id: { $in: routeObjectIds }, is_deleted: { $ne: true } })
             .select("_id route_name route_code")
             .lean()
         : [],
@@ -224,8 +230,10 @@ export const DashboardService = {
   },
 
   async getRoutePerformanceReport() {
+    const activeRouteFilter = { status: "active", is_deleted: { $ne: true } };
+
     const [activeRoutes, notificationCountsByRoute] = await Promise.all([
-      Route.find({ status: "active" }).select("_id route_name").lean(),
+      Route.find(activeRouteFilter).select("_id route_name").lean(),
       Notification.aggregate([
         {
           $match: {

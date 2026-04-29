@@ -16,6 +16,14 @@ type ApiRoute = {
   _id: string;
   route_name: string;
   route_code: string;
+  start_location?: {
+    latitude?: number | string;
+    longitude?: number | string;
+  } | null;
+  end_location?: {
+    latitude?: number | string;
+    longitude?: number | string;
+  } | null;
   start_terminal_id: string | ApiTerminalRef | null;
   end_terminal_id: string | ApiTerminalRef | null;
   estimated_duration?: number | null;
@@ -52,6 +60,24 @@ function normalizeTerminalRef(ref: string | ApiTerminalRef | null | undefined) {
   };
 }
 
+function normalizeLocation(
+  location:
+    | {
+        latitude?: number | string;
+        longitude?: number | string;
+      }
+    | null
+    | undefined,
+) {
+  if (!location) return null;
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+  return { latitude, longitude };
+}
+
 function mapApiRouteToProps(route: ApiRoute): RouteProps {
   const startTerminal = normalizeTerminalRef(route.start_terminal_id);
   const endTerminal = normalizeTerminalRef(route.end_terminal_id);
@@ -64,6 +90,8 @@ function mapApiRouteToProps(route: ApiRoute): RouteProps {
     id: String(route._id),
     route_name: route.route_name,
     route_code: route.route_code,
+    start_location: normalizeLocation(route.start_location),
+    end_location: normalizeLocation(route.end_location),
     start_terminal_id: startTerminal.id,
     end_terminal_id: endTerminal.id,
     start_terminal_name: startTerminal.name,
@@ -241,7 +269,7 @@ export default function Route() {
           <span className="loading loading-spinner loading-lg text-primary" />
         </div>
       ) : (
-        <RouteTable routes={filteredRoutes} />
+        <RouteTable routes={filteredRoutes} onRouteUpdated={fetchRoutes} />
       )}
     </div>
   );

@@ -7,11 +7,17 @@ import {
   createOperatorSchema,
   type CreateOperatorFormData,
 } from "./createOperatorSchema";
+import { usePostOperator } from "../_hooks/usePostOperator";
 
 import { FaUserPlus } from "react-icons/fa6";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 
-export default function CreateOperator() {
+type CreateOperatorProps = {
+  onCreated?: () => void;
+};
+
+export default function CreateOperator({ onCreated }: CreateOperatorProps) {
+  const { postOperator, error: postOperatorError } = usePostOperator();
   const [open, setOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -54,31 +60,26 @@ export default function CreateOperator() {
     try {
       const token = localStorage.getItem("terminal_admin_auth_token");
       const assignedRaw = localStorage.getItem("assigned_terminal");
-      if (!token || !assignedRaw) {
-        alert(
-          "Session expired or no terminal assigned. Please sign in again.",
-        );
+      const createdBy = localStorage.getItem("terminal_admin_user_id")?.trim();
+      if (!token || !assignedRaw || !createdBy) {
+        alert("Missing terminal/admin session data. Please sign in again.");
         return;
       }
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+      const payload = {
+        ...data,
+        role: "operator",
+        assigned_terminal: assignedRaw,
+        created_by: createdBy,
+      };
+      console.log("Create operator payload:", payload);
+
       const formData = new FormData();
-      formData.append(
-        "data",
-        JSON.stringify({
-          ...data,
-          role: "operator",
-          assigned_terminal: assignedRaw,
-        }),
-      );
-      const res = await fetch(`${baseUrl}/api/users`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to create operator");
-      }
+      formData.append("data", JSON.stringify(payload));
+
+      const response = await postOperator(formData, token);
+      if (!response) throw new Error("Failed to create operator");
+      onCreated?.();
       closeModal();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to create operator");
@@ -184,6 +185,9 @@ export default function CreateOperator() {
                 </span>
               </label>
             </div>
+            {postOperatorError && (
+              <p className="text-error text-sm mt-1">{postOperatorError}</p>
+            )}
             <div className="modal-action">
               <button
                 type="button"

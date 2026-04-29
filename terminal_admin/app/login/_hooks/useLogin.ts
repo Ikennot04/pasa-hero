@@ -12,6 +12,7 @@ type SignInResponse = {
   token?: string;
   message?: string;
   data?: { 
+    _id?: string,
     role?: string,
     assigned_terminal : { 
       _id: string, 
@@ -69,6 +70,7 @@ export function useLogin() {
           }
 
           localStorage.setItem("terminal_admin_auth_token", res.token);
+          localStorage.setItem("terminal_admin_user_id", res.data?._id ?? "");
           localStorage.setItem("assigned_terminal", res.data?.assigned_terminal?._id ?? "");
           localStorage.setItem("f_name", res.data?.f_name ?? "");
           localStorage.setItem("assigned_terminal_name", res.data?.assigned_terminal?.terminal_name ?? "");

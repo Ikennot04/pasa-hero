@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useSyncExternalStore } from "react";
 
 import { LiaBarsSolid } from "react-icons/lia";
-import { FaBell, FaChartLine, FaSignOutAlt, FaUsers } from "react-icons/fa";
+import { FaBell, FaChartLine, FaSignOutAlt, FaUserCircle, FaUsers } from "react-icons/fa";
 import { MdAltRoute, MdBusAlert } from "react-icons/md";
 import { MdAssignmentTurnedIn } from "react-icons/md";
 import { TbBusStop } from "react-icons/tb";
@@ -53,6 +53,11 @@ const routes = [
     path: "/admin/notifications",
     icon: <FaBell className="size-6" />,
     label: "Notifications",
+  },
+  {
+    path: "/admin/profile",
+    icon: <FaUserCircle className="size-6" />,
+    label: "Profile",
   },
 ];
 

@@ -1,64 +1,78 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MdOutlineEdit } from "react-icons/md";
 import { FaBus } from "react-icons/fa";
 import {
   GoogleMap,
   useJsApiLoader,
 } from "@react-google-maps/api";
-import { addRouteSchema, type AddRouteFormData } from "./addRouteSchema";
+import type { RouteProps } from "../RouteProps";
+import {
+  editRouteSchema,
+  type EditRouteFormData,
+} from "./addRouteSchema";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
 import {
   GOOGLE_MAPS_LIBRARIES,
   GOOGLE_MAPS_SCRIPT_ID,
 } from "@/lib/googleMaps";
+import { useUpdateRoute } from "../_hooks/useUpdateRoute";
 import { useGetTerminalNames } from "../_hooks/getTerminalNames";
-import { usePostRoutes } from "../_hooks/usePostRoutes";
-import { usePostRouteStop } from "../_hooks/usePostRouteStop";
 
-type MarkerType = "start" | "end" | "stop";
-
-type DroppedMarker = {
-  id: string;
-  type: MarkerType;
-  lat: number;
-  lng: number;
-};
+const EDIT_ROUTE_MODAL_ID = "edit-route-modal";
+const MAP_CENTER = { lat: 10.3313, lng: 123.9362 };
+const MAP_ZOOM = 14.5;
+const BUS_ICON_MARKUP = renderToStaticMarkup(<FaBus size={14} color="#fff" />);
 
 type TerminalOption = {
   id: string;
   terminal_name: string;
-  lat: number;
-  lng: number;
 };
 
-const MAP_CENTER = { lat: 10.3313, lng: 123.9362 }; // Parkmall Mandaue area
-const MAP_ZOOM = 14.5;
-const BUS_ICON_MARKUP = renderToStaticMarkup(<FaBus size={14} color="#fff" />);
-
-type AddRouteModalProps = {
-  onRouteAdded?: () => void | Promise<void>;
+type EditRouteProps = {
+  route: RouteProps;
+  modalId?: string;
+  onCloseModal?: () => void;
+  onRouteUpdated?: () => void | Promise<void>;
+  hideStartTerminalInput?: boolean;
 };
 
-export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
-  const [open, setOpen] = useState(false);
-  const [droppedMarkers, setDroppedMarkers] = useState<DroppedMarker[]>([]);
+type MarkerType = "start" | "end";
+
+const defaultValues: EditRouteFormData = {
+  route_name: "",
+  route_code: "",
+  start_terminal_id: "",
+  end_terminal_id: "",
+  start_location: "",
+  end_location: "",
+  estimated_duration: 0,
+  status: "active",
+};
+
+export default function EditRoute({
+  route,
+  modalId = EDIT_ROUTE_MODAL_ID,
+  onCloseModal,
+  onRouteUpdated,
+  hideStartTerminalInput = false,
+}: EditRouteProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const [selectedTool, setSelectedTool] = useState<MarkerType>("start");
+  const [startMarker, setStartMarker] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
+  const [endMarker, setEndMarker] = useState<{ lat: number; lng: number } | null>(null);
   const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [terminalOptions, setTerminalOptions] = useState<TerminalOption[]>([]);
-  const [isLoadingTerminalOptions, setIsLoadingTerminalOptions] =
-    useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const advancedMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>(
-    [],
-  );
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [isLoadingTerminalOptions, setIsLoadingTerminalOptions] = useState(false);
+  const advancedMarkersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const { updateRoute, error: updateRouteError } = useUpdateRoute();
   const { getTerminalNames } = useGetTerminalNames();
-  const { postRoutes, error: postRoutesError } = usePostRoutes();
-  const { postRouteStop, error: postRouteStopError } = usePostRouteStop();
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } =
     useJsApiLoader({
       id: GOOGLE_MAPS_SCRIPT_ID,
@@ -71,20 +85,35 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
     handleSubmit,
     reset,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
-  } = useForm<AddRouteFormData>({
-    resolver: yupResolver(addRouteSchema),
-    mode: "onTouched",
-    defaultValues: {
-      route_name: "",
-      route_code: "",
-      start_terminal_id: "",
-      end_terminal_id: "",
-      start_location: "",
-      end_location: "",
-      estimated_duration: undefined,
-    },
+  } = useForm<EditRouteFormData>({
+    resolver: yupResolver(editRouteSchema),
+    defaultValues,
   });
+
+  function toCoordinateString(value: unknown): string {
+    if (!value) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value !== "object") return "";
+    const location = value as { latitude?: unknown; longitude?: unknown };
+    const latitude = Number(location.latitude);
+    const longitude = Number(location.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return "";
+    return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+  }
+
+  function parseCoordinatePair(
+    value: string,
+  ): { latitude: number; longitude: number } | null {
+    const [latRaw, lngRaw] = value.split(",").map((part) => part.trim());
+    const latitude = Number(latRaw);
+    const longitude = Number(lngRaw);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    return { latitude, longitude };
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -107,8 +136,6 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
               _id?: string | number;
               id?: string | number;
               terminal_name?: string;
-              lat?: number | string;
-              lng?: number | string;
             };
             const terminalName = String(option.terminal_name ?? "").trim();
             if (!terminalName) return null;
@@ -117,13 +144,10 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
             return {
               id: terminalId,
               terminal_name: terminalName,
-              lat: Number(option.lat ?? 0),
-              lng: Number(option.lng ?? 0),
             };
           })
           .filter(
-            (option: TerminalOption | null): option is TerminalOption =>
-              option !== null,
+            (option: TerminalOption | null): option is TerminalOption => option !== null,
           );
 
         setTerminalOptions(parsedOptions);
@@ -140,116 +164,134 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
   }, [getTerminalNames]);
 
   useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (open) {
-      dialog.showModal();
-    } else {
-      dialog.close();
-    }
-    const onClose = () => setOpen(false);
-    dialog.addEventListener("close", onClose);
-    return () => dialog.removeEventListener("close", onClose);
-  }, [open]);
-
-  function parseCoordinatePair(
-    value: string,
-  ): { latitude: number; longitude: number } | null {
-    const [latRaw, lngRaw] = value.split(",").map((part) => part.trim());
-    const latitude = Number(latRaw);
-    const longitude = Number(lngRaw);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      return null;
-    }
-    return { latitude, longitude };
-  }
-
-  function openModal() {
-    setOpen(true);
-    reset();
-    setDroppedMarkers([]);
-    setSelectedTool("start");
-    setSubmitError(null);
-  }
-
-  function closeModal() {
-    setOpen(false);
-    reset();
-    setDroppedMarkers([]);
-    setSubmitError(null);
-  }
-
-  function nearestTerminal(lat: number, lng: number): TerminalOption | null {
-    if (terminalOptions.length === 0) return null;
-
-    let best: TerminalOption | null = null;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (const t of terminalOptions) {
-      if (!Number.isFinite(t.lat) || !Number.isFinite(t.lng)) continue;
-      const d = Math.hypot(t.lat - lat, t.lng - lng);
-      if (d < bestDist) {
-        bestDist = d;
-        best = t;
-      }
-    }
-    return best;
-  }
-
-  function putMarker(tool: MarkerType, lat: number, lng: number) {
-    if (!tool) return;
-    console.log(
-      `[AddRoute][${tool.toUpperCase()}] lat=${lat.toFixed(6)}, lng=${lng.toFixed(6)}`,
+    const startLocation = toCoordinateString(
+      (route as RouteProps & { start_location?: unknown }).start_location,
+    );
+    const endLocation = toCoordinateString(
+      (route as RouteProps & { end_location?: unknown }).end_location,
     );
 
-    setDroppedMarkers((prev) => {
-      const withoutSingle = prev.filter(
-        (m) =>
-          !(tool === "start" && m.type === "start") &&
-          !(tool === "end" && m.type === "end"),
-      );
-      return [
-        ...withoutSingle,
-        { id: `${tool}-${Date.now()}`, type: tool, lat, lng },
-      ];
+    reset({
+      route_name: route.route_name,
+      route_code: route.route_code,
+      start_terminal_id: route.start_terminal_id,
+      end_terminal_id: route.end_terminal_id,
+      start_location: startLocation,
+      end_location: endLocation,
+      estimated_duration: route.estimated_duration ?? undefined,
+      status: route.status,
     });
 
-    if (tool === "start" || tool === "end") {
-      setValue(
-        tool === "start" ? "start_location" : "end_location",
-        `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
-        { shouldValidate: true, shouldTouch: true },
-      );
-      const nearest = nearestTerminal(lat, lng);
-      if (nearest) {
-        setValue(
-          tool === "start" ? "start_terminal_id" : "end_terminal_id",
-          nearest.id,
-          { shouldValidate: true, shouldTouch: true },
-        );
+    const parsedStart = parseCoordinatePair(startLocation);
+    const parsedEnd = parseCoordinatePair(endLocation);
+    setStartMarker(
+      parsedStart
+        ? { lat: parsedStart.latitude, lng: parsedStart.longitude }
+        : null,
+    );
+    setEndMarker(
+      parsedEnd
+        ? { lat: parsedEnd.latitude, lng: parsedEnd.longitude }
+        : null,
+    );
+  }, [route, reset]);
+
+  async function onSubmit(data: EditRouteFormData) {
+    try {
+      const startTerminalId = (data.start_terminal_id ?? "").trim();
+      const endTerminalId = (data.end_terminal_id ?? "").trim();
+      const parsedStart = parseCoordinatePair(data.start_location);
+      const parsedEnd = parseCoordinatePair(data.end_location);
+      if (!parsedStart || !parsedEnd) {
+        alert("Please provide valid start and end locations in lat,lng format.");
+        return;
       }
+
+      const payload = {
+        route_name: data.route_name,
+        route_code: data.route_code,
+        start_terminal_id: startTerminalId || undefined,
+        end_terminal_id: endTerminalId || "",
+        start_location: parsedStart,
+        end_location: parsedEnd,
+        estimated_duration:
+          data.estimated_duration != null ? data.estimated_duration : undefined,
+        status: data.status,
+      };
+      console.log("[EditRoute] update payload:", payload);
+
+      const result = await updateRoute(route.id, payload);
+      if (!result?.success) {
+        throw new Error(result?.message ?? updateRouteError ?? "Failed to update route");
+      }
+
+      await onRouteUpdated?.();
+
+      (document.getElementById(modalId) as HTMLDialogElement)?.close();
+      setIsOpen(false);
+      onCloseModal?.();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update route");
     }
-  }
-
-  function onMapClick(e: google.maps.MapMouseEvent) {
-    if (!e.latLng) return;
-    putMarker(selectedTool, e.latLng.lat(), e.latLng.lng());
-  }
-
-  function removeMarker(id: string) {
-    setDroppedMarkers((prev) => prev.filter((m) => m.id !== id));
   }
 
   useEffect(() => {
-    if (!mapInstance || !window.google?.maps?.marker?.AdvancedMarkerElement)
-      return;
+    const el = document.getElementById(modalId) as HTMLDialogElement | null;
+    if (!el) return;
+    if (isOpen) {
+      el.showModal();
+    } else {
+      el.close();
+    }
+    const onClose = () => {
+      setIsOpen(false);
+      onCloseModal?.();
+    };
+    el.addEventListener("close", onClose);
+    return () => el.removeEventListener("close", onClose);
+  }, [isOpen, modalId, onCloseModal]);
 
-    // Clear previous markers on each refresh.
-    for (const m of advancedMarkersRef.current) {
-      m.map = null;
+  function onMapClick(e: google.maps.MapMouseEvent) {
+    if (!e.latLng) return;
+    const lat = e.latLng.lat();
+    const lng = e.latLng.lng();
+    const locationText = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    if (selectedTool === "start") {
+      setStartMarker({ lat, lng });
+      setValue("start_location", locationText, {
+        shouldValidate: true,
+        shouldTouch: true,
+      });
+      return;
+    }
+    setEndMarker({ lat, lng });
+    setValue("end_location", locationText, {
+      shouldValidate: true,
+      shouldTouch: true,
+    });
+  }
+
+  useEffect(() => {
+    if (!mapInstance || !window.google?.maps?.marker?.AdvancedMarkerElement) {
+      return;
+    }
+
+    for (const marker of advancedMarkersRef.current) {
+      marker.map = null;
     }
     advancedMarkersRef.current = [];
 
-    droppedMarkers.forEach((m, idx) => {
+    const markerData: Array<{
+      key: MarkerType;
+      point: { lat: number; lng: number } | null;
+      color: string;
+    }> = [
+      { key: "start", point: startMarker, color: "#16a34a" },
+      { key: "end", point: endMarker, color: "#dc2626" },
+    ];
+
+    markerData.forEach((item) => {
+      if (!item.point) return;
       const pin = document.createElement("div");
       pin.style.width = "28px";
       pin.style.height = "28px";
@@ -258,166 +300,54 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
       pin.style.alignItems = "center";
       pin.style.justifyContent = "center";
       pin.style.color = "#fff";
-      pin.style.fontWeight = "700";
-      pin.style.fontSize = "11px";
       pin.style.boxShadow = "0 2px 6px rgba(0,0,0,0.25)";
-      pin.style.background =
-        m.type === "start"
-          ? "#16a34a"
-          : m.type === "end"
-            ? "#dc2626"
-            : "#2563eb";
-      if (m.type === "start" || m.type === "end") {
-        pin.innerHTML = BUS_ICON_MARKUP;
-      } else {
-        pin.textContent = `${idx + 1}`;
-      }
+      pin.style.background = item.color;
+      pin.innerHTML = BUS_ICON_MARKUP;
 
       const marker = new google.maps.marker.AdvancedMarkerElement({
         map: mapInstance,
-        position: { lat: m.lat, lng: m.lng },
-        title: `${m.type.toUpperCase()} (${m.lat.toFixed(4)}, ${m.lng.toFixed(4)})`,
+        position: item.point,
+        title: `${item.key.toUpperCase()} (${item.point.lat.toFixed(4)}, ${item.point.lng.toFixed(4)})`,
         content: pin,
       });
-      marker.addEventListener("gmp-click", () => removeMarker(m.id));
       advancedMarkersRef.current.push(marker);
     });
 
     return () => {
-      for (const m of advancedMarkersRef.current) m.map = null;
+      for (const marker of advancedMarkersRef.current) marker.map = null;
       advancedMarkersRef.current = [];
     };
-  }, [mapInstance, droppedMarkers]);
+  }, [mapInstance, startMarker, endMarker]);
 
   useEffect(() => {
-    if (!open || !mapInstance || !window.google?.maps) return;
-    // Ensure map renders correctly after dialog becomes visible.
+    if (!isOpen || !mapInstance || !window.google?.maps) return;
     window.google.maps.event.trigger(mapInstance, "resize");
+    if (startMarker) {
+      mapInstance.setCenter(startMarker);
+      return;
+    }
     mapInstance.setCenter(MAP_CENTER);
-  }, [open, mapInstance]);
+  }, [isOpen, mapInstance, startMarker]);
 
-  const startMarker = droppedMarkers.find((m) => m.type === "start");
-  const endMarker = droppedMarkers.find((m) => m.type === "end");
-  const stopMarkers = droppedMarkers.filter((m) => m.type === "stop");
-
-  const routeCoverageLabel =
-    startMarker && endMarker
-      ? `Start (${startMarker.lat.toFixed(4)}, ${startMarker.lng.toFixed(4)}) → End (${endMarker.lat.toFixed(4)}, ${endMarker.lng.toFixed(4)})`
-      : "Place start and end points on the map (end point optional).";
-
-  async function onSubmit(data: AddRouteFormData) {
-    setSubmitError(null);
-
-    const typedStartLocation = parseCoordinatePair(data.start_location);
-    const typedEndLocation = parseCoordinatePair(data.end_location);
-
-    const startLocation = startMarker
-      ? {
-          latitude: Number(startMarker.lat.toFixed(6)),
-          longitude: Number(startMarker.lng.toFixed(6)),
-        }
-      : typedStartLocation;
-    const endLocation = endMarker
-      ? {
-          latitude: Number(endMarker.lat.toFixed(6)),
-          longitude: Number(endMarker.lng.toFixed(6)),
-        }
-      : typedEndLocation;
-
-    if (!startLocation || !endLocation) {
-      alert(
-        "Please provide valid start and end locations (map marker or lat,lng input).",
-      );
-      return;
-    }
-
-    const payload = {
-      route_name: data.route_name,
-      route_code: data.route_code,
-      start_terminal_id: data.start_terminal_id.trim(),
-      end_terminal_id: data.end_terminal_id
-        ? data.end_terminal_id.trim()
-        : null,
-      start_location: startLocation,
-      end_location: endLocation,
-      estimated_duration:
-        data.estimated_duration != null
-          ? Number(data.estimated_duration)
-          : undefined,
-      status: "active" as const,
-      route_type: "normal" as const,
-    };
-
-    const routeStops = stopMarkers.map((stop, index) => {
-      const stopOrder = index + 1;
-      const nearest = nearestTerminal(stop.lat, stop.lng);
-      return {
-        stop_name: `${nearest?.terminal_name ?? "Stop"} ${stopOrder}`,
-        stop_order: stopOrder,
-        latitude: Number(stop.lat.toFixed(6)),
-        longitude: Number(stop.lng.toFixed(6)),
-      };
-    });
-
-    // console.log("[AddRoute] form data:", payload);
-    // console.log("[AddRoute] route stops:", routeStops);
-
-    const response = await postRoutes(payload);
-    if (!response?.success) {
-      setSubmitError(
-        response?.message ??
-          postRoutesError ??
-          "Failed to create route. Please try again.",
-      );
-      return;
-    }
-
-    const routeId = String(
-      response?.data?._id ?? response?.data?.id ?? response?.data?.route_id ?? "",
-    ).trim();
-    if (!routeId) {
-      setSubmitError("Route created, but route ID was missing for stop creation.");
-      return;
-    }
-
-    for (const routeStop of routeStops) {
-      const routeStopPayload = {
-        route_id: routeId,
-        stop_name: routeStop.stop_name,
-        stop_order: routeStop.stop_order,
-        latitude: routeStop.latitude,
-        longitude: routeStop.longitude,
-      };
-
-      const routeStopResponse = await postRouteStop(routeStopPayload);
-      if (!routeStopResponse?.success) {
-        setSubmitError(
-          routeStopResponse?.message ??
-            postRouteStopError ??
-            `Route was created, but failed to create stop #${routeStop.stop_order}.`,
-        );
-        return;
-      }
-    }
-
-    await onRouteAdded?.();
-    closeModal();
-  }
+  const watchedStartLocation = watch("start_location");
+  const watchedEndLocation = watch("end_location");
+  const watchedEndTerminalId = watch("end_terminal_id");
 
   return (
     <>
       <button
         type="button"
-        className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80"
-        onClick={openModal}
+        className="btn btn-sm btn-outline"
+        onClick={() => setIsOpen(true)}
       >
-        Add route
+        <MdOutlineEdit className="w-5 h-5" />
+        Edit
       </button>
-      <dialog ref={dialogRef} className="modal">
-        <div className="modal-box max-w-6xl rounded-md p-5">
-          <h3 className="text-xl font-semibold text-[#222222]">Add route</h3>
+      <dialog id={modalId} className="modal">
+        <div className="modal-box w-11/12 max-w-6xl rounded-md p-5">
+          <h3 className="text-xl font-semibold text-[#222222]">Edit route</h3>
           <p className="mt-1 text-sm text-[#6B7280]">
-            Build route geometry by selecting a tool, then clicking the map.
+            Update route details and map points for start and end locations.
           </p>
 
           <form onSubmit={handleSubmit(onSubmit)} className="mt-4 space-y-3">
@@ -428,12 +358,12 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                   {isGoogleMapsConfigured ? (
                     googleMapsLoadError ? (
                       <div className="flex h-full items-center justify-center px-6 text-center text-sm text-error">
-                        Failed to load Google Maps script. Check your API key
-                        and map restrictions.
+                        Failed to load Google Maps script. Check your API key and map
+                        restrictions.
                       </div>
                     ) : isGoogleMapsLoaded ? (
                       <GoogleMap
-                        center={MAP_CENTER}
+                        center={startMarker ?? MAP_CENTER}
                         zoom={MAP_ZOOM}
                         mapContainerStyle={{
                           width: "100%",
@@ -441,7 +371,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                         }}
                         options={{
                           mapId: "DEMO_MAP_ID",
-                          mapTypeId: "hybrid",
+                          mapTypeId: "roadmap",
                           streetViewControl: false,
                           mapTypeControl: false,
                           fullscreenControl: false,
@@ -458,9 +388,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                   ) : (
                     <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[#6B7280]">
                       Add{" "}
-                      <code className="mx-1">
-                        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-                      </code>
+                      <code className="mx-1">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>{" "}
                       to show Google Map preview.
                     </div>
                   )}
@@ -487,17 +415,6 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSelectedTool("stop")}
-                      className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                        selectedTool === "stop"
-                          ? "border-blue-500 bg-blue-100 text-blue-900"
-                          : "border-blue-300 bg-blue-50 text-blue-800"
-                      }`}
-                    >
-                      Bus stop
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setSelectedTool("end")}
                       className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
                         selectedTool === "end"
@@ -509,18 +426,16 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                     </button>
                   </div>
                   <div className="mt-3 rounded-md bg-[#F9FAFB] p-2 text-xs text-[#4B5563]">
-                    Stops: {stopMarkers.length}
-                    <br />
-                    {routeCoverageLabel}
+                    {watchedStartLocation && watchedEndLocation
+                      ? `Start (${watchedStartLocation}) → End (${watchedEndLocation})`
+                      : "Place start and end points on the map."}
                   </div>
                 </aside>
               </div>
             </section>
 
             <section className="rounded-md border border-[#E5E7EB] p-3.5">
-              <h4 className="text-sm font-semibold text-[#4B5563]">
-                Route identity
-              </h4>
+              <h4 className="text-sm font-semibold text-[#4B5563]">Route identity</h4>
               <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-3">
                 <div>
                   <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
@@ -533,9 +448,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                     {...register("route_name")}
                   />
                   {errors.route_name && (
-                    <p className="mt-1 text-sm text-error">
-                      {errors.route_name.message}
-                    </p>
+                    <p className="mt-1 text-sm text-error">{errors.route_name.message}</p>
                   )}
                 </div>
                 <div>
@@ -549,9 +462,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                     {...register("route_code")}
                   />
                   {errors.route_code && (
-                    <p className="mt-1 text-sm text-error">
-                      {errors.route_code.message}
-                    </p>
+                    <p className="mt-1 text-sm text-error">{errors.route_code.message}</p>
                   )}
                 </div>
                 <div>
@@ -575,36 +486,38 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
             </section>
 
             <section className="rounded-md border border-[#E5E7EB] p-3.5">
-              <h4 className="text-sm font-semibold text-[#4B5563]">
-                Route coverage
-              </h4>
-              <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
-                <div>
-                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
-                    Start terminal
-                  </label>
-                  <select
-                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_terminal_id ? "input-error" : ""}`}
-                    {...register("start_terminal_id")}
-                    disabled={isLoadingTerminalOptions}
-                  >
-                    <option value="">
-                      {isLoadingTerminalOptions
-                        ? "Loading terminals..."
-                        : "Select start terminal"}
-                    </option>
-                    {terminalOptions.map((terminal) => (
-                      <option key={terminal.id} value={terminal.id}>
-                        {terminal.terminal_name}
+              <h4 className="text-sm font-semibold text-[#4B5563]">Route coverage</h4>
+              <div
+                className={`mt-3 grid grid-cols-1 gap-2.5 ${hideStartTerminalInput ? "md:grid-cols-2" : "md:grid-cols-3"}`}
+              >
+                {!hideStartTerminalInput && (
+                  <div>
+                    <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                      Start terminal
+                    </label>
+                    <select
+                      className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.start_terminal_id ? "input-error" : ""}`}
+                      {...register("start_terminal_id")}
+                      disabled={isLoadingTerminalOptions}
+                    >
+                      <option value="">
+                        {isLoadingTerminalOptions
+                          ? "Loading terminals..."
+                          : "Select start terminal"}
                       </option>
-                    ))}
-                  </select>
-                  {errors.start_terminal_id && (
-                    <p className="mt-1 text-sm text-error">
-                      {errors.start_terminal_id.message}
-                    </p>
-                  )}
-                </div>
+                      {terminalOptions.map((terminal) => (
+                        <option key={terminal.id} value={terminal.id}>
+                          {terminal.terminal_name}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.start_terminal_id && (
+                      <p className="mt-1 text-sm text-error">
+                        {errors.start_terminal_id.message}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
                     End terminal (optional)
@@ -630,10 +543,36 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                       {errors.end_terminal_id.message}
                     </p>
                   )}
+                  <button
+                    type="button"
+                    className="mt-1 text-xs font-medium text-[#2563EB] hover:text-[#1D4ED8] disabled:text-[#9CA3AF]"
+                    disabled={!watchedEndTerminalId}
+                    onClick={() => setValue("end_terminal_id", "", { shouldValidate: true })}
+                  >
+                    Remove end terminal
+                  </button>
+                </div>
+                <div className="md:col-span-1">
+                  <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
+                    Status
+                  </label>
+                  <select
+                    className={`input input-bordered h-10 min-h-10 w-full rounded-md text-sm ${errors.status ? "input-error" : ""}`}
+                    {...register("status")}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                  {errors.status && (
+                    <p className="mt-1 text-sm text-error">{errors.status.message}</p>
+                  )}
                 </div>
               </div>
               <div className="mt-2 rounded-md bg-[#F9FAFB] p-2 text-xs text-[#6B7280]">
-                {routeCoverageLabel}
+                {watchedStartLocation && watchedEndLocation
+                  ? `Start (${watchedStartLocation}) → End (${watchedEndLocation})`
+                  : "Set start and end location values."}
               </div>
               <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-2">
                 <div>
@@ -663,24 +602,21 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                     {...register("end_location")}
                   />
                   {errors.end_location && (
-                    <p className="mt-1 text-sm text-error">
-                      {errors.end_location.message}
-                    </p>
+                    <p className="mt-1 text-sm text-error">{errors.end_location.message}</p>
                   )}
                 </div>
               </div>
             </section>
 
-            {errors.route_name && (
-              <p className="text-sm text-error">{errors.route_name.message}</p>
-            )}
-            {submitError && <p className="text-sm text-error">{submitError}</p>}
-
             <div className="mt-5 flex items-center justify-end gap-3">
               <button
                 type="button"
                 className="text-sm font-semibold text-[#242424] hover:text-[#111111]"
-                onClick={closeModal}
+                onClick={() => {
+                  (document.getElementById(modalId) as HTMLDialogElement)?.close();
+                  setIsOpen(false);
+                  onCloseModal?.();
+                }}
               >
                 Cancel
               </button>
@@ -689,15 +625,13 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                 className="btn h-10 min-h-10 rounded-md border-none bg-[#0062CA] px-5 text-sm font-semibold text-white hover:bg-[#0052A8]"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? "Adding…" : "Add route"}
+                {isSubmitting ? "Saving..." : "Save changes"}
               </button>
             </div>
           </form>
         </div>
-        <form method="dialog" className="modal-backdrop" onSubmit={closeModal}>
-          <button type="submit" aria-label="Close">
-            close
-          </button>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit">close</button>
         </form>
       </dialog>
     </>

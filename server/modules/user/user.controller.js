@@ -71,6 +71,17 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
+export const getOperatorsByAssignedTerminal = async (req, res) => {
+  try {
+    const terminalId = req?.params?.terminalId;
+    const operators = await UserService.getOperatorsByAssignedTerminal(terminalId);
+    res.status(200).json({ success: true, data: operators });
+  } catch (error) {
+    const status = error.statusCode || 400;
+    res.status(status).json({ success: false, message: error.message });
+  }
+};
+
 export const createAdminUser = async (req, res) => {
   try {
     const userData = JSON.parse(req?.body?.data);

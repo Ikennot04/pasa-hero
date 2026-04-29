@@ -155,6 +155,23 @@ export const UserService = {
       .populate({ path: "created_by", select: "f_name l_name email role" });
     return users;
   },
+  // GET OPERATORS BY TERMINAL ========================================================
+  async getOperatorsByAssignedTerminal(terminalId) {
+    if (!terminalId) {
+      const error = new Error("Terminal ID is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const operators = await User.find({
+      role: "operator",
+      assigned_terminal: terminalId,
+    })
+      .populate({ path: "assigned_terminal", select: "terminal_name" })
+      .populate({ path: "created_by", select: "f_name l_name email role" });
+
+    return operators;
+  },
   // CREATE ADMIN USER ===============================================================
   /** @param {import("mongoose").Types.ObjectId|string|null} [creatorUserId] - JWT user creating the record (for operators) */
   async createAdminUser(data, userImage, creatorUserId = null) {
@@ -191,7 +208,7 @@ export const UserService = {
 
     // Validate admin role
     const validAdminRoles = ["super admin", "admin", "operator", "terminal admin"];
-    const role = data?.role || "user";
+    const role = data?.role ? data.role : "user";
     if (!validAdminRoles.includes(role)) {
       if (img_path) {
         await unlinkUserUploadQuietly(img_path);
@@ -279,6 +296,9 @@ export const UserService = {
   async updateUser(id, data) {
     // Get current user data to check existing profile_image
     const user = await User.findById(id);
+    if (!user) {
+      throw new Error("User not found");
+    }
     let oldImage = user?.profile_image;
 
     console.log(data?.profile_image);
@@ -304,6 +324,26 @@ export const UserService = {
     if (data?.role) {
       updateData.roleid = getRoleId(data.role);
     }
+    if (data?.password) {
+      if (!data?.old_password) {
+        throw new Error("Current password is required");
+      }
+
+      const isMatch = await bcrypt.compare(data.old_password, user.password);
+      if (!isMatch) {
+        throw new Error("Current password is incorrect");
+      }
+      if (!validator.isStrongPassword(data.password)) {
+        throw new Error(
+          "Password must contains one capital letter and one special character",
+        );
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      updateData.password = await bcrypt.hash(data.password, salt);
+    }
+
+    delete updateData.old_password;
 
     const updatedUser = await User.findByIdAndUpdate(
       id,
