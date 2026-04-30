@@ -3,13 +3,16 @@
 import axios from "axios";
 import { useCallback, useState } from "react";
 
-export const useGetDrivers = () => {
+export const useGetAvailables = () => {
   const [error, setError] = useState<string | null>(null);
 
-  const getDrivers = useCallback(async () => {
+  const getAvailables = useCallback(async () => {
     try {
+      const terminalId = localStorage?.getItem("assigned_terminal");
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.get(`${baseUrl}/api/drivers`);
+      const { data: response } = await axios.get(
+        `${baseUrl}/api/bus-assignments/available/terminal/${terminalId}`,
+      );
       return response;
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -22,5 +25,5 @@ export const useGetDrivers = () => {
     }
   }, []);
 
-  return { getDrivers, error };
+  return { getAvailables, error };
 };

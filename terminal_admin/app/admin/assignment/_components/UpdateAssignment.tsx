@@ -31,17 +31,17 @@ const OPERATOR_OPTIONS = [
   { id: "op3", name: "Miguel Santos" },
 ];
 
-type EditAssignmentModalProps = {
+type UpdateAssignmentModalProps = {
   assignment: AssignmentRow;
   drivers: DriverOption[];
   onUpdated?: () => void;
 };
 
-export default function EditAssignmentModal({
+export default function UpdateAssignmentModal({
   assignment,
   drivers,
   onUpdated,
-}: EditAssignmentModalProps) {
+}: UpdateAssignmentModalProps) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -102,11 +102,11 @@ export default function EditAssignmentModal({
     <>
       <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>
         <MdOutlineEdit className="w-4 h-4" />
-        Edit
+        Update
       </button>
       <dialog ref={dialogRef} className="modal">
         <div className="modal-box">
-          <h3 className="font-bold text-lg">Edit assignment</h3>
+          <h3 className="font-bold text-lg">Update assignment</h3>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
             <div className="form-control">
               <label className="label">
