@@ -1,98 +1,118 @@
 import Bus from "../modules/bus/bus.model.js";
 import Driver from "../modules/driver/driver.model.js";
 import User from "../modules/user/user.model.js";
-import BusAssignment from "../modules/bus_assignment/bus_assignment.model.js";
+import Terminal from "../modules/terminal/terminal.model.js";
 
-const SEED_IDENTIFIERS = {
-  busNumber: "SEED-UNASSIGNED-001",
-  plateNumber: "UNA-0001",
-  driverLicense: "SEED-DRV-UNASSIGNED-001",
-  operatorEmail: "seed.unassigned.operator@pasahero.local",
+const UNASSIGNED_BUS = {
+  bus_number: "SM-UNASSIGNED-001",
+  plate_number: "SMU-1001",
+  capacity: 48,
+  status: "active",
 };
 
-async function ensureUnassignedBus() {
-  let bus = await Bus.findOne({ bus_number: SEED_IDENTIFIERS.busNumber });
-  if (!bus) {
-    bus = await Bus.create({
-      bus_number: SEED_IDENTIFIERS.busNumber,
-      plate_number: SEED_IDENTIFIERS.plateNumber,
-      capacity: 45,
-      status: "active",
-    });
-    return { bus, created: true };
-  }
-  return { bus, created: false };
-}
+const UNASSIGNED_DRIVERS = [
+  {
+    f_name: "Daniel",
+    l_name: "Mercado",
+    license_number: "SM-UNASSIGNED-DRIVER-001",
+    contact_number: "09990000001",
+    status: "active",
+  },
+  {
+    f_name: "Erwin",
+    l_name: "Salazar",
+    license_number: "SM-UNASSIGNED-DRIVER-002",
+    contact_number: "09990000002",
+    status: "active",
+  },
+  {
+    f_name: "Joel",
+    l_name: "Fernandez",
+    license_number: "SM-UNASSIGNED-DRIVER-003",
+    contact_number: "09990000003",
+    status: "active",
+  },
+];
 
-async function ensureUnassignedDriver() {
-  let driver = await Driver.findOne({ license_number: SEED_IDENTIFIERS.driverLicense });
-  if (!driver) {
-    driver = await Driver.create({
-      f_name: "Seed",
-      l_name: "UnassignedDriver",
-      license_number: SEED_IDENTIFIERS.driverLicense,
-      contact_number: "09999999999",
-      status: "active",
-    });
-    return { driver, created: true };
-  }
-  return { driver, created: false };
-}
-
-async function ensureUnassignedOperator() {
-  let operator = await User.findOne({ email: SEED_IDENTIFIERS.operatorEmail });
-  if (!operator) {
-    operator = await User.create({
-      f_name: "Seed",
-      l_name: "UnassignedOperator",
-      email: SEED_IDENTIFIERS.operatorEmail,
-      password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
-      role: "operator",
-      roleid: 2,
-      status: "active",
-      firebase_id: "firebase_seed_unassigned_operator_001",
-      profile_image: "default.png",
-    });
-    return { operator, created: true };
-  }
-  return { operator, created: false };
-}
-
-async function hasAnyAssignment(busId, driverId, operatorId) {
-  const existing = await BusAssignment.exists({
-    $or: [
-      { bus_id: busId },
-      { driver_id: driverId },
-      { operator_user_id: operatorId },
-    ],
-  });
-  return Boolean(existing);
-}
+const UNASSIGNED_OPERATORS = [
+  {
+    f_name: "Carlo",
+    l_name: "Mendoza",
+    email: "seed.unassigned.operator@pasahero.local",
+    password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+    role: "operator",
+    status: "active",
+    firebase_id: "firebase_seed_unassigned_operator_001",
+    profile_image: "default.png",
+  },
+  {
+    f_name: "Paulo",
+    l_name: "Sarmiento",
+    email: "seed.unassigned.operator2@pasahero.local",
+    password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+    role: "operator",
+    status: "active",
+    firebase_id: "firebase_seed_unassigned_operator_002",
+    profile_image: "default.png",
+  },
+  {
+    f_name: "Lester",
+    l_name: "Villarin",
+    email: "seed.unassigned.operator3@pasahero.local",
+    password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+    role: "operator",
+    status: "active",
+    firebase_id: "firebase_seed_unassigned_operator_003",
+    profile_image: "default.png",
+  },
+];
 
 export default async function seedUnassignedBusDriverOperator() {
-  const [{ bus, created: busCreated }, { driver, created: driverCreated }, { operator, created: operatorCreated }] =
-    await Promise.all([
-      ensureUnassignedBus(),
-      ensureUnassignedDriver(),
-      ensureUnassignedOperator(),
-    ]);
+  const terminal = await Terminal.findOne({
+    terminal_name: "SM City Cebu Terminal",
+  }).select("_id terminal_name");
 
-  const assigned = await hasAnyAssignment(bus._id, driver._id, operator._id);
-  if (assigned) {
+  if (!terminal) {
     console.warn(
-      "⚠️ Unassigned dev seed entities already have assignment links. Keeping records unchanged.",
+      '⚠️  Skipped unassigned bus/driver/operator seed: "SM City Cebu Terminal" not found.',
     );
-    return;
+    return null;
   }
 
-  const createdCount =
-    Number(busCreated) + Number(driverCreated) + Number(operatorCreated);
+  const bus = await Bus.findOneAndUpdate(
+    { bus_number: UNASSIGNED_BUS.bus_number },
+    { $setOnInsert: UNASSIGNED_BUS },
+    { returnDocument: "after", upsert: true },
+  );
 
-  if (createdCount > 0) {
-    console.log(
-      `✅ Seeded ${createdCount} unassigned dev records (bus/driver/operator).`,
-    );
-  } else {
-    console.log("ℹ️ Unassigned dev records already exist.");
-  }
+  const drivers = await Promise.all(
+    UNASSIGNED_DRIVERS.map((driverSeed) =>
+      Driver.findOneAndUpdate(
+        { license_number: driverSeed.license_number },
+        { $setOnInsert: driverSeed },
+        { returnDocument: "after", upsert: true },
+      ),
+    ),
+  );
+
+  const primaryDriver = drivers[0];
+
+  const operators = await Promise.all(
+    UNASSIGNED_OPERATORS.map((operatorSeed) =>
+      User.findOneAndUpdate(
+        { email: operatorSeed.email },
+        {
+          $setOnInsert: operatorSeed,
+          $set: {
+            assigned_terminal: terminal._id,
+            created_by: null,
+          },
+        },
+        { returnDocument: "after", upsert: true },
+      ),
+    ),
+  );
+
+  return { bus, drivers, operators, terminal };
 }
+

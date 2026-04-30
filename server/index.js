@@ -53,9 +53,12 @@ if (!_dbURI) {
   mongoose.connect(_dbURI)
     .then(() => {
       console.log("✅ Connected to Mongo DB");
-      if (process.env.NODE_ENV !== "production") {
-        return seedUnassignedBusDriverOperator();
-      }
+      seedUnassignedBusDriverOperator().catch((seedError) => {
+        console.error(
+          "❌ Failed to seed unassigned SM bus/driver/operator:",
+          seedError.message,
+        );
+      });
     })
     .catch((error) => {
       console.error('❌ MongoDB connection failed:', error.message);
