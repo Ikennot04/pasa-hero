@@ -129,7 +129,7 @@ export const BusAssignmentService = {
     }
 
     const blockedAssignmentFilter = {
-      assignment_status: "active",
+      assignment_status: { $in: ["active", "inactive"] },
       assignment_result: "pending",
     };
 
