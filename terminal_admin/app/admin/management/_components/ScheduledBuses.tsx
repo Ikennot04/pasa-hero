@@ -12,7 +12,7 @@ export type ScheduledBusRow = {
   status: BusDayStatus;
 };
 
-type ScheduledBusesForTodayProps = {
+type ScheduledBusesProps = {
   rows: ScheduledBusRow[];
   statusFilter: BusDayStatus | "all";
   onStatusFilterChange: (v: BusDayStatus | "all") => void;
@@ -34,11 +34,11 @@ function statusBadge(status: BusDayStatus) {
   return "badge-ghost";
 }
 
-export default function ScheduledBusesForToday({
+export default function ScheduledBuses({
   rows,
   statusFilter,
   onStatusFilterChange,
-}: ScheduledBusesForTodayProps) {
+}: ScheduledBusesProps) {
   const filtered =
     statusFilter === "all"
       ? rows
@@ -49,10 +49,10 @@ export default function ScheduledBusesForToday({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">
-            Today&apos;s scheduled buses
+            Scheduled buses
           </h2>
           <p className="text-sm text-base-content/70">
-            All trips scheduled for today at this terminal. Filter by
+            All trips scheduled for this terminal. Filter by
             operational status.
           </p>
         </div>
@@ -99,7 +99,7 @@ export default function ScheduledBusesForToday({
                   colSpan={5}
                   className="text-center text-sm text-base-content/60"
                 >
-                  No buses match this status for today.
+                  No buses match this status.
                 </td>
               </tr>
             ) : (

@@ -442,7 +442,6 @@ export const TerminalService = {
         ? Promise.resolve([])
         : BusAssignment.find({
             route_id: { $in: routeIds },
-            scheduled_arrival_at: { $gte: start, $lt: endExclusive },
           })
             .populate({ path: "bus_id", select: "bus_number" })
             .populate({ path: "route_id", select: "route_name" })
@@ -472,7 +471,7 @@ export const TerminalService = {
       byAssignment.get(key).push(log);
     }
 
-    const scheduled_buses_today = scheduledQuery.map((a) => {
+    const scheduled_buses = scheduledQuery.map((a) => {
       const assignmentLogs = byAssignment.get(String(a._id)) || [];
       return {
         bus_number: a.bus_id?.bus_number ?? null,
@@ -549,12 +548,12 @@ export const TerminalService = {
       terminal_id: terminal._id,
       date_utc: start.toISOString().slice(0, 10),
       counts: {
-        scheduled_buses_today: scheduled_buses_today.length,
+        scheduled_buses: scheduled_buses.length,
         pending_arrival_confirmations: pending_arrival_confirmations.length,
         pending_departure_confirmations: pending_departure_confirmations.length,
         currently_present_at_terminal: currently_present_at_terminal,
       },
-      scheduled_buses_today,
+      scheduled_buses,
       pending_arrival_confirmations,
       pending_departure_confirmations,
       confirmation_history: confirmationHistory,

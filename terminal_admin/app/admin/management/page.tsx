@@ -4,22 +4,22 @@ import { useCallback, useRef, useState, useEffect } from "react";
 import ArrivalConfirmation from "./_components/ArrivalConfirmation";
 import ConfirmationHistory from "./_components/ConfirmationHistory";
 import DepartureConfirmation from "./_components/DepartureConfirmation";
-import ScheduledBusesForToday, {
+import ScheduledBuses, {
   type BusDayStatus,
   type ScheduledBusRow,
-} from "./_components/ScheduledBusesForToday";
+} from "./_components/ScheduledBuses";
 import type { ConfirmationHistoryEntry } from "./_components/ConfirmationHistory";
 
 import { useGetTerminalManagement } from "./_hooks/useGetTerminalManagement";
 
 type TerminalManagementApiPayload = {
   counts: {
-    scheduled_buses_today: number;
+    scheduled_buses: number;
     pending_arrival_confirmations: number;
     pending_departure_confirmations: number;
     currently_present_at_terminal: number;
   };
-  scheduled_buses_today: {
+  scheduled_buses: {
     bus_number: string | null;
     route_name: string | null;
     driver: string | null;
@@ -98,7 +98,7 @@ function mapConfirmationHistory(
 }
 
 function mapPayloadToState(payload: TerminalManagementApiPayload) {
-  const scheduledRows: ScheduledBusRow[] = payload.scheduled_buses_today.map(
+  const scheduledRows: ScheduledBusRow[] = payload.scheduled_buses.map(
     (row, index) => ({
       id: `sched-${index}-${row.scheduled_arrival_at}`,
       busNumber: row.bus_number ?? "",
@@ -142,7 +142,7 @@ export default function Management() {
   }, [getTerminalManagement]);
 
   const [terminalManagementSummary, setTerminalManagementSummary] = useState({
-    scheduled_buses_today: 0,
+    scheduled_buses: 0,
     pending_arrival_confirmations: 0,
     pending_departure_confirmations: 0,
     currently_present_at_terminal: 0,
@@ -214,7 +214,7 @@ export default function Management() {
             Bus Arrival & Departure Management
           </h1>
           <p className="text-sm text-base-content/70">
-            Core operational view for terminal admins: today&apos;s schedule,
+            Core operational view for terminal admins: scheduled buses,
             pending confirmations, and history.
           </p>
         </div>
@@ -230,10 +230,10 @@ export default function Management() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="text-sm text-base-content/70">
-            Scheduled buses for today
+            Scheduled buses
           </div>
           <div className="mt-2 text-3xl font-bold">
-            {terminalManagementSummary.scheduled_buses_today}
+            {terminalManagementSummary.scheduled_buses}
           </div>
         </div>
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
@@ -262,12 +262,6 @@ export default function Management() {
         </div>
       </div>
 
-      <ScheduledBusesForToday
-        rows={scheduledRows}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-      />
-
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <ArrivalConfirmation
           pendingArrivals={pendingArrivalRows}
@@ -283,6 +277,12 @@ export default function Management() {
           onRejectDeparture={rejectDeparture}
         />
       </div>
+
+      <ScheduledBuses
+        rows={scheduledRows}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+      />
 
       <ConfirmationHistory entries={confirmationHistoryEntries} />
     </div>
