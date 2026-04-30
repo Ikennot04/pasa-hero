@@ -31,8 +31,8 @@ export default function TerminalSnapshot({
         {
           label: "Buses",
           data: [presentCount, departedCount],
-          backgroundColor: ["rgb(128, 94, 0, 0.50)", "rgb(22, 127, 1, 0.50)"],
-          borderColor: ["rgb(128, 94, 0)", "rgb(22, 127, 1)"],
+          backgroundColor: ["rgba(96, 206, 128, 0.70)", "rgba(21, 67, 96, 0.70)"],
+          borderColor: ["rgba(96, 206, 128, 1)", "rgba(21, 67, 96, 1)"],
           borderWidth: 1.5,
           borderRadius: 6,
         },

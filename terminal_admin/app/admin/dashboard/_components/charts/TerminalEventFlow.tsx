@@ -26,9 +26,9 @@ type TerminalEventFlowProps = {
 };
 
 const EVENT_LABELS = [
-  "Arrival reported",
+  "Arrival pending",
   "Arrival confirmed",
-  "Departure reported",
+  "Departure pending",
   "Departure confirmed",
 ];
 

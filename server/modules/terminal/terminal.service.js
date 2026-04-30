@@ -160,7 +160,7 @@ export const TerminalService = {
   },
 
   /**
-   * Metrics for a terminal: today's scheduled arrivals (by route end terminal + ETA),
+   * Metrics for a terminal: total scheduled buses for routes ending at this terminal,
    * current presence, departures confirmed on the selected UTC day, and pending confirmations.
    * @param {string} terminalId
    * @param {{ date?: string }} [options] date as YYYY-MM-DD (UTC); defaults to current UTC day
@@ -196,12 +196,11 @@ export const TerminalService = {
       .lean();
     const routeIds = routesEndingHere.map((r) => r._id);
 
-    const totalScheduledArrivalsToday =
+    const totalScheduledBuses =
       routeIds.length === 0
         ? 0
         : await BusAssignment.countDocuments({
             route_id: { $in: routeIds },
-            scheduled_arrival_at: { $gte: start, $lt: endExclusive },
           });
 
     const logs = await TerminalLog.find({ terminal_id: terminalObjectId }).lean();
@@ -239,7 +238,7 @@ export const TerminalService = {
     return {
       terminal_id: terminal._id,
       date_utc: start.toISOString().slice(0, 10),
-      total_scheduled_arrivals_today: totalScheduledArrivalsToday,
+      total_scheduled_buses: totalScheduledBuses,
       buses_present: busesPresent,
       buses_departed_today: departedToday,
       pending_confirmations: pendingConfirmations,
