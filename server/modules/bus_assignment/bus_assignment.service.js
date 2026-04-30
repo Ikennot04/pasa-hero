@@ -133,25 +133,32 @@ export const BusAssignmentService = {
       assignment_result: "pending",
     };
 
-    const [blockedBusIds, blockedDriverIds, blockedOperatorIds] = await Promise.all([
+    const [blockedBusIdsRaw, blockedDriverIdsRaw, blockedOperatorIdsRaw] =
+      await Promise.all([
       BusAssignment.distinct("bus_id", blockedAssignmentFilter),
       BusAssignment.distinct("driver_id", blockedAssignmentFilter),
       BusAssignment.distinct("operator_user_id", blockedAssignmentFilter),
-    ]);
+      ]);
+
+    const blockedBusIds = blockedBusIdsRaw.filter(Boolean);
+    const blockedDriverIds = blockedDriverIdsRaw.filter(Boolean);
+    const blockedOperatorIds = blockedOperatorIdsRaw.filter(Boolean);
 
     const [buses, drivers, operators, routes] = await Promise.all([
       Bus.find({
         _id: { $nin: blockedBusIds },
         is_deleted: { $ne: true },
+        status: "active",
       })
-        .select("bus_number plate_number capacity status createdAt updatedAt")
+        .select("bus_number")
         .sort({ bus_number: 1 })
         .lean(),
       Driver.find({
         _id: { $nin: blockedDriverIds },
         is_deleted: { $ne: true },
+        status: "active",
       })
-        .select("f_name l_name license_number contact_number status createdAt updatedAt")
+        .select("f_name l_name")
         .sort({ f_name: 1, l_name: 1 })
         .lean(),
       User.find({
@@ -160,19 +167,19 @@ export const BusAssignmentService = {
         status: "active",
         assigned_terminal: terminalId,
       })
-        .select("f_name l_name email assigned_terminal status")
-        .populate({ path: "assigned_terminal", select: "terminal_name" })
+        .select("f_name l_name")
         .sort({ f_name: 1, l_name: 1 })
         .lean(),
       Route.find({
         route_type: "normal",
         is_deleted: { $ne: true },
+        status: "active",
         $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
       })
-        .populate("start_terminal_id")
-        .populate("end_terminal_id")
+        .select("route_name route_code")
         .sort({ route_name: 1 })
         .lean(),
+   
     ]);
 
     return { buses, drivers, operators, routes };
