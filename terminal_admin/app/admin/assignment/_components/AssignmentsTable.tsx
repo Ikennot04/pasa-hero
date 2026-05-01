@@ -70,9 +70,9 @@ export default function AssignmentsTable({
         <table className="table">
           <thead>
             <tr>
-              <th className="w-10">#</th>
               <th>Operator</th>
-              <th>Bus</th>
+              <th>Driver</th>
+              <th>Plate</th>
               <th>Route</th>
               <th>Status</th>
               <th>Result</th>
@@ -88,11 +88,11 @@ export default function AssignmentsTable({
                 </td>
               </tr>
             ) : (
-              pageAssignments.map((a, i) => (
+              pageAssignments.map((a) => (
                 <tr key={a.id}>
-                  <th>{(activePage - 1) * pageSize + i + 1}</th>
                   <td className="font-medium">{a.operator_name}</td>
-                  <td>{a.bus_number}</td>
+                  <td className="font-medium">{a.driver_name}</td>
+                  <td>{a.plate_number}</td>
                   <td>{a.route_name}</td>
                   <td>
                     <StatusBadge status={a.assignment_status} />
