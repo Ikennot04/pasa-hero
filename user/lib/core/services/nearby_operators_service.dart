@@ -50,20 +50,49 @@ class NearbyOperatorsService {
 
   /// Operator app uses [latitude]/[longitude]; support common aliases and GeoPoint.
   static (double lat, double lng)? _coordsFromData(Map<String, dynamic> data) {
-    double? lat = _toDouble(data['latitude']) ?? _toDouble(data['lat']);
-    double? lng = _toDouble(data['longitude']) ?? _toDouble(data['lng']);
+    double? lat =
+        _toDouble(data['latitude']) ??
+        _toDouble(data['lat']) ??
+        _toDouble(data['Latitude']);
+    double? lng =
+        _toDouble(data['longitude']) ??
+        _toDouble(data['lng']) ??
+        _toDouble(data['long']) ??
+        _toDouble(data['lon']) ??
+        _toDouble(data['Longitude']);
     if (lat != null && lng != null) return (lat, lng);
     for (final key in ['position', 'location', 'geo', 'coordinates']) {
       final g = data[key];
       if (g is GeoPoint) return (g.latitude, g.longitude);
+      if (g is Map<String, dynamic>) {
+        final nestedLat =
+            _toDouble(g['latitude']) ??
+            _toDouble(g['lat']) ??
+            _toDouble(g['Latitude']);
+        final nestedLng =
+            _toDouble(g['longitude']) ??
+            _toDouble(g['lng']) ??
+            _toDouble(g['long']) ??
+            _toDouble(g['lon']) ??
+            _toDouble(g['Longitude']);
+        if (nestedLat != null && nestedLng != null) return (nestedLat, nestedLng);
+      }
     }
     return null;
   }
 
   static DateTime? _readUpdatedAt(Map<String, dynamic> data) {
-    final v = data['updatedAt'] ?? data['updated_at'];
+    final v =
+        data['updatedAt'] ??
+        data['updated_at'] ??
+        data['lastUpdated'] ??
+        data['last_updated'];
+    if (v is DateTime) return v;
     if (v is Timestamp) return v.toDate();
     if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+    if (v is String) {
+      return DateTime.tryParse(v);
+    }
     return null;
   }
 
@@ -127,8 +156,8 @@ class NearbyOperatorsService {
         final lng = coords.$2;
 
         final updated = _readUpdatedAt(data);
-        // Operator sync always sets [updatedAt]; docs without it are not trustworthy "live" counts.
-        if (updated == null || now.difference(updated) > maxAge) continue;
+        // Enforce staleness only when a parseable timestamp exists.
+        if (updated != null && now.difference(updated) > maxAge) continue;
 
         final routeStr = _routeCodeFromData(data);
 

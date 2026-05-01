@@ -22,7 +22,7 @@ class FreeRideBanner extends StatelessWidget {
     this.onClose,
   });
 
-  static String _formatDateTime(DateTime d) {
+  String _formatDateTime(DateTime d) {
     final y = d.year;
     final m = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');

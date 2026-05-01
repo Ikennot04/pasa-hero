@@ -6,54 +6,17 @@ import 'nearby_terminal.dart';
 class NearbyStopsCard extends StatelessWidget {
   final ScrollController? scrollController;
   final bool showContent;
+  final List<Map<String, dynamic>> terminals;
 
   const NearbyStopsCard({
     super.key,
     this.scrollController,
     this.showContent = false,
+    this.terminals = const <Map<String, dynamic>>[],
   });
 
   @override
   Widget build(BuildContext context) {
-    // Sample data - replace with actual data from your backend/state
-    final terminals = [
-      {
-        'terminalName': 'Pacific Terminal',
-        'location': 'Pacific Mall, Mandaue',
-        'routes': ['01K', '13B', '01F', '46E'],
-        'distance': '0.6 Km',
-        'isHighlighted': true,
-      },
-      {
-        'terminalName': 'Marpa',
-        'location': 'Maguikay, Mandaue City',
-        'routes': ['01K', '13B', '01F', '46E'],
-        'distance': '0.6 Km',
-        'isHighlighted': false,
-      },
-      {
-        'terminalName': 'Jmall',
-        'location': 'Jmall, Mandaue City',
-        'routes': ['01K', '13B', '01F', '46E'],
-        'distance': '0.7 Km',
-        'isHighlighted': false,
-      },
-      {
-        'terminalName': 'Ayala Terminal',
-        'location': 'Ayala Center, Cebu City',
-        'routes': ['02A', '04B', '12C'],
-        'distance': '1.2 Km',
-        'isHighlighted': false,
-      },
-      {
-        'terminalName': 'SM Terminal',
-        'location': 'SM City, Cebu',
-        'routes': ['03D', '05E', '08F'],
-        'distance': '1.5 Km',
-        'isHighlighted': false,
-      },
-    ];
-
     if (!showContent) {
       return const SizedBox.shrink();
     }

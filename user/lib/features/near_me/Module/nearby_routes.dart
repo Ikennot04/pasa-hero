@@ -96,17 +96,24 @@ class NearbyRouteItem extends StatelessWidget {
 }
 
 class NearbyRoutesList extends StatelessWidget {
-  const NearbyRoutesList({super.key});
+  final List<NearbyRouteData> routes;
+  final String title;
+
+  const NearbyRoutesList({
+    super.key,
+    this.routes = const <NearbyRouteData>[],
+    this.title = 'Nearby Routes',
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
-            'Nearby Routes',
+            title,
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -114,19 +121,41 @@ class NearbyRoutesList extends StatelessWidget {
             ),
           ),
         ),
-        const NearbyRouteItem(
-          routeNumber: '10F',
-          routeName: 'Carbon Market',
-          viaText: 'Via Terminal name or Bus stop name',
-          arrivalTime: 'Arriving in 3 mins',
-        ),
-        const NearbyRouteItem(
-          routeNumber: '10F',
-          routeName: 'Plaza Independencia',
-          viaText: 'Via Terminal name or Bus stop name',
-          arrivalTime: 'Arriving in 3 mins',
-        ),
+        if (routes.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'No route data available.',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+          )
+        else
+          ...routes.map(
+            (route) => NearbyRouteItem(
+              routeNumber: route.routeNumber,
+              routeName: route.routeName,
+              viaText: route.viaText,
+              arrivalTime: route.arrivalTime,
+            ),
+          ),
       ],
     );
   }
+}
+
+class NearbyRouteData {
+  final String routeNumber;
+  final String routeName;
+  final String viaText;
+  final String arrivalTime;
+
+  const NearbyRouteData({
+    required this.routeNumber,
+    required this.routeName,
+    required this.viaText,
+    required this.arrivalTime,
+  });
 }

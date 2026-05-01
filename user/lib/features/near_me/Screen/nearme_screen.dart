@@ -20,7 +20,18 @@ import '../../../shared/bottom_navBar.dart';
 import '../../map/map.dart';
 import '../Module/free_ride.dart';
 import '../Module/from_to_form.dart';
-import '../Module/nearby_terminal.dart';
+import '../Module/nearme_bottom_sheet.dart';
+
+const double nearMeMinSheetExtent = 0.08;
+const double nearMeRouteCameraPadding = 50.0;
+const String terminalsApiUrl = 'https://pasa-hero-server.vercel.app/api/terminals/';
+const List<Map<String, dynamic>> terminalsFallback = [
+  {'terminalName': 'Pacific Terminal', 'location': 'Pacific Mall, Mandaue', 'lat': 10.3232, 'lng': 123.9456, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.6 Km', 'isHighlighted': true},
+  {'terminalName': 'Marpa', 'location': 'Maguikay, Mandaue City', 'lat': 10.3312, 'lng': 123.9388, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.6 Km', 'isHighlighted': false},
+  {'terminalName': 'Jmall', 'location': 'Jmall, Mandaue City', 'lat': 10.3289, 'lng': 123.9321, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.7 Km', 'isHighlighted': false},
+  {'terminalName': 'Ayala Terminal', 'location': 'Ayala Center, Cebu City', 'lat': 10.3192, 'lng': 123.9076, 'routes': ['02A', '04B', '12C'], 'distance': '1.2 Km', 'isHighlighted': false},
+  {'terminalName': 'SM Terminal', 'location': 'SM City, Cebu', 'lat': 10.3156, 'lng': 123.9182, 'routes': ['03D', '05E', '08F'], 'distance': '1.5 Km', 'isHighlighted': false},
+];
 
 class NearMeScreen extends StatelessWidget {
   final int initialTabIndex;
@@ -57,7 +68,6 @@ class _NearMeContentState extends State<_NearMeContent> {
   String? _freeRideRouteCode;
   DateTime? _freeRideUntil;
   bool _showStopsContent = true;
-  static const double _minSheetExtent = 0.10;
 
   Map<String, dynamic>? _selectedTo;
   List<Map<String, dynamic>> _destinations = [];
@@ -99,24 +109,21 @@ class _NearMeContentState extends State<_NearMeContent> {
   /// Firestore path for the selected route code (polyline on map).
   List<LatLng>? _routeCatalogHighlightPoints;
 
-  static const double _routeCameraPadding = 50.0;
-
-  /// Fallback list when API hasn't loaded yet; includes lat/lng for route drawing.
-  static const List<Map<String, dynamic>> _terminalsFallback = [
-    {'terminalName': 'Pacific Terminal', 'location': 'Pacific Mall, Mandaue', 'lat': 10.3232, 'lng': 123.9456, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.6 Km', 'isHighlighted': true},
-    {'terminalName': 'Marpa', 'location': 'Maguikay, Mandaue City', 'lat': 10.3312, 'lng': 123.9388, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.6 Km', 'isHighlighted': false},
-    {'terminalName': 'Jmall', 'location': 'Jmall, Mandaue City', 'lat': 10.3289, 'lng': 123.9321, 'routes': ['01K', '13B', '01F', '46E'], 'distance': '0.7 Km', 'isHighlighted': false},
-    {'terminalName': 'Ayala Terminal', 'location': 'Ayala Center, Cebu City', 'lat': 10.3192, 'lng': 123.9076, 'routes': ['02A', '04B', '12C'], 'distance': '1.2 Km', 'isHighlighted': false},
-    {'terminalName': 'SM Terminal', 'location': 'SM City, Cebu', 'lat': 10.3156, 'lng': 123.9182, 'routes': ['03D', '05E', '08F'], 'distance': '1.5 Km', 'isHighlighted': false},
-  ];
-
-  static const String _terminalsApiUrl =
-      'https://pasa-hero-server.vercel.app/api/terminals/';
+  void _onSheetExtentChanged() {
+    final extent = _sheetController.size;
+    final showFreeRide = extent > nearMeMinSheetExtent && extent < 0.70;
+    final showStopsContent = extent > 0.15;
+    final shouldUpdate = (extent - _sheetExtent).abs() > 0.005 ||
+        showFreeRide != _showFreeRide ||
+        showStopsContent != _showStopsContent;
+    if (!shouldUpdate) return;
+    _updateFromSheetExtent(extent);
+  }
 
   void _updateFromSheetExtent(double extent) {
     setState(() {
       _sheetExtent = extent;
-      _showFreeRide = extent > _minSheetExtent && extent < 0.70;
+      _showFreeRide = extent > nearMeMinSheetExtent && extent < 0.70;
       _showStopsContent = extent > 0.15;
     });
   }
@@ -211,9 +218,9 @@ class _NearMeContentState extends State<_NearMeContent> {
   @override
   void initState() {
     super.initState();
-    _terminalCards = List<Map<String, dynamic>>.from(_terminalsFallback);
+    _terminalCards = List<Map<String, dynamic>>.from(terminalsFallback);
     _sheetController = DraggableScrollableController();
-    _sheetController.addListener(() => _updateFromSheetExtent(_sheetController.size));
+    _sheetController.addListener(_onSheetExtentChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _updateFromSheetExtent(_sheetController.size);
@@ -230,7 +237,7 @@ class _NearMeContentState extends State<_NearMeContent> {
 
   Future<void> _loadTerminalCardsFromApi() async {
     try {
-      final uri = Uri.parse(_terminalsApiUrl);
+      final uri = Uri.parse(terminalsApiUrl);
       final resp = await http.get(uri).timeout(const Duration(seconds: 12));
       if (resp.statusCode < 200 || resp.statusCode >= 300) return;
 
@@ -555,7 +562,7 @@ class _NearMeContentState extends State<_NearMeContent> {
     _pendingRouteFitBounds = null;
     try {
       await ctrl.animateCamera(
-        CameraUpdate.newLatLngBounds(bounds, _routeCameraPadding),
+        CameraUpdate.newLatLngBounds(bounds, nearMeRouteCameraPadding),
       );
     } catch (_) {}
   }
@@ -601,7 +608,7 @@ class _NearMeContentState extends State<_NearMeContent> {
     }
     try {
       await ctrl.animateCamera(
-        CameraUpdate.newLatLngBounds(bounds, _routeCameraPadding),
+        CameraUpdate.newLatLngBounds(bounds, nearMeRouteCameraPadding),
       );
     } catch (_) {}
   }
@@ -640,36 +647,50 @@ class _NearMeContentState extends State<_NearMeContent> {
     _nearbyServerPoll?.cancel();
     _nearbyOperatorsSub?.cancel();
     _freeRideSub?.cancel();
+    _sheetController.removeListener(_onSheetExtentChanged);
     _sheetController.dispose();
     _mapController = null;
     super.dispose();
   }
 
-  /// Builds the scrollable list of terminals (uses fallback list with routes/distance for card display)
-  Widget _buildTerminalsList(ScrollController scrollController) {
-    final terminals = _terminalCards;
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          final terminal = terminals[index];
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: index == terminals.length - 1 ? 24 : 12,
-              left: 16,
-              right: 16,
-            ),
-            child: NearbyTerminalCard(
-              terminalName: terminal['terminalName'] as String,
-              location: terminal['location'] as String,
-              routes: terminal['routes'] as List<String>,
-              distance: terminal['distance'] as String,
-              isHighlighted: terminal['isHighlighted'] as bool,
-            ),
-          );
-        },
-        childCount: terminals.length,
-      ),
-    );
+  Future<void> _onDestinationSelected(Map<String, dynamic> t) async {
+    final lat = t['lat'];
+    final lng = t['lng'];
+    final hasCoords = lat != null && lng != null && lat is num && lng is num;
+
+    setState(() {
+      _selectedTo = t;
+      _routeDistanceMeters = null;
+      _routeDistanceText = null;
+      _isCalculatingDistance = false;
+
+      if (hasCoords) {
+        _routeDestination = LatLng(lat.toDouble(), lng.toDouble());
+        _routeOrigin = _closestStopLatLng ??
+            (_userPosition != null
+                ? LatLng(_userPosition!.latitude, _userPosition!.longitude)
+                : null);
+      } else {
+        _routeOrigin = null;
+        _routeDestination = null;
+      }
+    });
+
+    if (hasCoords && _routeOrigin != null && _routeDestination != null) {
+      await _calculateRouteDistance(_routeOrigin!, _routeDestination!);
+    }
+  }
+
+  Future<void> _onRouteChanged(String? value) async {
+    setState(() => _selectedRouteCode = value);
+    _subscribeNearbyOperators();
+    _subscribeFreeRideStatus();
+    if (value == null || value.isEmpty) {
+      _pendingRouteFitBounds = null;
+      setState(() => _routeCatalogHighlightPoints = null);
+      return;
+    }
+    await _fitMapCameraToFirestoreRoute(value);
   }
 
   @override
@@ -703,34 +724,7 @@ class _NearMeContentState extends State<_NearMeContent> {
                   destinations: _destinations,
                   selectedDestination: _selectedTo,
                   isLoading: _destinationsLoading,
-                  onDestinationSelected: (t) async {
-                    final lat = t['lat'];
-                    final lng = t['lng'];
-                    final hasCoords = lat != null && lng != null && lat is num && lng is num;
-                    
-                    setState(() {
-                      _selectedTo = t;
-                      _routeDistanceMeters = null;
-                      _routeDistanceText = null;
-                      _isCalculatingDistance = false;
-                      
-                      if (hasCoords) {
-                        _routeDestination = LatLng(lat.toDouble(), lng.toDouble());
-                        _routeOrigin = _closestStopLatLng ??
-                            (_userPosition != null
-                                ? LatLng(_userPosition!.latitude, _userPosition!.longitude)
-                                : null);
-                      } else {
-                        _routeOrigin = null;
-                        _routeDestination = null;
-                      }
-                    });
-                    
-                    // Calculate accurate distance from POINT_A (nearest bus stop) to POINT_B (destination)
-                    if (hasCoords && _routeOrigin != null && _routeDestination != null) {
-                      _calculateRouteDistance(_routeOrigin!, _routeDestination!);
-                    }
-                  },
+                  onDestinationSelected: _onDestinationSelected,
                 ),
               ),
             ),
@@ -776,287 +770,20 @@ class _NearMeContentState extends State<_NearMeContent> {
 
 
            // 🔹 Bottom draggable sheet - min 10% so user always sees swipe hint
-          DraggableScrollableSheet(
-            controller: _sheetController,
-            initialChildSize: 0.38,
-            minChildSize: _minSheetExtent, // 10% peek with swipe icon
-            maxChildSize: 0.85,
-            snap: true, // Enable snapping to sizes
-            snapSizes: const [_minSheetExtent, 0.38, 0.85], // Snap: peek, initial, max
-            builder: (context, scrollController) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(24),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 12,
-                      offset: Offset(0, -4),
-                    ),
-                  ],
-                ),
-                child: CustomScrollView(
-                  controller: scrollController, // Use sheet's scroll controller for entire content
-                  physics: const ClampingScrollPhysics(), // Important for DraggableScrollableSheet
-                  slivers: [
-                    // 🔹 Drag handle + swipe hint icon (always visible so user knows they can swipe)
-                    SliverToBoxAdapter(
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Always show arrow: up when minimized, down when card is up
-                              Icon(
-                                _sheetExtent <= _minSheetExtent + 0.02
-                                    ? Icons.keyboard_arrow_up_rounded
-                                    : Icons.keyboard_arrow_down_rounded,
-                                size: 28,
-                                color: Colors.grey.shade600,
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                width: 40,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade300,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    if (_sheetExtent > 0.15) ...[
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Route / jeepney code',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey.shade800,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              if (_routeOptionsLoading)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.blue.shade700,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        'Loading route list…',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade700,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              else
-                                DropdownButtonFormField<String?>(
-                                  initialValue: _selectedRouteCode,
-                                  isExpanded: true,
-                                  decoration: InputDecoration(
-                                    prefixIcon: const Icon(Icons.directions_bus_outlined),
-                                    filled: true,
-                                    fillColor: Colors.grey.shade100,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                  ),
-                                  hint: const Text('All nearby buses'),
-                                  items: [
-                                    const DropdownMenuItem<String?>(
-                                      value: null,
-                                      child: Text('All nearby buses (any route)'),
-                                    ),
-                                    ..._routeOptions.map(
-                                      (o) => DropdownMenuItem<String?>(
-                                        value: o.code,
-                                        child: Text(
-                                          o.description != null
-                                              ? '${o.displayName} · ${o.code}'
-                                              : '${o.displayName} (${o.code})',
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                  onChanged: (value) async {
-                                    setState(() => _selectedRouteCode = value);
-                                    _subscribeNearbyOperators();
-                                    _subscribeFreeRideStatus();
-                                    if (value == null || value.isEmpty) {
-                                      _pendingRouteFitBounds = null;
-                                      setState(() => _routeCatalogHighlightPoints = null);
-                                      return;
-                                    }
-                                    await _fitMapCameraToFirestoreRoute(value);
-                                  },
-                                ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Same routes operators pick in the driver app. Choose one to see those buses on the map.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                  height: 1.3,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                          child: Text(
-                            (_selectedRouteCode == null || _selectedRouteCode!.isEmpty)
-                                ? (_nearbyOperators.isEmpty
-                                    ? 'Operators near you'
-                                    : 'Operators near you (${_nearbyOperators.length})')
-                                : (_nearbyOperators.isEmpty
-                                    ? 'Drivers — ${_labelForSelectedRoute()}'
-                                    : 'Drivers — ${_labelForSelectedRoute()} (${_nearbyOperators.length})'),
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (_nearbyOperators.isEmpty)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_operatorsFirestoreError != null) ...[
-                                  Text(
-                                    'Could not load live buses from the server. '
-                                    'Sign in, check your connection, and confirm Firestore rules allow '
-                                    'authenticated reads on operator_locations. '
-                                    '(${_operatorsFirestoreError!.length > 120 ? '${_operatorsFirestoreError!.substring(0, 120)}…' : _operatorsFirestoreError})',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.red.shade800,
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                                Text(
-                                  (_selectedRouteCode != null && _selectedRouteCode!.isNotEmpty)
-                                      ? 'No drivers match this route. Try "All nearby buses", or ensure the driver chose the same route in Profile and keeps the driver app open.'
-                                      : _userPosition == null
-                                          ? 'Allow location to see buses near you, or choose a route above.'
-                                          : 'No live bus locations yet. Drivers must open the operator app (logged in) so GPS can publish to Firestore.',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey.shade700,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      else
-                        SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              final op = _nearbyOperators[index];
-                              return Padding(
-                                padding: EdgeInsets.only(
-                                  bottom:
-                                      index == _nearbyOperators.length - 1 ? 8 : 6,
-                                  left: 16,
-                                  right: 16,
-                                ),
-                                child: Material(
-                                  elevation: 1,
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: Colors.orange.shade50,
-                                  child: ListTile(
-                                    leading: Icon(
-                                      Icons.directions_bus_filled_rounded,
-                                      color: Colors.orange.shade800,
-                                    ),
-                                    title: Text(
-                                      op.routeCode != null &&
-                                              op.routeCode!.isNotEmpty
-                                          ? 'Route ${op.routeCode}'
-                                          : 'Bus operator',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    subtitle: Text(op.distanceLabel),
-                                  ),
-                                ),
-                              );
-                            },
-                            childCount: _nearbyOperators.length,
-                          ),
-                        ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 20)),
-                    ],
-
-                    // 🔹 Title - only show when sheet is above minimum threshold
-                    if (_sheetExtent > 0.15)
-                      SliverToBoxAdapter(
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            'Nearby Stops and Terminal',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                    if (_sheetExtent > 0.15)
-                      const SliverToBoxAdapter(
-                        child: SizedBox(height: 12),
-                      ),
-
-                    // 🔹 List - Scrollable list of terminals (shown when sheet is up so user sees data on load)
-                    if (_sheetExtent > 0.15 && _showStopsContent)
-                      _buildTerminalsList(scrollController),
-                  ],
-                ),
-              );
-            },
+          NearMeBottomSheet(
+            sheetController: _sheetController,
+            sheetExtent: _sheetExtent,
+            minSheetExtent: nearMeMinSheetExtent,
+            routeOptionsLoading: _routeOptionsLoading,
+            routeOptions: _routeOptions,
+            selectedRouteCode: _selectedRouteCode,
+            onRouteChanged: _onRouteChanged,
+            labelForSelectedRoute: _labelForSelectedRoute,
+            nearbyOperators: _nearbyOperators,
+            operatorsFirestoreError: _operatorsFirestoreError,
+            userPositionAvailable: _userPosition != null,
+            terminals: _terminalCards,
+            showStopsContent: _showStopsContent,
           ),
         ],
       ),
