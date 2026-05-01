@@ -139,26 +139,6 @@ export const BusStatusService = {
         ? assignmentsById.get(String(lastTerminalLog.bus_assignment_id))
         : null;
 
-      let opsStatus = "scheduled";
-      if (lastTerminalLog) {
-        if (
-          lastTerminalLog.status === "confirmed" &&
-          lastTerminalLog.event_type === "departure"
-        ) {
-          opsStatus = "departed";
-        } else if (
-          lastTerminalLog.status === "confirmed" &&
-          lastTerminalLog.event_type === "arrival"
-        ) {
-          opsStatus = "present";
-        } else if (
-          lastTerminalLog.status === "pending" &&
-          lastTerminalLog.event_type === "arrival"
-        ) {
-          opsStatus = "arriving";
-        }
-      }
-
       return {
         _id: status._id,
         bus_number: bus?.bus_number ?? null,
@@ -176,7 +156,6 @@ export const BusStatusService = {
               event_time: lastTerminalLog.event_time,
             }
           : null,
-        ops_status: opsStatus,
         occupancy_status: status.occupancy_status,
       };
     });
