@@ -28,26 +28,22 @@ type TopBusRow = {
 
 function toRouteChartItem(row: TopRouteRow): TopSubscribedItem {
   const label =
-    row.route_code?.trim() ||
-    row.route_name?.trim() ||
-    String(row.route_id);
+    row.route_code?.trim() || row.route_name?.trim() || String(row.route_id);
   return { label, subscriptions: row.subscription_count };
 }
 
 function toBusChartItem(row: TopBusRow): TopSubscribedItem {
   const label =
-    row.bus_number?.trim() ||
-    row.plate_number?.trim() ||
-    String(row.bus_id);
+    row.bus_number?.trim() || row.plate_number?.trim() || String(row.bus_id);
   return { label, subscriptions: row.subscription_count };
 }
 
 const barColors = [
-  { bg: "rgba(37, 1, 98, 0.7)", border: "rgb(37, 1, 98)" },
-  { bg: "rgba(121, 69, 137, 0.7)", border: "rgb(121, 69, 137)" },
-  { bg: "rgba(239, 232, 121, 0.7)", border: "rgb(239, 232, 121)" },
-  { bg: "rgba(115, 207, 245, 0.7)", border: "rgb(115, 207, 245)" },
-  { bg: "rgba(67, 102, 83, 0.7)", border: "rgb(67, 102, 83)" },
+  { bg: "rgb(204, 255, 140, 0.7)", border: "rgb(204, 255, 140)" },
+  { bg: "rgb(129, 222, 118, 0.7)", border: "rgb(129, 222, 118)" },
+  { bg: "rgb(58, 85, 180, 0.7)", border: "rgb(58, 85, 180)" },
+  { bg: "rgb(108, 173, 223, 0.7)", border: "rgb(108, 173, 223)" },
+  { bg: "rgb(140, 217, 2550.7)", border: "rgb(140, 217, 255)" },
 ];
 
 function buildBarOptions(yTitle: string): ChartOptions<"bar"> {
@@ -66,7 +62,7 @@ function buildBarOptions(yTitle: string): ChartOptions<"bar"> {
     scales: {
       x: {
         beginAtZero: true,
-        title: { display: true, text: "Subscriptions" },  
+        title: { display: true, text: "Subscriptions" },
         ticks: { stepSize: 1 },
       },
       y: {
@@ -106,10 +102,14 @@ export function Top5BusesAndRoutesReport() {
       {
         label: "Subscriptions",
         data: routes.map((d) => d.subscriptions),
-        backgroundColor: routes.map((_, i) => barColors[i % barColors.length].bg),
-        borderColor: routes.map((_, i) => barColors[i % barColors.length].border),
+        backgroundColor: routes.map(
+          (_, i) => barColors[i % barColors.length].bg,
+        ),
+        borderColor: routes.map(
+          (_, i) => barColors[i % barColors.length].border,
+        ),
         borderWidth: 1.5,
-        borderRadius: 5
+        borderRadius: 5,
       },
     ],
   };
@@ -120,10 +120,14 @@ export function Top5BusesAndRoutesReport() {
       {
         label: "Subscriptions",
         data: buses.map((d) => d.subscriptions),
-        backgroundColor: buses.map((_, i) => barColors[i % barColors.length].bg),
-        borderColor: buses.map((_, i) => barColors[i % barColors.length].border),
+        backgroundColor: buses.map(
+          (_, i) => barColors[i % barColors.length].bg,
+        ),
+        borderColor: buses.map(
+          (_, i) => barColors[i % barColors.length].border,
+        ),
         borderWidth: 1.5,
-        borderRadius: 5
+        borderRadius: 5,
       },
     ],
   };
@@ -134,18 +138,24 @@ export function Top5BusesAndRoutesReport() {
       description="Routes and buses with the highest subscription count"
     >
       {isLoading ? (
-        <p className="text-sm text-base-content/70">Loading top subscriptions...</p>
+        <p className="text-sm text-base-content/70">
+          Loading top subscriptions...
+        </p>
       ) : error ? (
         <p className="text-sm text-error">{error}</p>
       ) : routes.length === 0 && buses.length === 0 ? (
-        <p className="text-sm text-base-content/70">No subscription data found.</p>
+        <p className="text-sm text-base-content/70">
+          No subscription data found.
+        </p>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div>
             <h3 className="text-sm font-semibold mb-2">Top 5 routes</h3>
             <div className="h-64">
               {routes.length === 0 ? (
-                <p className="text-sm text-base-content/70">No route subscriptions yet.</p>
+                <p className="text-sm text-base-content/70">
+                  No route subscriptions yet.
+                </p>
               ) : (
                 <Bar data={routeChartData} options={buildBarOptions("Route")} />
               )}
@@ -155,7 +165,9 @@ export function Top5BusesAndRoutesReport() {
             <h3 className="text-sm font-semibold mb-2">Top 5 buses</h3>
             <div className="h-64">
               {buses.length === 0 ? (
-                <p className="text-sm text-base-content/70">No bus subscriptions yet.</p>
+                <p className="text-sm text-base-content/70">
+                  No bus subscriptions yet.
+                </p>
               ) : (
                 <Bar data={busChartData} options={buildBarOptions("Bus")} />
               )}

@@ -51,8 +51,8 @@ export function TotalOccupancyPerRouteReport() {
       {
         label: "Total Occupancy",
         data: data.map((d) => d.total_occupancy_count),
-        backgroundColor: "rgba(0, 140, 117, 0.6)",
-        borderColor: "rgba(0, 140, 117, 1)",
+        backgroundColor: "rgb(129, 222, 118, 0.7)",
+        borderColor: "rgb(129, 222, 118)",
         borderWidth: 1.5,
         borderRadius: 10,
       },
