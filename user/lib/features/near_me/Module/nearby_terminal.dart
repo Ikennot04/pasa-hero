@@ -152,9 +152,9 @@ class NearbyTerminalCard extends StatelessWidget {
               ? const Color(0xFFF3F4F6) // Light gray background for highlighted
               : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: terminalName == 'Marpa'
+          border: isHighlighted
               ? Border.all(
-                  color: const Color(0xFFFF9800), // Orange border for Marpa
+                  color: const Color(0xFFFF9800), // Orange border for highlighted terminal
                   width: 1,
                 )
               : null,
@@ -287,17 +287,24 @@ class NearbyTerminalCard extends StatelessWidget {
 }
 
 class NearbyTerminalsList extends StatelessWidget {
-  const NearbyTerminalsList({super.key});
+  final List<NearbyTerminalData> terminals;
+  final String title;
+
+  const NearbyTerminalsList({
+    super.key,
+    this.terminals = const <NearbyTerminalData>[],
+    this.title = 'Nearby Terminals',
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
-            'Nearby Terminals',
+            title,
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -310,52 +317,36 @@ class NearbyTerminalsList extends StatelessWidget {
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            children: [
-              NearbyTerminal(
-                terminalName: 'Tamiya Terminal',
-                distance: '0.2 miles',
-                routeTags: ['MI-04A', '21B', '13C'],
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const TerminalScreen(),
+            children: terminals
+                .map(
+                  (t) => Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: NearbyTerminal(
+                      terminalName: t.terminalName,
+                      distance: t.distance,
+                      routeTags: t.routeTags,
+                      onTap: t.onTap,
                     ),
-                  );
-                },
-              ),
-              const SizedBox(width: 12),
-              NearbyTerminal(
-                terminalName: 'Tamiya Terminal',
-                distance: '0.2 miles',
-                routeTags: ['MI-04A', '21B', '13C'],
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const TerminalScreen(),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(width: 12),
-              NearbyTerminal(
-                terminalName: 'Tamiya Terminal',
-                distance: '0.2 miles',
-                routeTags: ['MI-04A', '21B', '13C'],
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const TerminalScreen(),
-                    ),
-                  );
-                },
-              ),
-            ],
+                  ),
+                )
+                .toList(),
           ),
         ),
       ],
     );
   }
+}
+
+class NearbyTerminalData {
+  final String terminalName;
+  final String distance;
+  final List<String> routeTags;
+  final VoidCallback? onTap;
+
+  const NearbyTerminalData({
+    required this.terminalName,
+    required this.distance,
+    required this.routeTags,
+    this.onTap,
+  });
 }
