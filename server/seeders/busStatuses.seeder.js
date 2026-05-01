@@ -30,6 +30,7 @@ export function busStatusPayloadForSeedBus(bus, index) {
       bus_id: String(bus._id),
       occupancy_count: 0,
       occupancy_status: "empty",
+      is_deleted: false,
     };
   }
   const occupancyCount = Math.min(
@@ -40,6 +41,7 @@ export function busStatusPayloadForSeedBus(bus, index) {
     bus_id: String(bus._id),
     occupancy_count: occupancyCount,
     occupancy_status: getOccupancyStatus(occupancyCount, bus.capacity),
+    is_deleted: false,
   };
 }
 

@@ -120,7 +120,7 @@ export async function syncBusOccupancyForCompletedTrips() {
     const busId = String(a.bus_id);
     if (activePendingByBus.has(busId)) continue;
     await BusStatus.updateOne(
-      { bus_id: busId },
+      { bus_id: busId, is_deleted: false },
       { $set: { occupancy_count: 0, occupancy_status: "empty" } },
     );
   }
@@ -137,7 +137,7 @@ export async function syncBusOccupancyForCompletedTrips() {
       const cap = multiBus.capacity || 50;
       const occ = Math.min(18, Math.max(0, cap - 1));
       await BusStatus.updateOne(
-        { bus_id: String(multiBus._id) },
+        { bus_id: String(multiBus._id), is_deleted: false },
         { $set: { occupancy_count: occ, occupancy_status: getOccupancyStatus(occ, cap) } },
       );
     }
@@ -150,7 +150,7 @@ export async function syncBusOccupancyForCompletedTrips() {
     .lean();
   for (const b of emptyOccupancyBuses) {
     await BusStatus.updateOne(
-      { bus_id: String(b._id) },
+      { bus_id: String(b._id), is_deleted: false },
       { $set: { occupancy_count: 0, occupancy_status: "empty" } },
     );
   }
