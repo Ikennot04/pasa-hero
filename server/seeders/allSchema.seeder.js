@@ -1192,6 +1192,36 @@ const seedData = async () => {
         firebase_id: "firebase_user_008",
         profile_image: "default.png",
       },
+      {
+        f_name: "Carlo",
+        l_name: "Mendoza",
+        email: "seed.unassigned.operator@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_unassigned_operator_001",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Paulo",
+        l_name: "Sarmiento",
+        email: "seed.unassigned.operator2@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_unassigned_operator_002",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Lester",
+        l_name: "Villarin",
+        email: "seed.unassigned.operator3@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_unassigned_operator_003",
+        profile_image: "default.png",
+      },
     ];
 
     const users = await User.insertMany(
@@ -1294,6 +1324,34 @@ const seedData = async () => {
       terminalAdminEmail: DEV_TERMINAL_ADMIN.email,
       fallbackTerminalId: smTerminal._id,
     });
+
+    await User.updateOne(
+      { email: "seed.unassigned.operator@pasahero.local" },
+      {
+        $set: {
+          assigned_terminal: smTerminal._id,
+          created_by: null,
+        },
+      },
+    );
+    await User.updateOne(
+      { email: "seed.unassigned.operator2@pasahero.local" },
+      {
+        $set: {
+          assigned_terminal: smTerminal._id,
+          created_by: null,
+        },
+      },
+    );
+    await User.updateOne(
+      { email: "seed.unassigned.operator3@pasahero.local" },
+      {
+        $set: {
+          assigned_terminal: smTerminal._id,
+          created_by: null,
+        },
+      },
+    );
 
     // ==========================================
     // 3. CREATE ROUTES
@@ -1882,6 +1940,27 @@ const seedData = async () => {
         l_name: "Fernandez",
         license_number: "D01-12-345686",
         contact_number: "09171234575",
+        status: "active",
+      },
+      {
+        f_name: "Daniel",
+        l_name: "Mercado",
+        license_number: "SM-UNASSIGNED-DRIVER-001",
+        contact_number: "09990000001",
+        status: "active",
+      },
+      {
+        f_name: "Erwin",
+        l_name: "Salazar",
+        license_number: "SM-UNASSIGNED-DRIVER-002",
+        contact_number: "09990000002",
+        status: "active",
+      },
+      {
+        f_name: "Joel",
+        l_name: "Fernandez",
+        license_number: "SM-UNASSIGNED-DRIVER-003",
+        contact_number: "09990000003",
         status: "active",
       },
     ]);

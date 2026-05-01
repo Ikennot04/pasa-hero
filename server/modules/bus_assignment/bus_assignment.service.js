@@ -1,4 +1,8 @@
 import BusAssignment from "./bus_assignment.model.js";
+import Bus from "../bus/bus.model.js";
+import Driver from "../driver/driver.model.js";
+import User from "../user/user.model.js";
+import Route from "../route/route.model.js";
 
 function populateBusAssignmentRefs(query) {
   return query
@@ -116,6 +120,71 @@ function populateBusAssignmentListRefs(query) {
 }
 
 export const BusAssignmentService = {
+  // GET AVAILABLE RESOURCES FOR NEW ASSIGNMENT ===============================================
+  async getAvailableAssignmentResourcesByTerminalId(terminalId) {
+    if (!terminalId) {
+      const error = new Error("Terminal ID is required.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const blockedAssignmentFilter = {
+      assignment_status: { $in: ["active", "inactive"] },
+      assignment_result: "pending",
+    };
+
+    const [blockedBusIdsRaw, blockedDriverIdsRaw, blockedOperatorIdsRaw] =
+      await Promise.all([
+      BusAssignment.distinct("bus_id", blockedAssignmentFilter),
+      BusAssignment.distinct("driver_id", blockedAssignmentFilter),
+      BusAssignment.distinct("operator_user_id", blockedAssignmentFilter),
+      ]);
+
+    const blockedBusIds = blockedBusIdsRaw.filter(Boolean);
+    const blockedDriverIds = blockedDriverIdsRaw.filter(Boolean);
+    const blockedOperatorIds = blockedOperatorIdsRaw.filter(Boolean);
+
+    const [buses, drivers, operators, routes] = await Promise.all([
+      Bus.find({
+        _id: { $nin: blockedBusIds },
+        is_deleted: { $ne: true },
+        status: "active",
+      })
+        .select("bus_number")
+        .sort({ bus_number: 1 })
+        .lean(),
+      Driver.find({
+        _id: { $nin: blockedDriverIds },
+        is_deleted: { $ne: true },
+        status: "active",
+      })
+        .select("f_name l_name")
+        .sort({ f_name: 1, l_name: 1 })
+        .lean(),
+      User.find({
+        _id: { $nin: blockedOperatorIds },
+        role: "operator",
+        status: "active",
+        assigned_terminal: terminalId,
+      })
+        .select("f_name l_name")
+        .sort({ f_name: 1, l_name: 1 })
+        .lean(),
+      Route.find({
+        route_type: "normal",
+        is_deleted: { $ne: true },
+        status: "active",
+        $or: [{ start_terminal_id: terminalId }, { end_terminal_id: terminalId }],
+      })
+        .select("route_name route_code")
+        .sort({ route_name: 1 })
+        .lean(),
+   
+    ]);
+
+    return { buses, drivers, operators, routes };
+  },
+
   // GET ALL BUS ASSIGNMENTS ===================================================================
   async getAllBusAssignments() {
     const assignments = await populateBusAssignmentListRefs(

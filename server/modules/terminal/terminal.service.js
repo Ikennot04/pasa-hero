@@ -160,7 +160,7 @@ export const TerminalService = {
   },
 
   /**
-   * Metrics for a terminal: today's scheduled arrivals (by route end terminal + ETA),
+   * Metrics for a terminal: total scheduled buses for routes ending at this terminal,
    * current presence, departures confirmed on the selected UTC day, and pending confirmations.
    * @param {string} terminalId
    * @param {{ date?: string }} [options] date as YYYY-MM-DD (UTC); defaults to current UTC day
@@ -196,12 +196,11 @@ export const TerminalService = {
       .lean();
     const routeIds = routesEndingHere.map((r) => r._id);
 
-    const totalScheduledArrivalsToday =
+    const totalScheduledBuses =
       routeIds.length === 0
         ? 0
         : await BusAssignment.countDocuments({
             route_id: { $in: routeIds },
-            scheduled_arrival_at: { $gte: start, $lt: endExclusive },
           });
 
     const logs = await TerminalLog.find({ terminal_id: terminalObjectId }).lean();
@@ -239,7 +238,7 @@ export const TerminalService = {
     return {
       terminal_id: terminal._id,
       date_utc: start.toISOString().slice(0, 10),
-      total_scheduled_arrivals_today: totalScheduledArrivalsToday,
+      total_scheduled_buses: totalScheduledBuses,
       buses_present: busesPresent,
       buses_departed_today: departedToday,
       pending_confirmations: pendingConfirmations,
@@ -443,7 +442,6 @@ export const TerminalService = {
         ? Promise.resolve([])
         : BusAssignment.find({
             route_id: { $in: routeIds },
-            scheduled_arrival_at: { $gte: start, $lt: endExclusive },
           })
             .populate({ path: "bus_id", select: "bus_number" })
             .populate({ path: "route_id", select: "route_name" })
@@ -473,7 +471,7 @@ export const TerminalService = {
       byAssignment.get(key).push(log);
     }
 
-    const scheduled_buses_today = scheduledQuery.map((a) => {
+    const scheduled_buses = scheduledQuery.map((a) => {
       const assignmentLogs = byAssignment.get(String(a._id)) || [];
       return {
         bus_number: a.bus_id?.bus_number ?? null,
@@ -550,12 +548,12 @@ export const TerminalService = {
       terminal_id: terminal._id,
       date_utc: start.toISOString().slice(0, 10),
       counts: {
-        scheduled_buses_today: scheduled_buses_today.length,
+        scheduled_buses: scheduled_buses.length,
         pending_arrival_confirmations: pending_arrival_confirmations.length,
         pending_departure_confirmations: pending_departure_confirmations.length,
         currently_present_at_terminal: currently_present_at_terminal,
       },
-      scheduled_buses_today,
+      scheduled_buses,
       pending_arrival_confirmations,
       pending_departure_confirmations,
       confirmation_history: confirmationHistory,

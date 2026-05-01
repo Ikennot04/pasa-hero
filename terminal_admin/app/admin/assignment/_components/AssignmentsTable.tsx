@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import EditAssignmentModal from "./EditAssignment";
+import UpdateAssignmentModal from "./UpdateAssignment";
 import type { AssignmentRow, DriverOption } from "./assignmentTypes";
 
 function StatusBadge({ status }: { status: string }) {
@@ -122,7 +122,7 @@ export default function AssignmentsTable({
                     )}
                   </td>
                   <td>
-                    <EditAssignmentModal
+                    <UpdateAssignmentModal
                       assignment={a}
                       drivers={drivers}
                       onUpdated={onAssignmentUpdated}

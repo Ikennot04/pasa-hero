@@ -9,6 +9,20 @@ export const getAllBusAssignments = async (req, res) => {
   }
 };
 
+export const getAvailableAssignmentResourcesByTerminalId = async (req, res) => {
+  try {
+    const { terminalId } = req.params;
+    const resources =
+      await BusAssignmentService.getAvailableAssignmentResourcesByTerminalId(
+        terminalId,
+      );
+    res.status(200).json({ success: true, data: resources });
+  } catch (error) {
+    const statusCode = error.statusCode || 400;
+    res.status(statusCode).json({ success: false, message: error.message });
+  }
+};
+
 export const getBusAssignmentById = async (req, res) => {
   try {
     const { id } = req.params;

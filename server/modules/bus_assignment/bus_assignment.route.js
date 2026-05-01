@@ -3,6 +3,7 @@ import {
   createBusAssignment,
   deleteBusAssignmentById,
   getAllBusAssignments,
+  getAvailableAssignmentResourcesByTerminalId,
   getBusAssignmentById,
   updateBusAssignmentById,
 } from "./bus_assignment.controller.js";
@@ -10,6 +11,7 @@ import {
 const router = express.Router();
 
 router.get("/", getAllBusAssignments);
+router.get("/available/terminal/:terminalId", getAvailableAssignmentResourcesByTerminalId);
 router.post("/", createBusAssignment);
 router.get("/:id", getBusAssignmentById);
 router.patch("/:id", updateBusAssignmentById);

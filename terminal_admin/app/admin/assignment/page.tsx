@@ -10,7 +10,7 @@ import type {
   DriverOption,
 } from "./_components/assignmentTypes";
 import { useGetAssignments } from "./_hooks/useGetAssignments";
-import { useGetDrivers } from "./_hooks/useGetDrivers";
+import { useGetAvailables } from "./_hooks/useGetAvailables";
 import {
   mapApiAssignmentToRow,
   mapApiDriverToOption,
@@ -33,7 +33,7 @@ const ASSIGNMENT_RESULT_OPTIONS: AssignmentResult[] = [
 
 export default function AssignmentPage() {
   const { getAssignments, error: assignmentsError } = useGetAssignments();
-  const { getDrivers, error: driversError } = useGetDrivers();
+  const { getAvailables, error: availablesError } = useGetAvailables();
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
@@ -47,13 +47,18 @@ export default function AssignmentPage() {
   >("all");
 
   const loadDrivers = useCallback(async () => {
-    const response = await getDrivers();
-    if (response?.success === true && Array.isArray(response.data)) {
-      setDrivers((response.data as ApiDriver[]).map(mapApiDriverToOption));
+    const response = await getAvailables();
+    const availableDrivers =
+      response?.success === true && response?.data
+        ? (response.data as { drivers?: ApiDriver[] }).drivers
+        : null;
+
+    if (Array.isArray(availableDrivers)) {
+      setDrivers(availableDrivers.map(mapApiDriverToOption));
       return;
     }
     setDrivers([]);
-  }, [getDrivers]);
+  }, [getAvailables]);
 
   const loadAssignments = useCallback(async () => {
     const response = await getAssignments();
@@ -108,9 +113,9 @@ export default function AssignmentPage() {
     <div className="space-y-4 pt-6">
       <div className="text-xl font-bold">Assignment Management Table</div>
 
-      {driversError ? (
+      {availablesError ? (
         <div role="alert" className="alert alert-error text-sm">
-          {driversError}
+          {availablesError}
         </div>
       ) : null}
       {assignmentsError ? (
@@ -166,7 +171,7 @@ export default function AssignmentPage() {
             Showing {filteredAssignments.length} of {assignments.length} assignments
           </span>
         </div>
-        <AddAssignmentModal drivers={drivers} onAdded={loadAssignments} />
+        <AddAssignmentModal onAdded={loadAssignments} />
       </div>
 
       {assignmentsLoading ? (

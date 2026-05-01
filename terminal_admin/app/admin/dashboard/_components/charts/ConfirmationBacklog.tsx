@@ -29,10 +29,10 @@ export default function ConfirmationBacklog({
         {
           data: [pendingArrivalCount, pendingDepartureCount],
           backgroundColor: [
-            "rgb(1, 127, 125, 0.50)",
-            "rgb(3, 174, 210, 0.50)",
+            "rgba(96, 206, 128, 0.70)",
+            "rgba(21, 67, 96, 0.70)",
           ],
-          borderColor: ["rgb(1, 127, 125)", "rgb(3, 174, 210)"],
+          borderColor: ["rgba(96, 206, 128, 1)", "rgba(21, 67, 96, 1)"],
           borderWidth: 1.5,
         },
       ],
@@ -57,15 +57,6 @@ export default function ConfirmationBacklog({
             Loading chart...
           </div>
         )}
-      </div>
-
-      <div className="mt-3 flex items-center gap-4 flex-wrap text-[0.85rem]">
-        <span className="badge border-[#017f7d] text-[#017f7d]">
-          Arrivals: {pendingArrivalCount}
-        </span>
-        <span className="badge border-[#03AED2] text-[#03AED2]">
-          Departures: {pendingDepartureCount}
-        </span>
       </div>
     </div>
   );

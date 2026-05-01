@@ -22,6 +22,7 @@ import userNotificationRoutes from "./modules/user_notification/user_notificatio
 import userSubscriptionRoutes from "./modules/user_subscription/user_subscription.route.js";
 import systemLogRoutes from "./modules/system_log/system_log.route.js";
 import dashboardRoutes from "./modules/admin_dashboard/dashboard.route.js";
+import seedUnassignedBusDriverOperator from "./seeders/unassignedBusDriverOperator.seeder.js";
 
 const app = express();
 
@@ -52,6 +53,12 @@ if (!_dbURI) {
   mongoose.connect(_dbURI)
     .then(() => {
       console.log("✅ Connected to Mongo DB");
+      seedUnassignedBusDriverOperator().catch((seedError) => {
+        console.error(
+          "❌ Failed to seed unassigned SM bus/driver/operator:",
+          seedError.message,
+        );
+      });
     })
     .catch((error) => {
       console.error('❌ MongoDB connection failed:', error.message);

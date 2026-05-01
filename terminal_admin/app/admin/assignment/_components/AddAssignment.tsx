@@ -3,40 +3,33 @@
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useGetAvailables } from "../_hooks/useGetAvailables";
 import { addAssignmentSchema } from "./addAssignmentSchema";
-import type { AssignmentFormData, DriverOption } from "./assignmentTypes";
+import type { AssignmentFormData } from "./assignmentTypes";
 
-const BUS_OPTIONS = [
-  { id: "b1", bus_number: "BUS-101" },
-  { id: "b2", bus_number: "BUS-102" },
-  { id: "b3", bus_number: "BUS-103" },
-  { id: "b4", bus_number: "BUS-104" },
-  { id: "b5", bus_number: "BUS-105" },
-];
-
-const ROUTE_OPTIONS = [
-  { id: "r1", route_name: "EDSA - Monumento to PITX" },
-  { id: "r2", route_name: "Commonwealth - Fairview to SM North" },
-  { id: "r3", route_name: "Quezon Ave - QC Circle to Quiapo" },
-];
-
-const OPERATOR_OPTIONS = [
-  { id: "op1", name: "Carlos Reyes" },
-  { id: "op2", name: "Elena Torres" },
-  { id: "op3", name: "Miguel Santos" },
-];
+type AvailableBus = { _id: string; bus_number?: string };
+type AvailableRoute = { _id: string; route_name?: string };
+type AvailablePerson = { _id: string; f_name?: string; l_name?: string };
+type AvailableResources = {
+  buses?: AvailableBus[];
+  routes?: AvailableRoute[];
+  operators?: AvailablePerson[];
+  drivers?: AvailablePerson[];
+};
 
 type AddAssignmentModalProps = {
-  drivers: DriverOption[];
   onAdded?: () => void;
 };
 
-export default function AddAssignmentModal({
-  drivers,
-  onAdded,
-}: AddAssignmentModalProps) {
+export default function AddAssignmentModal({ onAdded }: AddAssignmentModalProps) {
   const [open, setOpen] = useState(false);
+  const [buses, setBuses] = useState<AvailableBus[]>([]);
+  const [routes, setRoutes] = useState<AvailableRoute[]>([]);
+  const [operators, setOperators] = useState<AvailablePerson[]>([]);
+  const [drivers, setDrivers] = useState<AvailablePerson[]>([]);
+  const [loadingAvailables, setLoadingAvailables] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const { getAvailables, error: availablesError } = useGetAvailables();
 
   const {
     register,
@@ -68,10 +61,29 @@ export default function AddAssignmentModal({
     reset();
   }
 
+  useEffect(() => {
+    if (!open) return;
+
+    (async () => {
+      setLoadingAvailables(true);
+      const response = await getAvailables();
+      const data =
+        response?.success === true && response?.data
+          ? (response.data as AvailableResources)
+          : null;
+
+      setBuses(Array.isArray(data?.buses) ? data.buses : []);
+      setRoutes(Array.isArray(data?.routes) ? data.routes : []);
+      setOperators(Array.isArray(data?.operators) ? data.operators : []);
+      setDrivers(Array.isArray(data?.drivers) ? data.drivers : []);
+      setLoadingAvailables(false);
+    })();
+  }, [getAvailables, open]);
+
   async function onSubmit(data: AssignmentFormData) {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/bus-assignments`, {
+      const res = await fetch(`${baseUrl}/api/bus-assignments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -104,6 +116,11 @@ export default function AddAssignmentModal({
         <div className="modal-box">
           <h3 className="font-bold text-lg">Add new assignment</h3>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
+            {availablesError ? (
+              <div role="alert" className="alert alert-error text-sm">
+                {availablesError}
+              </div>
+            ) : null}
             <div className="form-control">
               <label className="label">
                 <span className="label-text">Driver</span>
@@ -114,7 +131,7 @@ export default function AddAssignmentModal({
               >
                 <option value="">Select driver</option>
                 {drivers.map((d) => (
-                  <option key={d.id} value={d.id}>
+                  <option key={d._id} value={d._id}>
                     {d.f_name} {d.l_name}
                   </option>
                 ))}
@@ -133,8 +150,8 @@ export default function AddAssignmentModal({
                 {...register("bus_id")}
               >
                 <option value="">Select bus</option>
-                {BUS_OPTIONS.map((b) => (
-                  <option key={b.id} value={b.id}>
+                {buses.map((b) => (
+                  <option key={b._id} value={b._id}>
                     {b.bus_number}
                   </option>
                 ))}
@@ -153,8 +170,8 @@ export default function AddAssignmentModal({
                 {...register("route_id")}
               >
                 <option value="">Select route</option>
-                {ROUTE_OPTIONS.map((r) => (
-                  <option key={r.id} value={r.id}>
+                {routes.map((r) => (
+                  <option key={r._id} value={r._id}>
                     {r.route_name}
                   </option>
                 ))}
@@ -173,9 +190,9 @@ export default function AddAssignmentModal({
                 {...register("operator_user_id")}
               >
                 <option value="">Select operator</option>
-                {OPERATOR_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
+                {operators.map((o) => (
+                  <option key={o._id} value={o._id}>
+                    {o.f_name} {o.l_name}
                   </option>
                 ))}
               </select>
@@ -193,7 +210,7 @@ export default function AddAssignmentModal({
               <button
                 type="submit"
                 className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80"
-                disabled={isSubmitting}
+                disabled={isSubmitting || loadingAvailables}
               >
                 {isSubmitting ? "Adding..." : "Add assignment"}
               </button>

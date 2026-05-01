@@ -40,7 +40,7 @@ ChartJS.register(
   Legend,
 );
 
-const DEFAULT_TERMINAL_NAME = "PITX";
+const DEFAULT_TERMINAL_NAME = "terminal name";
 
 type TerminalNotificationType = {
   _id: string;
@@ -79,11 +79,15 @@ type BusDepartedType = {
 
 function formatDate(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  return d.toLocaleDateString([], {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 export default function Dashboard() {
-  const terminalName = DEFAULT_TERMINAL_NAME;
+  const [terminalName, setTerminalName] = useState(DEFAULT_TERMINAL_NAME);
 
   // Imported Hooks
   const { getTerminalSummary } = useGetTerminalSummary();
@@ -116,7 +120,7 @@ export default function Dashboard() {
 
   // Terminal Summary States
   const [terminalSummary, setTerminalSummary] = useState({
-    total_scheduled_arrivals_today: 0,
+    total_scheduled_buses: 0,
     buses_present: 0,
     buses_departed_today: 0,
     pending_confirmations: 0,
@@ -222,6 +226,15 @@ export default function Dashboard() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    const assignedTerminalName = window.localStorage.getItem(
+      "assigned_terminal_name",
+    );
+    if (assignedTerminalName) {
+      setTerminalName(assignedTerminalName);
+    }
+  }, []);
+
   const refreshAfterTerminalConfirm = useCallback(async () => {
     const [pendingData, summaryData, opsData] = await Promise.all([
       getPendingConfirmation(),
@@ -253,8 +266,13 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight">
             Terminal Dashboard
           </h1>
-          <p className="text-sm text-base-content/70">
-            {terminalName} • {nowIso ? formatDate(nowIso) : "—"} • Live view
+          <p className="flex items-center gap-2 text-sm text-base-content/70">
+            <span>{nowIso ? formatDate(nowIso) : "—"}</span>
+            <span>•</span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-green-500" />
+              LIVE
+            </span>
           </p>
         </div>
 
@@ -276,49 +294,37 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="text-sm text-base-content/70">
-            Total buses scheduled to arrive today
+            Total scheduled buses
           </div>
           <div className="mt-2 text-3xl font-bold">
-            {terminalSummary?.total_scheduled_arrivals_today}
-          </div>
-          <div className="mt-1 text-sm text-base-content/60">
-            All scheduled ETAs
+            {terminalSummary?.total_scheduled_buses}
           </div>
         </div>
 
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="text-sm text-base-content/70">
-            Buses currently present at the terminal
+            Arrived
           </div>
           <div className="mt-2 text-3xl font-bold">
             {terminalSummary?.buses_present}
           </div>
-          <div className="mt-1 text-sm text-base-content/60">
-            Arrived, not departed
-          </div>
         </div>
 
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="text-sm text-base-content/70">
-            Buses that have departed
+            Departure confirmed
           </div>
           <div className="mt-2 text-3xl font-bold">
             {terminalSummary?.buses_departed_today}
           </div>
-          <div className="mt-1 text-sm text-base-content/60">
-            Departure confirmed
-          </div>
         </div>
 
         <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
           <div className="text-sm text-base-content/70">
-            Pending confirmations
+            Arrivals + departures waiting
           </div>
           <div className="mt-2 text-3xl font-bold">
             {terminalSummary?.pending_confirmations}
-          </div>
-          <div className="mt-1 text-sm text-base-content/60">
-            Arrivals + departures waiting
           </div>
         </div>
       </div>

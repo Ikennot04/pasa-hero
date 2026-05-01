@@ -81,9 +81,14 @@ export default function PendingConfirmation({
         </div>
       ) : null}
 
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-lg border border-base-200 p-3 bg-base-100">
-          <h3 className="font-semibold">Arrivals waiting</h3>
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border border-info/30 bg-info/5 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-info/30 bg-info/10 px-3 py-2">
+            <h3 className="font-semibold text-info">Arrivals waiting</h3>
+            <span className="badge badge-sm badge-info">
+              {pendingArrival.length} pending
+            </span>
+          </div>
           <div className="mt-2 overflow-x-auto">
             <table className="table table-zebra w-full">
               <thead>
@@ -128,8 +133,13 @@ export default function PendingConfirmation({
           </div>
         </div>
 
-        <div className="rounded-lg border border-base-200 p-3 bg-base-100">
-          <h3 className="font-semibold">Departures waiting</h3>
+        <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
+            <h3 className="font-semibold text-warning">Departures waiting</h3>
+            <span className="badge badge-sm badge-warning">
+              {pendingDeparture.length} pending
+            </span>
+          </div>
           <div className="mt-2 overflow-x-auto">
             <table className="table table-zebra w-full">
               <thead>

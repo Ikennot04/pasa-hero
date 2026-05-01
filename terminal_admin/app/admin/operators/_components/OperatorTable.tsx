@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useGetOperators } from "../_hooks/useGetOperators";
+import { useSuspendOperator } from "../_hooks/useSuspendOperator";
+import SuspendOperator, {
+  CONFIRM_SUSPEND_OPERATOR_MODAL_ID,
+  type ConfirmOperatorStatusModalMode,
+} from "./SuspendOperator";
+import { MdOutlinePerson, MdOutlinePersonOff } from "react-icons/md";
 
 type Operator = {
   id: string;
@@ -94,12 +100,17 @@ type OperatorTableProps = {
 
 export default function OperatorTable({ refreshSignal = 0 }: OperatorTableProps) {
   const { getOperators, error } = useGetOperators();
+  const { suspendOperator, unsuspendOperator } = useSuspendOperator();
   const [operators, setOperators] = useState<Operator[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | Operator["status"]>(
     "All",
   );
+  const [statusConfirm, setStatusConfirm] = useState<{
+    operator: Operator;
+    mode: ConfirmOperatorStatusModalMode;
+  } | null>(null);
 
   useEffect(() => {
     const assignedTerminal = localStorage.getItem("assigned_terminal")?.trim();
@@ -133,78 +144,141 @@ export default function OperatorTable({ refreshSignal = 0 }: OperatorTableProps)
     });
   }, [operators, searchTerm, statusFilter]);
 
+  const openStatusModal = (
+    operator: Operator,
+    mode: ConfirmOperatorStatusModalMode,
+  ) => {
+    setStatusConfirm({ operator, mode });
+    (
+      document.getElementById(
+        CONFIRM_SUSPEND_OPERATOR_MODAL_ID,
+      ) as HTMLDialogElement
+    )?.showModal();
+  };
+
+  const handleConfirmStatusChange = async (operator: Operator) => {
+    const ctx = statusConfirm;
+    if (!ctx || ctx.operator.id !== operator.id) return;
+
+    if (ctx.mode === "unsuspend") {
+      await unsuspendOperator(operator.id);
+    } else {
+      await suspendOperator(operator.id);
+    }
+
+    setOperators((current) =>
+      current.map((row) =>
+        row.id === operator.id
+          ? {
+              ...row,
+              status: ctx.mode === "unsuspend" ? "Active" : "Suspended",
+            }
+          : row,
+      ),
+    );
+  };
+
   return (
-    <div className="rounded-xl border border-base-300 bg-base-100 overflow-x-auto">
-      <div className="p-4 border-b border-base-300 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <input
-          type="text"
-          placeholder="Search operator, email, terminal, creator"
-          className="input input-bordered w-full md:max-w-sm"
-          value={searchTerm}
-          onChange={(event) => setSearchTerm(event.target.value)}
-        />
-        <select
-          className="select select-bordered w-full md:w-52"
-          value={statusFilter}
-          onChange={(event) =>
-            setStatusFilter(event.target.value as "All" | Operator["status"])
-          }
-        >
-          <option value="All">All status</option>
-          <option value="Active">Active</option>
-          <option value="Suspended">Suspended</option>
-        </select>
-      </div>
-      <table className="table w-full">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Assigned terminal</th>
-            <th>Created by</th>
-            <th>Status</th>
-            <th className="text-right">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {isLoading ? (
+    <>
+      <div className="rounded-xl border border-base-300 bg-base-100 overflow-x-auto">
+        <div className="p-4 border-b border-base-300 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <input
+            type="text"
+            placeholder="Search operator, email, terminal, creator"
+            className="input input-bordered w-full md:max-w-sm"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+          <select
+            className="select select-bordered w-full md:w-52"
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(event.target.value as "All" | Operator["status"])
+            }
+          >
+            <option value="All">All status</option>
+            <option value="Active">Active</option>
+            <option value="Suspended">Suspended</option>
+          </select>
+        </div>
+        <table className="table w-full">
+          <thead>
             <tr>
-              <td colSpan={6} className="text-center py-8 text-base-content/70">
-                Loading operators...
-              </td>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Assigned terminal</th>
+              <th>Created by</th>
+              <th>Status</th>
+              <th className="text-right">Action</th>
             </tr>
-          ) : error ? (
-            <tr>
-              <td colSpan={6} className="text-center py-8 text-error">
-                {error}
-              </td>
-            </tr>
-          ) : filteredOperators.length > 0 ? (
-            filteredOperators.map((operator) => (
-              <tr key={operator.id}>
-                <td className="font-medium">{operator.name}</td>
-                <td>{operator.email}</td>
-                <td>{operator.terminal}</td>
-                <td>{operator.createdBy}</td>
-                <td>
-                  <span
-                    className={`badge ${operator.status === "Active" ? "badge-success" : "badge-error"}`}
-                  >
-                    {operator.status}
-                  </span>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={6} className="text-center py-8 text-base-content/70">
+                  Loading operators...
                 </td>
-                <td className="text-right text-base-content/50">—</td>
               </tr>
-            ))
-          ) : (
-            <tr>
-              <td colSpan={6} className="text-center py-8 text-base-content/70">
-                No operators found.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+            ) : error ? (
+              <tr>
+                <td colSpan={6} className="text-center py-8 text-error">
+                  {error}
+                </td>
+              </tr>
+            ) : filteredOperators.length > 0 ? (
+              filteredOperators.map((operator) => (
+                <tr key={operator.id}>
+                  <td className="font-medium">{operator.name}</td>
+                  <td>{operator.email}</td>
+                  <td>{operator.terminal}</td>
+                  <td>{operator.createdBy}</td>
+                  <td>
+                    <span
+                      className={`badge ${operator.status === "Active" ? "badge-success" : "badge-error"}`}
+                    >
+                      {operator.status}
+                    </span>
+                  </td>
+                  <td className="text-right">
+                    <div className="flex justify-end">
+                      {operator.status === "Suspended" ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-success text-white"
+                          onClick={() => openStatusModal(operator, "unsuspend")}
+                        >
+                          <MdOutlinePerson className="w-4 h-4" />
+                          Unsuspend
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-sm bg-[#D0393A] hover:bg-[#D0393A]/90 text-white"
+                          onClick={() => openStatusModal(operator, "suspend")}
+                        >
+                          <MdOutlinePersonOff className="w-4 h-4" />
+                          Suspend
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="text-center py-8 text-base-content/70">
+                  No operators found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <SuspendOperator
+        operator={statusConfirm?.operator ?? null}
+        mode={statusConfirm?.mode ?? "suspend"}
+        onConfirm={handleConfirmStatusChange}
+      />
+    </>
   );
 }
