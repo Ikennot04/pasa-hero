@@ -209,6 +209,20 @@ const DRIVER_LICENSES = [
   "D01-12-345686",
 ];
 
+/** Extra drivers for SM operational-summary demo assignments (unique active+pending vs main seed). */
+const SM_DEMO_DRIVER_LICENSES = [
+  "D01-SEED-SM-DEMO-01",
+  "D01-SEED-SM-DEMO-02",
+  "D01-SEED-SM-DEMO-03",
+  "D01-SEED-SM-DEMO-04",
+  "D01-SEED-SM-DEMO-05",
+  "D01-SEED-SM-DEMO-06",
+  "D01-SEED-SM-DEMO-07",
+  "D01-SEED-SM-DEMO-08",
+  "D01-SEED-SM-DEMO-09",
+  "D01-SEED-SM-DEMO-10",
+];
+
 export async function seedOperationalSummaryDemo() {
   const smTerminal = await Terminal.findOne({
     terminal_name: "SM City Cebu Terminal",
@@ -227,9 +241,9 @@ export async function seedOperationalSummaryDemo() {
 
   const smRouteIds = [route03C._id, route06F._id];
 
-  const operator = await User.findOne({ role: "operator" });
-  if (!operator) {
-    throw new Error('No user with role "operator". Run `npm run seed` first.');
+  const operatorReporter = await User.findOne({ email: "maria.santos@email.com" });
+  if (!operatorReporter) {
+    throw new Error("Operator maria.santos@email.com not found. Run `npm run seed` first.");
   }
 
   const admin = await User.findOne({ role: "super admin" });
@@ -292,27 +306,97 @@ export async function seedOperationalSummaryDemo() {
     [8, true, 17, 30],
   ];
 
+  /** Matches getAvailableAssignmentResourcesByTerminalId: any pending trip blocks the driver/operator. */
+  const pendingCrewUsing = await BusAssignment.find({
+    assignment_result: "pending",
+  })
+    .select("driver_id operator_user_id")
+    .lean();
+  const usedDriverIds = new Set(
+    pendingCrewUsing.map((x) => String(x.driver_id)),
+  );
+  const usedOperatorIds = new Set(
+    pendingCrewUsing.map((x) => String(x.operator_user_id)),
+  );
+
+  const smDemoDriverDocs = await Driver.find({
+    license_number: { $in: SM_DEMO_DRIVER_LICENSES },
+  }).lean();
+  const smDemoByLic = new Map(
+    smDemoDriverDocs.map((d) => [d.license_number, d]),
+  );
+  for (const lic of SM_DEMO_DRIVER_LICENSES) {
+    if (!smDemoByLic.has(lic)) {
+      throw new Error(`SM demo driver ${lic} not found. Run full \`npm run seed\` first.`);
+    }
+  }
+
+  const smFreeOperators = await User.find({
+    role: "operator",
+    status: "active",
+    email: { $regex: /^seed\.op\.smfree\./ },
+  })
+    .sort({ email: 1 })
+    .lean();
+
+  let smDemoDriverIdx = 0;
+  let smFreeOpIdx = 0;
+
+  const takeSmDemoDriver = () => {
+    while (smDemoDriverIdx < SM_DEMO_DRIVER_LICENSES.length) {
+      const lic = SM_DEMO_DRIVER_LICENSES[smDemoDriverIdx++];
+      const d = smDemoByLic.get(lic);
+      const id = String(d._id);
+      if (usedDriverIds.has(id)) continue;
+      usedDriverIds.add(id);
+      return d._id;
+    }
+    throw new Error(
+      "Not enough free SM demo drivers for extras — add more D01-SEED-SM-DEMO-* drivers in allSchema seeder.",
+    );
+  };
+
+  const takeSmFreeOperator = () => {
+    while (smFreeOpIdx < smFreeOperators.length) {
+      const u = smFreeOperators[smFreeOpIdx++];
+      const id = String(u._id);
+      if (usedOperatorIds.has(id)) continue;
+      usedOperatorIds.add(id);
+      return u._id;
+    }
+    throw new Error(
+      "Not enough free seed.op.smfree.* operators for SM demo extras — add more in allSchema seeder.",
+    );
+  };
+
+  const inactiveSeedDriver = await Driver.findOne({
+    license_number: "D01-12-345684",
+  });
+
   const extraPayload = extraSpecs
     .map(([busIdx, use06F, h, m]) => {
       const bus = demoBuses[busIdx];
       if (bus.status === "out of service") return null;
-      const base = {
+      if (bus.status === "maintenance") {
+        return {
+          bus_id: bus._id,
+          driver_id: inactiveSeedDriver?._id ?? drivers[busIdx]._id,
+          operator_user_id: operatorReporter._id,
+          route_id: use06F ? route06F._id : route03C._id,
+          assignment_status: "inactive",
+          assignment_result: "cancelled",
+          scheduled_arrival_at: utc2026_04_21(h, m),
+        };
+      }
+      return {
         bus_id: bus._id,
-        driver_id: drivers[busIdx]._id,
-        operator_user_id: operator._id,
+        driver_id: takeSmDemoDriver(),
+        operator_user_id: takeSmFreeOperator(),
         route_id: use06F ? route06F._id : route03C._id,
         assignment_status: "active",
         assignment_result: "pending",
         scheduled_arrival_at: utc2026_04_21(h, m),
       };
-      if (bus.status === "maintenance") {
-        return {
-          ...base,
-          assignment_status: "inactive",
-          assignment_result: "cancelled",
-        };
-      }
-      return base;
     })
     .filter(Boolean);
 
@@ -472,7 +556,7 @@ export async function seedOperationalSummaryDemo() {
       status: "pending",
       event_time: utc2026_04_21(9, 20),
       confirmation_time: null,
-      reported_by: operator._id,
+      reported_by: operatorReporter._id,
       auto_detected: false,
     },
     {
@@ -483,7 +567,7 @@ export async function seedOperationalSummaryDemo() {
       status: "pending",
       event_time: utc2026_04_21(8, 40),
       confirmation_time: null,
-      reported_by: operator._id,
+      reported_by: operatorReporter._id,
       auto_detected: false,
     },
     // --- Pending departure (2 buses) ---
@@ -507,7 +591,7 @@ export async function seedOperationalSummaryDemo() {
       status: "pending",
       event_time: utc2026_04_21(11, 45),
       confirmation_time: null,
-      reported_by: operator._id,
+      reported_by: operatorReporter._id,
       auto_detected: false,
     },
     {
@@ -530,13 +614,14 @@ export async function seedOperationalSummaryDemo() {
       status: "pending",
       event_time: utc2026_04_21(12, 55),
       confirmation_time: null,
-      reported_by: operator._id,
+      reported_by: operatorReporter._id,
       auto_detected: false,
     },
     // CEB-008 / a8: scheduled only — no logs
   ]);
 
   await syncLatestTerminalLogIdsFromSeedLogs();
+  await syncBusOccupancyForCompletedTrips();
 
   const totalSmAssignments = smAssignments.length + extraSpecs.length;
 
@@ -1193,6 +1278,56 @@ const seedData = async () => {
         profile_image: "default.png",
       },
       {
+        f_name: "Rhian",
+        l_name: "Ramos",
+        email: "seed.op.assign.03@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_op_assign_03",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Patricia",
+        l_name: "Ocampo",
+        email: "seed.op.assign.04@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_op_assign_04",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Marvin",
+        l_name: "Delos Reyes",
+        email: "seed.op.assign.05@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_op_assign_05",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Kristine",
+        l_name: "Morales",
+        email: "seed.op.assign.06@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_op_assign_06",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Francis",
+        l_name: "Tolentino",
+        email: "seed.op.assign.07@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_op_assign_07",
+        profile_image: "default.png",
+      },
+      {
         f_name: "Carlo",
         l_name: "Mendoza",
         email: "seed.unassigned.operator@pasahero.local",
@@ -1222,6 +1357,146 @@ const seedData = async () => {
         firebase_id: "firebase_seed_unassigned_operator_003",
         profile_image: "default.png",
       },
+      {
+        f_name: "Rowena",
+        l_name: "Dalisay",
+        email: "seed.unassigned.operator4@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_unassigned_operator_004",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Stefan",
+        l_name: "Santiago",
+        email: "seed.unassigned.operator5@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_unassigned_operator_005",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Trisha",
+        l_name: "Lozada",
+        email: "seed.unassigned.operator6@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_unassigned_operator_006",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Virgil",
+        l_name: "Acosta",
+        email: "seed.unassigned.operator7@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_unassigned_operator_007",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Harold",
+        l_name: "Pascual",
+        email: "seed.op.smfree.01@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_01",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Imelda",
+        l_name: "Rosales",
+        email: "seed.op.smfree.02@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_02",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Jerome",
+        l_name: "Manansala",
+        email: "seed.op.smfree.03@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_03",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Karen",
+        l_name: "Sy",
+        email: "seed.op.smfree.04@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_04",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Leopoldo",
+        l_name: "Aguilar",
+        email: "seed.op.smfree.05@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_05",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Maricel",
+        l_name: "Vergara",
+        email: "seed.op.smfree.06@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_06",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Nestor",
+        l_name: "Bautista",
+        email: "seed.op.smfree.07@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_07",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Olivia",
+        l_name: "Concepcion",
+        email: "seed.op.smfree.08@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_08",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Patrick",
+        l_name: "Dela Rosa",
+        email: "seed.op.smfree.09@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_09",
+        profile_image: "default.png",
+      },
+      {
+        f_name: "Quennie",
+        l_name: "Mallari",
+        email: "seed.op.smfree.10@pasahero.local",
+        password: "$2b$10$abcdefghijklmnopqrstuvwxyz",
+        role: "operator",
+        status: "active",
+        firebase_id: "firebase_seed_smfree_op_10",
+        profile_image: "default.png",
+      },
     ];
 
     const users = await User.insertMany(
@@ -1247,6 +1522,28 @@ const seedData = async () => {
       user6,
       user7,
       user8,
+      operator3,
+      operator4,
+      operator5,
+      operator6,
+      operator7,
+      unassignedOp1,
+      unassignedOp2,
+      unassignedOp3,
+      unassignedOp4,
+      unassignedOp5,
+      unassignedOp6,
+      unassignedOp7,
+      smFreeOp1,
+      smFreeOp2,
+      smFreeOp3,
+      smFreeOp4,
+      smFreeOp5,
+      smFreeOp6,
+      smFreeOp7,
+      smFreeOp8,
+      smFreeOp9,
+      smFreeOp10,
     ] = users;
 
     // ==========================================
@@ -1325,8 +1622,8 @@ const seedData = async () => {
       fallbackTerminalId: smTerminal._id,
     });
 
-    await User.updateOne(
-      { email: "seed.unassigned.operator@pasahero.local" },
+    await User.updateMany(
+      { email: { $regex: /^seed\.unassigned\.operator/ } },
       {
         $set: {
           assigned_terminal: smTerminal._id,
@@ -1334,17 +1631,9 @@ const seedData = async () => {
         },
       },
     );
-    await User.updateOne(
-      { email: "seed.unassigned.operator2@pasahero.local" },
-      {
-        $set: {
-          assigned_terminal: smTerminal._id,
-          created_by: null,
-        },
-      },
-    );
-    await User.updateOne(
-      { email: "seed.unassigned.operator3@pasahero.local" },
+
+    await User.updateMany(
+      { email: { $regex: /^seed\.op\.(assign|smfree)\./ } },
       {
         $set: {
           assigned_terminal: smTerminal._id,
@@ -1963,6 +2252,83 @@ const seedData = async () => {
         contact_number: "09990000003",
         status: "active",
       },
+      {
+        f_name: "Gemma",
+        l_name: "Aquino",
+        license_number: "D01-12-345687",
+        contact_number: "09171234576",
+        status: "active",
+      },
+      {
+        f_name: "Aldrin",
+        l_name: "Jacinto",
+        license_number: "D01-SEED-SM-DEMO-01",
+        contact_number: "09991000001",
+        status: "active",
+      },
+      {
+        f_name: "Benjie",
+        l_name: "Mariano",
+        license_number: "D01-SEED-SM-DEMO-02",
+        contact_number: "09991000002",
+        status: "active",
+      },
+      {
+        f_name: "Cedric",
+        l_name: "Panganiban",
+        license_number: "D01-SEED-SM-DEMO-03",
+        contact_number: "09991000003",
+        status: "active",
+      },
+      {
+        f_name: "Dante",
+        l_name: "Alcaraz",
+        license_number: "D01-SEED-SM-DEMO-04",
+        contact_number: "09991000004",
+        status: "active",
+      },
+      {
+        f_name: "Edwin",
+        l_name: "Salcedo",
+        license_number: "D01-SEED-SM-DEMO-05",
+        contact_number: "09991000005",
+        status: "active",
+      },
+      {
+        f_name: "Froilan",
+        l_name: "Cruz",
+        license_number: "D01-SEED-SM-DEMO-06",
+        contact_number: "09991000006",
+        status: "active",
+      },
+      {
+        f_name: "Glenn",
+        l_name: "Espiritu",
+        license_number: "D01-SEED-SM-DEMO-07",
+        contact_number: "09991000007",
+        status: "active",
+      },
+      {
+        f_name: "Hubert",
+        l_name: "Nuñez",
+        license_number: "D01-SEED-SM-DEMO-08",
+        contact_number: "09991000008",
+        status: "active",
+      },
+      {
+        f_name: "Ivan",
+        l_name: "Montecillo",
+        license_number: "D01-SEED-SM-DEMO-09",
+        contact_number: "09991000009",
+        status: "active",
+      },
+      {
+        f_name: "Julius",
+        l_name: "Ramirez",
+        license_number: "D01-SEED-SM-DEMO-10",
+        contact_number: "09991000010",
+        status: "active",
+      },
     ]);
 
     console.log(`✅ Created ${drivers.length} drivers`);
@@ -1977,6 +2343,10 @@ const seedData = async () => {
       driver7,
       driver8,
       driver9,
+      driver10,
+      driver11,
+      driver12,
+      driver13,
     ] = drivers;
 
     // ==========================================
@@ -2057,7 +2427,7 @@ const seedData = async () => {
       {
         bus_id: bus2._id,
         driver_id: driver2._id,
-        operator_user_id: operator1._id,
+        operator_user_id: operator2._id,
         route_id: route02B._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2079,7 +2449,7 @@ const seedData = async () => {
       {
         bus_id: bus4._id,
         driver_id: driver4._id,
-        operator_user_id: operator1._id,
+        operator_user_id: operator3._id,
         route_id: route04D._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2090,7 +2460,7 @@ const seedData = async () => {
       {
         bus_id: bus6._id,
         driver_id: driver5._id,
-        operator_user_id: operator2._id,
+        operator_user_id: operator4._id,
         route_id: route05E._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2101,7 +2471,7 @@ const seedData = async () => {
       {
         bus_id: bus11._id,
         driver_id: driver8._id,
-        operator_user_id: operator1._id,
+        operator_user_id: operator5._id,
         route_id: route06F._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2112,7 +2482,7 @@ const seedData = async () => {
       {
         bus_id: bus12._id,
         driver_id: driver9._id,
-        operator_user_id: operator2._id,
+        operator_user_id: unassignedOp1._id,
         route_id: route07G._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2123,7 +2493,7 @@ const seedData = async () => {
       {
         bus_id: bus9._id,
         driver_id: driver6._id,
-        operator_user_id: operator1._id,
+        operator_user_id: unassignedOp2._id,
         route_id: route02B._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2142,8 +2512,8 @@ const seedData = async () => {
       },
       {
         bus_id: bus14._id,
-        driver_id: driver5._id,
-        operator_user_id: operator1._id,
+        driver_id: driver13._id,
+        operator_user_id: unassignedOp3._id,
         route_id: route05E._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2151,8 +2521,8 @@ const seedData = async () => {
       },
       {
         bus_id: bus15._id,
-        driver_id: driver6._id,
-        operator_user_id: operator2._id,
+        driver_id: driver11._id,
+        operator_user_id: smFreeOp1._id,
         route_id: route06F._id,
         assignment_status: "inactive",
         assignment_result: "pending",
@@ -2180,7 +2550,7 @@ const seedData = async () => {
       {
         bus_id: bus17._id,
         driver_id: driver3._id,
-        operator_user_id: operator1._id,
+        operator_user_id: operator6._id,
         route_id: route03C._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2188,8 +2558,8 @@ const seedData = async () => {
       },
       {
         bus_id: bus19._id,
-        driver_id: driver3._id,
-        operator_user_id: operator2._id,
+        driver_id: driver10._id,
+        operator_user_id: operator7._id,
         route_id: route04D._id,
         assignment_status: "active",
         assignment_result: "pending",
@@ -2206,8 +2576,8 @@ const seedData = async () => {
       },
       {
         bus_id: bus22._id,
-        driver_id: driver8._id,
-        operator_user_id: operator2._id,
+        driver_id: driver12._id,
+        operator_user_id: smFreeOp2._id,
         route_id: route07G._id,
         assignment_status: "inactive",
         assignment_result: "pending",

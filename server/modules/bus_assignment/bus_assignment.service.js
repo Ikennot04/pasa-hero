@@ -69,6 +69,7 @@ function toBusAssignmentListRow(doc) {
   const bus = doc.bus_id;
   const route = doc.route_id;
   const operator = doc.operator_user_id;
+  const driver = doc.driver_id;
 
   return {
     _id: doc._id,
@@ -77,6 +78,11 @@ function toBusAssignmentListRow(doc) {
       bus && typeof bus === "object" && bus.bus_number != null
         ? String(bus.bus_number)
         : "—",
+    plate_number:
+      bus && typeof bus === "object" && bus.plate_number != null
+        ? String(bus.plate_number)
+        : "—",
+    driver_name: formatOperatorName(driver),
     route_name:
       route && typeof route === "object" && route.route_name != null
         ? String(route.route_name)
@@ -101,7 +107,11 @@ function populateBusAssignmentListRefs(query) {
   return query
     .populate({
       path: "bus_id",
-      select: "bus_number",
+      select: "bus_number plate_number",
+    })
+    .populate({
+      path: "driver_id",
+      select: "f_name l_name",
     })
     .populate({
       path: "operator_user_id",
