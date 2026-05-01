@@ -33,17 +33,17 @@ const EVENT_LABELS = [
 ];
 
 const EVENT_BACKGROUND_COLORS = [
-  "rgb(130, 128, 255, 0.50)",
-  "rgb(128, 0, 0, 0.50)",
-  "rgb(0, 119, 128, 0.50)",
-  "rgb(57, 128, 0, 0.50)",
+  "rgba(204, 255, 140, 0.7)",
+  "rgba(129, 222, 118, 0.7)",
+  "rgba(58, 85, 180, 0.7)",
+  "rgba(108, 173, 223, 0.7)",
 ];
 
 const EVENT_BORDER_COLORS = [
-  "rgb(130, 128, 255)",
-  "rgb(128, 0, 0)",
-  "rgb(0, 119, 128)",
-  "rgb(57, 128, 0)",
+  "rgba(204, 255, 140, 1)",
+  "rgba(129, 222, 118, 1)",
+  "rgba(58, 85, 180, 1)",
+  "rgba(108, 173, 223, 1)",
 ];
 
 function areNotificationCountsEqual(
