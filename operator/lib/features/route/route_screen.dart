@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'dart:ui' as ui;
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
@@ -14,6 +12,11 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/map/map_service.dart';
 import '../profile/screen/profile_screen_data.dart';
 import '../map/services/bus_stop_icon_service.dart';
+import '../map/services/waiting_cluster_icons.dart';
+import '../map/services/waiting_cluster_sheet.dart';
+import '../map/services/waiting_user_clustering.dart';
+import '../map/widgets/waiting_demand_intro.dart';
+import '../map/widgets/waiting_demand_legend.dart';
 
 /// Camera over Route1 bus stops so they are visible on first load.
 const CameraPosition _initialCameraOverBusStops = CameraPosition(
@@ -38,7 +41,7 @@ class _RouteScreenState extends State<RouteScreen> {
   final BusStopIconService _busStopIconService = BusStopIconService.instance;
   GoogleMapController? _mapController;
   BitmapDescriptor? _operatorIcon;
-  BitmapDescriptor? _userIcon;
+  List<WaitingRiderInput> _lastWaitingRiders = [];
   String? _mapStyleJson;
   bool _isLoading = true;
   Position? _currentPosition;
@@ -58,11 +61,13 @@ class _RouteScreenState extends State<RouteScreen> {
     super.initState();
     _initialCameraPosition = _initialCameraOverBusStops;
     _loadOperatorIcon();
-    _loadUserIcon();
+    unawaited(_loadClusterIconsThenRebuild());
     _loadMapStyle();
     _loadRouteId();
     _watchUserLocations();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showWaitingDemandIntroIfNeeded(context);
       if (mounted) _initializeLocation();
     });
   }
@@ -186,8 +191,54 @@ class _RouteScreenState extends State<RouteScreen> {
   }
 
   Set<Marker> _mergeWithUserMarkers(Set<Marker> base) {
-    final nonUser = base.where((m) => !m.markerId.value.startsWith('user_')).toSet();
+    final nonUser = base
+        .where((m) => !m.markerId.value.startsWith('waiting_cluster_'))
+        .toSet();
     return {...nonUser, ..._userMarkers};
+  }
+
+  Future<void> _loadClusterIconsThenRebuild() async {
+    try {
+      await WaitingClusterIconCache.ensureLoaded();
+    } catch (e) {
+      print('⚠️ [RouteScreen] Cluster marker icons: $e');
+    }
+    if (mounted) _rebuildWaitingClusterMarkers();
+  }
+
+  void _rebuildWaitingClusterMarkers() {
+    if (!mounted) return;
+    final clusters = buildWaitingClusters(_lastWaitingRiders);
+    final markers = <Marker>{};
+    for (final c in clusters) {
+      final tier = c.tier;
+      final icon = WaitingClusterIconCache.iconFor(tier) ??
+          BitmapDescriptor.defaultMarkerWithHue(tier.fallbackMarkerHue);
+      markers.add(
+        Marker(
+          markerId: MarkerId(c.markerIdValue),
+          position: c.position,
+          zIndexInt: 5 + (c.count > 40 ? 40 : c.count),
+          anchor: const Offset(0.5, 0.92),
+          icon: icon,
+          consumeTapEvents: true,
+          infoWindow: InfoWindow.noText,
+          onTap: () {
+            if (!context.mounted) return;
+            showWaitingDemandBottomSheet(
+              context,
+              userCount: c.count,
+              lastUpdated: c.lastUpdated,
+              approxLocation: c.position,
+            );
+          },
+        ),
+      );
+    }
+    setState(() {
+      _userMarkers = markers;
+      _markers = _mergeWithUserMarkers(_markers);
+    });
   }
 
   void _watchUserLocations() {
@@ -197,7 +248,7 @@ class _RouteScreenState extends State<RouteScreen> {
         .snapshots()
         .listen((snapshot) {
       if (!mounted) return;
-      final users = <Marker>{};
+      final riders = <WaitingRiderInput>[];
       for (final doc in snapshot.docs) {
         final data = doc.data();
         final isOffline = _userLocDocExplicitlyOffline(data);
@@ -207,23 +258,17 @@ class _RouteScreenState extends State<RouteScreen> {
         if (!isRider || isOffline || isInactive || !isExplicitlyOnline) continue;
         final pos = _latLngFromUserLocData(data);
         if (pos == null) continue;
-        final email = data['email']?.toString() ?? 'Rider';
-        users.add(
-          Marker(
-            markerId: MarkerId('user_${doc.id}'),
-            position: pos,
-            zIndexInt: 5,
-            anchor: const Offset(0.5, 0.5),
-            icon: _userIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-            infoWindow: InfoWindow(title: 'Rider', snippet: email),
+        riders.add(
+          WaitingRiderInput(
+            docId: doc.id,
+            lat: pos.latitude,
+            lng: pos.longitude,
+            updatedAt: _readUserLocUpdatedAt(data),
           ),
         );
       }
-      setState(() {
-        _userMarkers = users;
-        _markers = _mergeWithUserMarkers(_markers);
-      });
+      _lastWaitingRiders = riders;
+      _rebuildWaitingClusterMarkers();
     }, onError: (e) {
       print('⚠️ [RouteScreen] user_locations stream error: $e');
     });
@@ -330,7 +375,7 @@ class _RouteScreenState extends State<RouteScreen> {
   Future<void> _loadOperatorIcon() async {
     try {
       final icon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(128, 128)),
+        const ImageConfiguration(size: Size(200, 200)),
         'assets/images/buspic.png',
       );
       if (mounted) {
@@ -346,45 +391,6 @@ class _RouteScreenState extends State<RouteScreen> {
     } catch (e) {
       print('⚠️ [RouteScreen] Failed to load operator icon: $e');
     }
-  }
-
-  Future<void> _loadUserIcon() async {
-    try {
-      final icon = await _loadResizedMarkerIcon(
-        assetPath: 'assets/images/user_picture.png',
-        width: 28,
-        height: 28,
-      );
-      if (mounted) {
-        setState(() {
-          _userIcon = icon;
-        });
-      }
-    } catch (e) {
-      print('⚠️ [RouteScreen] Failed to load user marker icon: $e');
-    }
-  }
-
-  Future<BitmapDescriptor> _loadResizedMarkerIcon({
-    required String assetPath,
-    required int width,
-    required int height,
-  }) async {
-    final ByteData data = await rootBundle.load(assetPath);
-    final Uint8List bytes = data.buffer.asUint8List();
-    final ui.Codec codec = await ui.instantiateImageCodec(
-      bytes,
-      targetWidth: width,
-      targetHeight: height,
-    );
-    final ui.FrameInfo frame = await codec.getNextFrame();
-    final ByteData? resized = await frame.image.toByteData(
-      format: ui.ImageByteFormat.png,
-    );
-    if (resized == null) {
-      throw Exception('Could not resize marker icon: $assetPath');
-    }
-    return BitmapDescriptor.bytes(resized.buffer.asUint8List());
   }
 
   /// Initializes location services and gets operator's current position.
@@ -626,73 +632,78 @@ class _RouteScreenState extends State<RouteScreen> {
             const Center(
               child: CircularProgressIndicator(),
             ),
-              Positioned(
-                bottom: _routeId != null && _routeId!.isNotEmpty ? 72 : 16,
-                left: 16,
-                child: FloatingActionButton(
-                  mini: true,
-                  onPressed: _isLocationRequestInProgress
-                      ? null
-                      : () => _initializeLocation(forceRefresh: true),
-                  tooltip: 'Center on my location',
-                  child: const Icon(Icons.my_location),
-                ),
-              ),
-              if (showFreeRideBadge)
-                Positioned(
-                  top: 16,
-                  left: 16,
-                  child: Material(
-                    elevation: 4,
+          Positioned(
+            bottom: _routeId != null && _routeId!.isNotEmpty ? 72 : 16,
+            left: 16,
+            child: FloatingActionButton(
+              mini: true,
+              onPressed: _isLocationRequestInProgress
+                  ? null
+                  : () => _initializeLocation(forceRefresh: true),
+              tooltip: 'Center on my location',
+              child: const Icon(Icons.my_location),
+            ),
+          ),
+          if (showFreeRideBadge)
+            Positioned(
+              top: 16,
+              left: 16,
+              child: Material(
+                elevation: 4,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade600,
                     borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade600,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.card_giftcard, color: Colors.white, size: 20),
-                          SizedBox(width: 6),
-                          Text(
-                            'Free Ride',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
-                ),
-              if (_routeId != null && _routeId!.isNotEmpty)
-                Positioned(
-                  bottom: 16,
-                  left: 16,
-                  child: Material(
-                    elevation: 3,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade700,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Route: ${_routeId!}',
-                        style: const TextStyle(
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.card_giftcard, color: Colors.white, size: 20),
+                      SizedBox(width: 6),
+                      Text(
+                        'Free Ride',
+                        style: TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
                         ),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (_routeId != null && _routeId!.isNotEmpty)
+            Positioned(
+              bottom: 16,
+              left: 16,
+              child: Material(
+                elevation: 3,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade700,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Route: ${_routeId!}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
                     ),
                   ),
                 ),
+              ),
+            ),
+          const Positioned(
+            right: 0,
+            bottom: 0,
+            child: WaitingDemandLegend(),
+          ),
             ],
           );
         },

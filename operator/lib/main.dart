@@ -27,7 +27,6 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       builder: (context, child) => LocationServicesGate(
-        productName: 'PasaHero Operator',
         child: child ?? const SizedBox.shrink(),
       ),
       initialRoute: '/',

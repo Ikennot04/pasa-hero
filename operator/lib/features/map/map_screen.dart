@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/services/location_service.dart';
@@ -10,6 +8,11 @@ import '../../core/services/map/map_service.dart';
 import '../../core/services/directions_service.dart';
 import '../profile/screen/profile_screen_data.dart';
 import 'services/bus_stop_icon_service.dart';
+import 'services/waiting_cluster_icons.dart';
+import 'services/waiting_cluster_sheet.dart';
+import 'services/waiting_user_clustering.dart';
+import 'widgets/waiting_demand_intro.dart';
+import 'widgets/waiting_demand_legend.dart';
 
 /// Initial map center so bus stops are visible on first load.
 const CameraPosition _initialCameraOverBusStops = CameraPosition(
@@ -41,7 +44,8 @@ class _MapScreenState extends State<MapScreen> {
   final BusStopIconService _busStopIconService = BusStopIconService.instance;
   GoogleMapController? _mapController;
   BitmapDescriptor? _operatorIcon;
-  BitmapDescriptor? _userIcon;
+  List<WaitingRiderInput> _lastWaitingRiders = [];
+  int _lastWaitingRiderTotal = 0;
   bool _isLoading = true;
   Position? _currentPosition;
   CameraPosition? _initialCameraPosition;
@@ -58,12 +62,13 @@ class _MapScreenState extends State<MapScreen> {
   String get _debugMapText {
     final busStopCount =
         _markers.where((m) => m.markerId.value.startsWith('bus_stop_')).length;
-    final riderCount =
-        _markers.where((m) => m.markerId.value.startsWith('user_')).length;
+    final clusterCount = _markers
+        .where((m) => m.markerId.value.startsWith('waiting_cluster_'))
+        .length;
     final hasOperator =
         _markers.any((m) => m.markerId.value == 'operator_location');
-    return 'Markers: bus stops $busStopCount, riders $riderCount, '
-        'operator ${hasOperator ? 'yes' : 'no'}';
+    return 'Markers: bus stops $busStopCount, waiting clusters $clusterCount '
+        '(riders $_lastWaitingRiderTotal), operator ${hasOperator ? 'yes' : 'no'}';
   }
 
   /// Polyline id for the bus stop route (so operator can see their route).
@@ -74,13 +79,15 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _initialCameraPosition = _initialCameraOverBusStops;
     _loadOperatorIcon();
-    _loadUserIcon();
+    unawaited(_loadClusterIconsThenRebuild());
     // Load bus stop sign icon and dynamic route stops from Firestore.
     _loadBusStopsFromDatabaseAndShow();
     _watchUserLocations();
     // Do not wait for Firestore/route highlight — GPS was only starting after that chain,
     // and _highlightRoute's fit-bounds camera was overriding the operator view afterward.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showWaitingDemandIntroIfNeeded(context);
       if (mounted) _initializeLocation(showError: true);
     });
   }
@@ -297,10 +304,9 @@ class _MapScreenState extends State<MapScreen> {
         .snapshots()
         .listen((snapshot) {
       if (!mounted) return;
-      final userMarkers = <Marker>{};
+      final riders = <WaitingRiderInput>[];
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        // Only keep rider docs that are explicitly online and recently updated.
         final isOffline = _userLocDocExplicitlyOffline(data);
         final isRider = _userLocMatchesRiderRole(data);
         final isInactive = _userLocAppearsInactive(data);
@@ -309,35 +315,75 @@ class _MapScreenState extends State<MapScreen> {
         if (pos == null) continue;
         if (!isRider || isOffline || isInactive || !isExplicitlyOnline) continue;
 
-        final email = data['email']?.toString() ?? 'Rider';
-        userMarkers.add(
-          Marker(
-            markerId: MarkerId('user_${doc.id}'),
-            position: pos,
-            zIndexInt: _zRiderMarker,
-            anchor: const Offset(0.5, 0.5),
-            icon: _userIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-            infoWindow: InfoWindow(
-              title: 'Rider',
-              snippet: email,
-            ),
+        riders.add(
+          WaitingRiderInput(
+            docId: doc.id,
+            lat: pos.latitude,
+            lng: pos.longitude,
+            updatedAt: _readUserLocUpdatedAt(data),
           ),
         );
       }
-
-      setState(() {
-        _userMarkers = userMarkers;
-        _markers = _mergeWithUserMarkers(_markers);
-      });
-      print('✅ [MapScreen] Live users visible: ${userMarkers.length}');
+      _lastWaitingRiders = riders;
+      _rebuildWaitingClusterMarkers();
+      print(
+        '✅ [MapScreen] Waiting riders: ${riders.length}, '
+        'clusters: ${_userMarkers.length}',
+      );
     }, onError: (e) {
       print('⚠️ [MapScreen] user_locations stream error: $e');
     });
   }
 
+  Future<void> _loadClusterIconsThenRebuild() async {
+    try {
+      await WaitingClusterIconCache.ensureLoaded();
+    } catch (e) {
+      print('⚠️ [MapScreen] Cluster marker icons: $e');
+    }
+    if (mounted) _rebuildWaitingClusterMarkers();
+  }
+
+  void _rebuildWaitingClusterMarkers() {
+    if (!mounted) return;
+    final clusters = buildWaitingClusters(_lastWaitingRiders);
+    final markers = <Marker>{};
+    for (final c in clusters) {
+      final tier = c.tier;
+      final icon = WaitingClusterIconCache.iconFor(tier) ??
+          BitmapDescriptor.defaultMarkerWithHue(tier.fallbackMarkerHue);
+      markers.add(
+        Marker(
+          markerId: MarkerId(c.markerIdValue),
+          position: c.position,
+          zIndexInt: _zRiderMarker + (c.count > 40 ? 40 : c.count),
+          anchor: const Offset(0.5, 0.92),
+          icon: icon,
+          consumeTapEvents: true,
+          infoWindow: InfoWindow.noText,
+          onTap: () {
+            if (!context.mounted) return;
+            showWaitingDemandBottomSheet(
+              context,
+              userCount: c.count,
+              lastUpdated: c.lastUpdated,
+              approxLocation: c.position,
+            );
+          },
+        ),
+      );
+    }
+    setState(() {
+      _lastWaitingRiderTotal = _lastWaitingRiders.length;
+      _userMarkers = markers;
+      _markers = _mergeWithUserMarkers(_markers);
+    });
+  }
+
   Set<Marker> _mergeWithUserMarkers(Set<Marker> base) {
-    final nonUser = base.where((m) => !m.markerId.value.startsWith('user_')).toSet();
+    final nonUser = base
+        .where((m) => !m.markerId.value.startsWith('waiting_cluster_'))
+        .toSet();
     return {...nonUser, ..._userMarkers};
   }
 
@@ -397,7 +443,7 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _loadOperatorIcon() async {
     try {
       final icon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(size: Size(128, 128)),
+        const ImageConfiguration(size: Size(200, 200)),
         'assets/images/buspic.png',
       );
       if (mounted) {
@@ -413,45 +459,6 @@ class _MapScreenState extends State<MapScreen> {
     } catch (e) {
       print('⚠️ [MapScreen] Failed to load operator icon: $e');
     }
-  }
-
-  Future<void> _loadUserIcon() async {
-    try {
-      final icon = await _loadResizedMarkerIcon(
-        assetPath: 'assets/images/user_picture.png',
-        width: 28,
-        height: 28,
-      );
-      if (mounted) {
-        setState(() {
-          _userIcon = icon;
-        });
-      }
-    } catch (e) {
-      print('⚠️ [MapScreen] Failed to load user marker icon: $e');
-    }
-  }
-
-  Future<BitmapDescriptor> _loadResizedMarkerIcon({
-    required String assetPath,
-    required int width,
-    required int height,
-  }) async {
-    final ByteData data = await rootBundle.load(assetPath);
-    final Uint8List bytes = data.buffer.asUint8List();
-    final ui.Codec codec = await ui.instantiateImageCodec(
-      bytes,
-      targetWidth: width,
-      targetHeight: height,
-    );
-    final ui.FrameInfo frame = await codec.getNextFrame();
-    final ByteData? resized = await frame.image.toByteData(
-      format: ui.ImageByteFormat.png,
-    );
-    if (resized == null) {
-      throw Exception('Could not resize marker icon: $assetPath');
-    }
-    return BitmapDescriptor.bytes(resized.buffer.asUint8List());
   }
 
   /// Loads the operator's route code from Firestore and highlights the route if set.
@@ -998,6 +1005,11 @@ class _MapScreenState extends State<MapScreen> {
               tooltip: 'Center on my location',
               child: const Icon(Icons.my_location),
             ),
+          ),
+          const Positioned(
+            right: 0,
+            bottom: 0,
+            child: WaitingDemandLegend(),
           ),
         ],
       ),
