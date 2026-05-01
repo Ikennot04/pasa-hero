@@ -1,23 +1,29 @@
-import 'package:app_settings/app_settings.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:geolocator/geolocator.dart';
 
 import '../services/location_service.dart';
 
-/// When device location services (GPS) are off, blocks the app with a dialog.
-/// "Open location settings" uses the system Location settings screen ([AppSettings]).
+bool _isMobilePlatform() {
+  return !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+}
+
+enum _LocationGateCause { none, permission, locationServices }
+
+/// On Android/iOS: requests location via the **system** permission dialog on first check,
+/// then blocks with a full-screen screen if permission is denied or device location is off.
+/// [Open Settings] opens app settings (permission) or system location settings (GPS off).
+/// Does not exit the app.
 class LocationServicesGate extends StatefulWidget {
   const LocationServicesGate({
     super.key,
     required this.child,
-    this.productName = 'PasaHero',
   });
 
   final Widget child;
-  final String productName;
 
   @override
   State<LocationServicesGate> createState() => _LocationServicesGateState();
@@ -26,7 +32,13 @@ class LocationServicesGate extends StatefulWidget {
 class _LocationServicesGateState extends State<LocationServicesGate>
     with WidgetsBindingObserver {
   final LocationService _locationService = LocationService();
-  BuildContext? _blockerDialogContext;
+
+  bool _checking = true;
+  _LocationGateCause _cause = _LocationGateCause.none;
+  bool _permissionPermanentlyDenied = false;
+
+  /// Single automatic system prompt per app session (launch + warm start).
+  bool _didAutoRequest = false;
 
   @override
   void initState() {
@@ -49,88 +61,203 @@ class _LocationServicesGateState extends State<LocationServicesGate>
   }
 
   Future<void> _syncGate() async {
-    if (!mounted || kIsWeb) return;
-
-    final bool enabled;
-    try {
-      enabled = await _locationService.isLocationServiceEnabled();
-    } catch (_) {
-      return;
-    }
     if (!mounted) return;
 
-    if (enabled) {
-      final d = _blockerDialogContext;
-      if (d != null && d.mounted) {
-        Navigator.of(d, rootNavigator: true).pop();
+    if (kIsWeb || !_isMobilePlatform()) {
+      if (mounted) {
+        setState(() {
+          _checking = false;
+          _cause = _LocationGateCause.none;
+          _permissionPermanentlyDenied = false;
+        });
       }
-      _blockerDialogContext = null;
       return;
     }
 
-    if (_blockerDialogContext != null) return;
+    try {
+      var permission = await Geolocator.checkPermission();
 
-    final message =
-        'Turn on location services on this device to use ${widget.productName}.';
-    final isIos = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+      final needsInitialPrompt = permission == LocationPermission.denied ||
+          permission == LocationPermission.unableToDetermine;
+      if (needsInitialPrompt && !_didAutoRequest) {
+        _didAutoRequest = true;
+        permission = await Geolocator.requestPermission();
+      }
 
-    if (isIos) {
-      await showCupertinoDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) {
-          _blockerDialogContext = ctx;
-          return CupertinoAlertDialog(
-            title: const Text('Location is off'),
-            content: Text(message),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () {
-                  SystemNavigator.pop();
-                },
-                child: const Text('Cancel'),
-              ),
-              CupertinoDialogAction(
-                isDefaultAction: true,
-                onPressed: () {
-                  AppSettings.openAppSettings(type: AppSettingsType.location);
-                },
-                child: const Text('Open location settings'),
-              ),
-            ],
-          );
-        },
-      );
-    } else {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) {
-          _blockerDialogContext = ctx;
-          return AlertDialog(
-            title: const Text('Location is off'),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  SystemNavigator.pop();
-                },
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  AppSettings.openAppSettings(type: AppSettingsType.location);
-                },
-                child: const Text('Open location settings'),
-              ),
-            ],
-          );
-        },
-      );
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          setState(() {
+            _checking = false;
+            _cause = _LocationGateCause.permission;
+            _permissionPermanentlyDenied =
+                permission == LocationPermission.deniedForever;
+          });
+        }
+        return;
+      }
+
+      final servicesOn = await _locationService.isLocationServiceEnabled();
+      if (!servicesOn) {
+        if (mounted) {
+          setState(() {
+            _checking = false;
+            _cause = _LocationGateCause.locationServices;
+            _permissionPermanentlyDenied = false;
+          });
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _checking = false;
+          _cause = _LocationGateCause.none;
+          _permissionPermanentlyDenied = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _checking = false;
+          _cause = _LocationGateCause.permission;
+          _permissionPermanentlyDenied = false;
+        });
+      }
     }
-    _blockerDialogContext = null;
+  }
+
+  Future<void> _onRetry() async {
+    if (!mounted || kIsWeb || !_isMobilePlatform()) return;
+    setState(() => _checking = true);
+    try {
+      if (_cause == _LocationGateCause.permission) {
+        await Geolocator.requestPermission();
+      }
+      await _syncGate();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _checking = false);
+      }
+    }
+  }
+
+  Future<void> _onOpenSettings() async {
+    if (_cause == _LocationGateCause.permission) {
+      await _locationService.openAppSettings();
+    } else {
+      await _locationService.openLocationSettings();
+    }
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) {
+    if (kIsWeb || !_isMobilePlatform()) {
+      return widget.child;
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        widget.child,
+        if (_checking)
+          const ColoredBox(
+            color: Colors.white,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        if (!_checking && _cause != _LocationGateCause.none)
+          _LocationRequiredScreen(
+            permanentlyDenied: _permissionPermanentlyDenied,
+            settingsPrimary: _permissionPermanentlyDenied ||
+                _cause == _LocationGateCause.permission,
+            onOpenSettings: _onOpenSettings,
+            onRetry: _onRetry,
+          ),
+      ],
+    );
+  }
+}
+
+class _LocationRequiredScreen extends StatelessWidget {
+  const _LocationRequiredScreen({
+    required this.permanentlyDenied,
+    required this.settingsPrimary,
+    required this.onOpenSettings,
+    required this.onRetry,
+  });
+
+  final bool permanentlyDenied;
+  final bool settingsPrimary;
+  final Future<void> Function() onOpenSettings;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+
+    final settingsButton = FilledButton(
+      onPressed: () => onOpenSettings(),
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(double.infinity, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+      ),
+      child: const Text('Open Settings'),
+    );
+
+    final retryButton = OutlinedButton(
+      onPressed: () => onRetry(),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(double.infinity, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+      ),
+      child: const Text('Retry'),
+    );
+
+    return Material(
+      color: cs.surface,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Icon(Icons.location_off_outlined, size: 56, color: cs.primary),
+              const SizedBox(height: 28),
+              Text(
+                'Location is required to use this app.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+              if (permanentlyDenied) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Permission was denied. Open Settings to enable location for this app.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 40),
+              if (settingsPrimary) ...[
+                settingsButton,
+                const SizedBox(height: 12),
+                retryButton,
+              ] else ...[
+                retryButton,
+                const SizedBox(height: 12),
+                settingsButton,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
