@@ -10,11 +10,15 @@ class MapService {
   static CameraPosition getDefaultCameraPosition() {
     return const CameraPosition(
       target: LatLng(10.3157, 123.8854),
-      zoom: 12.0,
+      zoom: 16.0,
     );
   }
 
-  static CameraPosition cameraPositionFromLatLng(double lat, double lng, {double zoom = 15.0}) {
+  static CameraPosition cameraPositionFromLatLng(
+    double lat,
+    double lng, {
+    double zoom = 17.5,
+  }) {
     return CameraPosition(
       target: LatLng(lat, lng),
       zoom: zoom,
@@ -22,7 +26,10 @@ class MapService {
   }
 
   /// Creates a camera position from a Position object.
-  static CameraPosition cameraPositionFromPosition(Position position, {double zoom = 15.0}) {
+  static CameraPosition cameraPositionFromPosition(
+    Position position, {
+    double zoom = 17.5,
+  }) {
     return CameraPosition(
       target: LatLng(position.latitude, position.longitude),
       zoom: zoom,
@@ -30,14 +37,20 @@ class MapService {
   }
 
   /// Creates a camera update to move to a position (instant, no animation).
-  static CameraUpdate createInstantCameraUpdate(Position position, {double zoom = 15.0}) {
+  static CameraUpdate createInstantCameraUpdate(
+    Position position, {
+    double zoom = 17.5,
+  }) {
     return CameraUpdate.newCameraPosition(
       cameraPositionFromPosition(position, zoom: zoom),
     );
   }
 
   /// Creates a camera update to animate to a position.
-  static CameraUpdate createCameraUpdate(Position position, {double zoom = 15.0}) {
+  static CameraUpdate createCameraUpdate(
+    Position position, {
+    double zoom = 17.5,
+  }) {
     return CameraUpdate.newCameraPosition(
       cameraPositionFromPosition(position, zoom: zoom),
     );

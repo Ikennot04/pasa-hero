@@ -18,9 +18,10 @@ import '../map/services/bus_stop_icon_service.dart';
 /// Camera over Route1 bus stops so they are visible on first load.
 const CameraPosition _initialCameraOverBusStops = CameraPosition(
   target: LatLng(10.3270, 123.9475),
-  zoom: 14.0,
+  zoom: 16.0,
 );
 const String _userLocationsCollection = 'user_locations';
+const Duration _inactiveUserThreshold = Duration(minutes: 5);
 
 class RouteScreen extends StatefulWidget {
   const RouteScreen({super.key});
@@ -67,15 +68,97 @@ class _RouteScreenState extends State<RouteScreen> {
   }
 
   static bool _userLocDocExplicitlyOffline(Map<String, dynamic> data) {
-    final online = data['online'];
-    if (online == 0 || online == false || online == '0') return true;
-    final status = data['status'];
-    if (status == 0 || status == false) return true;
-    if (status is String) {
-      final s = status.toLowerCase().trim();
-      if (s == '0' || s == 'offline' || s == 'inactive') return true;
+    bool isFalsy(Object? value) {
+      if (value == null) return false;
+      if (value is bool) return value == false;
+      if (value is num) return value == 0;
+      final normalized = value.toString().trim().toLowerCase();
+      return normalized == '0' ||
+          normalized == 'false' ||
+          normalized == 'no' ||
+          normalized == 'off' ||
+          normalized == 'inactive' ||
+          normalized == 'offline';
     }
+
+    bool isOfflineText(Object? value) {
+      if (value == null) return false;
+      final s = value.toString().trim().toLowerCase();
+      return s == 'offline' || s == 'inactive' || s == 'disconnected';
+    }
+
+    if (isFalsy(data['online']) || isFalsy(data['isOnline']) || isFalsy(data['active'])) {
+      return true;
+    }
+    if (isFalsy(data['status']) || isOfflineText(data['status'])) return true;
+    if (isOfflineText(data['state']) || isOfflineText(data['presence'])) return true;
     return false;
+  }
+
+  static bool _userLocMatchesRiderRole(Map<String, dynamic> data) {
+    final role = data['role']?.toString().trim().toLowerCase();
+    final userType = data['userType']?.toString().trim().toLowerCase();
+    final roleIdRaw = data['roleid'] ?? data['role_id'];
+    final roleId = roleIdRaw is num ? roleIdRaw.toInt() : int.tryParse('$roleIdRaw');
+    const blockedRoles = <String>{'operator', 'driver', 'admin', 'staff'};
+    if (blockedRoles.contains(role) || blockedRoles.contains(userType)) return false;
+    if (roleId == 2 || roleId == 3) return false;
+    return true;
+  }
+
+  static DateTime? _readUserLocUpdatedAt(Map<String, dynamic> data) {
+    for (final key in const [
+      'updatedAt',
+      'updated_at',
+      'lastUpdated',
+      'last_updated',
+      'timestamp',
+      'locationUpdatedAt',
+      'location_updated_at',
+    ]) {
+      final raw = data[key];
+      if (raw == null) continue;
+      if (raw is Timestamp) return raw.toDate().toLocal();
+      if (raw is DateTime) return raw.toLocal();
+      if (raw is num) {
+        final ms = raw.toInt();
+        if (ms <= 0) continue;
+        return DateTime.fromMillisecondsSinceEpoch(
+          ms < 1000000000000 ? ms * 1000 : ms,
+          isUtc: false,
+        ).toLocal();
+      }
+      if (raw is String) {
+        final parsedIso = DateTime.tryParse(raw);
+        if (parsedIso != null) return parsedIso.toLocal();
+        final asInt = int.tryParse(raw.trim());
+        if (asInt != null && asInt > 0) {
+          return DateTime.fromMillisecondsSinceEpoch(
+            asInt < 1000000000000 ? asInt * 1000 : asInt,
+            isUtc: false,
+          ).toLocal();
+        }
+      }
+    }
+    return null;
+  }
+
+  static bool _userLocAppearsInactive(Map<String, dynamic> data) {
+    final updatedAt = _readUserLocUpdatedAt(data);
+    if (updatedAt == null) return true;
+    return DateTime.now().difference(updatedAt) > _inactiveUserThreshold;
+  }
+
+  static bool _userLocExplicitlyOnline(Map<String, dynamic> data) {
+    bool truthy(Object? value) {
+      if (value == null) return false;
+      if (value is bool) return value;
+      if (value is num) return value > 0;
+      final s = value.toString().trim().toLowerCase();
+      return s == '1' || s == 'true' || s == 'yes' || s == 'on' || s == 'active';
+    }
+
+    return truthy(data['online']) || truthy(data['isOnline']) || truthy(data['active']);
   }
 
   static LatLng? _latLngFromUserLocData(Map<String, dynamic> data) {
@@ -117,7 +200,11 @@ class _RouteScreenState extends State<RouteScreen> {
       final users = <Marker>{};
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        if (_userLocDocExplicitlyOffline(data)) continue;
+        final isOffline = _userLocDocExplicitlyOffline(data);
+        final isRider = _userLocMatchesRiderRole(data);
+        final isInactive = _userLocAppearsInactive(data);
+        final isExplicitlyOnline = _userLocExplicitlyOnline(data);
+        if (!isRider || isOffline || isInactive || !isExplicitlyOnline) continue;
         final pos = _latLngFromUserLocData(data);
         if (pos == null) continue;
         final email = data['email']?.toString() ?? 'Rider';
@@ -540,8 +627,8 @@ class _RouteScreenState extends State<RouteScreen> {
               child: CircularProgressIndicator(),
             ),
               Positioned(
-                top: 16,
-                right: 16,
+                bottom: _routeId != null && _routeId!.isNotEmpty ? 72 : 16,
+                left: 16,
                 child: FloatingActionButton(
                   mini: true,
                   onPressed: _isLocationRequestInProgress

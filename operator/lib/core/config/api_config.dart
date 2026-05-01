@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 /// - Physical device / same network: http://YOUR_IP:3000
 const String kBackendBaseUrl = String.fromEnvironment(
   'BACKEND_URL',
-  defaultValue: 'http://localhost:3000',
+  defaultValue: 'https://pasa-hero-server.vercel.app',
 );
 
 /// Google API key for Directions API (route distance).
