@@ -22,7 +22,12 @@ import { buildSystemLogDocuments } from "./systemLogs.seeder.js";
 import seedDevAdminUsers, {
   DEV_TERMINAL_ADMIN,
 } from "./devAdminUsers.seeder.js";
+import seedJohnAdminUsers from "./johnAdminUsers.seeder.js";
 import seedAssignedOperators from "./assignedOperators.seeder.js";
+import {
+  getOccupancyStatus,
+  insertBusStatusesForSeedBuses,
+} from "./busStatuses.seeder.js";
 
 const ALLOWED_USER_STATUSES = new Set(["active", "suspended"]);
 
@@ -56,34 +61,6 @@ function minutesAgo(minutes) {
   return new Date(
     NOTIFICATION_SEED_REFERENCE.getTime() - minutes * 60 * 1000,
   );
-}
-
-function getOccupancyStatus(occupancyCount, capacity) {
-  const ratio = capacity > 0 ? occupancyCount / capacity : 0;
-  if (ratio >= 1) return "full";
-  if (ratio >= 0.7) return "standing room";
-  if (ratio >= 0.3) return "few seats";
-  return "empty";
-}
-
-/** Seeded bus status row: out-of-service and maintenance buses are always empty. */
-function busStatusPayloadForSeedBus(bus, index) {
-  if (bus.status === "out of service" || bus.status === "maintenance") {
-    return {
-      bus_id: String(bus._id),
-      occupancy_count: 0,
-      occupancy_status: "empty",
-    };
-  }
-  const occupancyCount = Math.min(
-    bus.capacity,
-    Math.floor((bus.capacity * ((index % 5) + 1)) / 5),
-  );
-  return {
-    bus_id: String(bus._id),
-    occupancy_count: occupancyCount,
-    occupancy_status: getOccupancyStatus(occupancyCount, bus.capacity),
-  };
 }
 
 /**
@@ -179,9 +156,12 @@ export async function syncBusOccupancyForCompletedTrips() {
   }
 }
 
-/** April 21, 2026 — UTC (matches ?date=2026-04-21 on the API). */
-function utc2026_04_21(hour, minute = 0) {
-  return new Date(Date.UTC(2026, 3, 21, hour, minute, 0));
+/** Current UTC calendar day at the given time (operational-summary demo; pass ?date=YYYY-MM-DD for that UTC day). */
+function utcTodayAt(hour, minute = 0) {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, minute, 0),
+  );
 }
 
 /** Extra SM assignments use these buses (not the main-seed CEB-003 / CEB-011 pair we keep for logs). */
@@ -287,7 +267,7 @@ export async function seedOperationalSummaryDemo() {
       { _id: smAssignments[i]._id },
       {
         $set: {
-          scheduled_arrival_at: utc2026_04_21(h, (i % 4) * 15),
+          scheduled_arrival_at: utcTodayAt(h, (i % 4) * 15),
         },
       },
     );
@@ -385,7 +365,7 @@ export async function seedOperationalSummaryDemo() {
           route_id: use06F ? route06F._id : route03C._id,
           assignment_status: "inactive",
           assignment_result: "cancelled",
-          scheduled_arrival_at: utc2026_04_21(h, m),
+          scheduled_arrival_at: utcTodayAt(h, m),
         };
       }
       return {
@@ -395,7 +375,7 @@ export async function seedOperationalSummaryDemo() {
         route_id: use06F ? route06F._id : route03C._id,
         assignment_status: "active",
         assignment_result: "pending",
-        scheduled_arrival_at: utc2026_04_21(h, m),
+        scheduled_arrival_at: utcTodayAt(h, m),
       };
     })
     .filter(Boolean);
@@ -444,8 +424,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b3._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_21(8, 0),
-      confirmation_time: utc2026_04_21(8, 5),
+      event_time: utcTodayAt(8, 0),
+      confirmation_time: utcTodayAt(8, 5),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -456,8 +436,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b3._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_21(12, 0),
-      confirmation_time: utc2026_04_21(12, 10),
+      event_time: utcTodayAt(12, 0),
+      confirmation_time: utcTodayAt(12, 10),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -468,8 +448,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[0]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_21(6, 15),
-      confirmation_time: utc2026_04_21(6, 18),
+      event_time: utcTodayAt(6, 15),
+      confirmation_time: utcTodayAt(6, 18),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -480,8 +460,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[0]._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_21(7, 25),
-      confirmation_time: utc2026_04_21(7, 28),
+      event_time: utcTodayAt(7, 25),
+      confirmation_time: utcTodayAt(7, 28),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -492,8 +472,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[8]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_21(16, 0),
-      confirmation_time: utc2026_04_21(16, 5),
+      event_time: utcTodayAt(16, 0),
+      confirmation_time: utcTodayAt(16, 5),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -504,8 +484,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[8]._id,
       event_type: "departure",
       status: "confirmed",
-      event_time: utc2026_04_21(16, 45),
-      confirmation_time: utc2026_04_21(16, 48),
+      event_time: utcTodayAt(16, 45),
+      confirmation_time: utcTodayAt(16, 48),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -517,8 +497,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: b11._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_21(10, 0),
-      confirmation_time: utc2026_04_21(10, 3),
+      event_time: utcTodayAt(10, 0),
+      confirmation_time: utcTodayAt(10, 3),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -529,8 +509,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[1]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_21(13, 10),
-      confirmation_time: utc2026_04_21(13, 14),
+      event_time: utcTodayAt(13, 10),
+      confirmation_time: utcTodayAt(13, 14),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -541,8 +521,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[7]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_21(14, 50),
-      confirmation_time: utc2026_04_21(14, 55),
+      event_time: utcTodayAt(14, 50),
+      confirmation_time: utcTodayAt(14, 55),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -554,7 +534,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[3]._id,
       event_type: "arrival",
       status: "pending",
-      event_time: utc2026_04_21(9, 20),
+      event_time: utcTodayAt(9, 20),
       confirmation_time: null,
       reported_by: operatorReporter._id,
       auto_detected: false,
@@ -565,7 +545,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[2]._id,
       event_type: "arrival",
       status: "pending",
-      event_time: utc2026_04_21(8, 40),
+      event_time: utcTodayAt(8, 40),
       confirmation_time: null,
       reported_by: operatorReporter._id,
       auto_detected: false,
@@ -577,8 +557,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[5]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_21(11, 0),
-      confirmation_time: utc2026_04_21(11, 4),
+      event_time: utcTodayAt(11, 0),
+      confirmation_time: utcTodayAt(11, 4),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -589,7 +569,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[5]._id,
       event_type: "departure",
       status: "pending",
-      event_time: utc2026_04_21(11, 45),
+      event_time: utcTodayAt(11, 45),
       confirmation_time: null,
       reported_by: operatorReporter._id,
       auto_detected: false,
@@ -600,8 +580,8 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[4]._id,
       event_type: "arrival",
       status: "confirmed",
-      event_time: utc2026_04_21(12, 5),
-      confirmation_time: utc2026_04_21(12, 8),
+      event_time: utcTodayAt(12, 5),
+      confirmation_time: utcTodayAt(12, 8),
       reported_by: admin?._id ?? null,
       confirmed_by: admin?._id ?? null,
       auto_detected: false,
@@ -612,7 +592,7 @@ export async function seedOperationalSummaryDemo() {
       bus_id: demoBuses[4]._id,
       event_type: "departure",
       status: "pending",
-      event_time: utc2026_04_21(12, 55),
+      event_time: utcTodayAt(12, 55),
       confirmation_time: null,
       reported_by: operatorReporter._id,
       auto_detected: false,
@@ -625,12 +605,18 @@ export async function seedOperationalSummaryDemo() {
 
   const totalSmAssignments = smAssignments.length + extraSpecs.length;
 
-  console.log("\n✅ Terminal operational summary demo (2026-04-21 UTC)");
+  const demoUtc = new Date();
+  const demoDateIso = demoUtc.toISOString().slice(0, 10);
+  const demoDateUs = `${String(demoUtc.getUTCMonth() + 1).padStart(2, "0")}/${String(demoUtc.getUTCDate()).padStart(2, "0")}/${demoUtc.getUTCFullYear()}`;
+
+  console.log("\n✅ Terminal operational summary demo (" + demoDateIso + " UTC)");
   console.log("   Terminal:", smTerminal.terminal_name, `(${smTerminal._id})`);
-  console.log("   Date: 04/21/2026 (UTC)");
+  console.log("   Date:", demoDateUs, "(UTC)");
   console.log("   TerminalLog events:", logs.length);
   console.log("   SM assignments (scheduled that day):", totalSmAssignments);
-  console.log("\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=2026-04-21");
+  console.log(
+    "\n   GET /api/terminals/" + String(smTerminal._id) + "/operational-summary?date=" + demoDateIso,
+  );
   console.log("   Expected ≈ scheduled: 11, present: 3, departed_today: 3, pending: 4 (2+2)\n");
 }
 
@@ -1607,6 +1593,7 @@ const seedData = async () => {
     ] = terminals;
 
     await seedDevAdminUsers(smTerminal._id);
+    await seedJohnAdminUsers(smTerminal._id);
 
     await User.updateOne(
       { email: "pedro.reyes@email.com" },
@@ -2117,9 +2104,7 @@ const seedData = async () => {
 
     const busById = new Map(buses.map((b) => [String(b._id), b]));
 
-    const busStatuses = await BusStatus.insertMany(
-      buses.map((bus, index) => busStatusPayloadForSeedBus(bus, index)),
-    );
+    const busStatuses = await insertBusStatusesForSeedBuses(buses);
 
     console.log(`✅ Created ${busStatuses.length} bus statuses`);
 
@@ -2390,8 +2375,18 @@ const seedData = async () => {
     // ==========================================
     // 8. CREATE BUS ASSIGNMENTS
     // ==========================================
-    const today = new Date(2026, 3, 21);
-    today.setHours(0, 0, 0, 0);
+    const todayAnchor = new Date();
+    const today = new Date(
+      Date.UTC(
+        todayAnchor.getUTCFullYear(),
+        todayAnchor.getUTCMonth(),
+        todayAnchor.getUTCDate(),
+        0,
+        0,
+        0,
+        0,
+      ),
+    );
 
     const assignmentSeedRows = [
       // CEB-001: multiple assignments (past completed / cancelled + current pending)
@@ -2627,7 +2622,7 @@ const seedData = async () => {
         terminal_id: null,
         title: "System Maintenance Notice",
         message:
-          "The bus tracking system will undergo maintenance on March 31, 2026 from 2:00 AM to 4:00 AM. Real-time tracking may be temporarily unavailable.",
+          "The bus tracking system will undergo maintenance on April 30, 2026 from 2:00 AM to 4:00 AM. Real-time tracking may be temporarily unavailable.",
         notification_type: "info",
         priority: "high",
         scope: "system",
@@ -2732,7 +2727,7 @@ const seedData = async () => {
         terminal_id: null,
         title: "Route 05E Schedule Change",
         message:
-          "Starting April 1, 2026, Route 05E will have updated departure times. First bus at 6:00 AM, last bus at 10:00 PM.",
+          "Starting May 1, 2026, Route 05E will have updated departure times. First bus at 6:00 AM, last bus at 10:00 PM.",
         notification_type: "info",
         priority: "high",
         scope: "route",

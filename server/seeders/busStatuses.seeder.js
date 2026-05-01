@@ -15,7 +15,7 @@ async function ensureDbConnected() {
   console.log("📦 Connected to MongoDB");
 }
 
-function getOccupancyStatus(occupancyCount, capacity) {
+export function getOccupancyStatus(occupancyCount, capacity) {
   const ratio = capacity > 0 ? occupancyCount / capacity : 0;
   if (ratio >= 1) return "full";
   if (ratio >= 0.7) return "standing room";
@@ -23,7 +23,8 @@ function getOccupancyStatus(occupancyCount, capacity) {
   return "empty";
 }
 
-function busStatusRowForBus(bus, index) {
+/** Seeded bus status row: out-of-service and maintenance buses are always empty. */
+export function busStatusPayloadForSeedBus(bus, index) {
   if (bus.status === "out of service" || bus.status === "maintenance") {
     return {
       bus_id: String(bus._id),
@@ -42,6 +43,13 @@ function busStatusRowForBus(bus, index) {
   };
 }
 
+/** Used by `allSchema.seeder.js` after buses are inserted (DB already cleared for BusStatus). */
+export async function insertBusStatusesForSeedBuses(buses) {
+  return BusStatus.insertMany(
+    buses.map((bus, index) => busStatusPayloadForSeedBus(bus, index)),
+  );
+}
+
 const seedBusStatuses = async () => {
   try {
     await ensureDbConnected();
@@ -53,11 +61,7 @@ const seedBusStatuses = async () => {
 
     await BusStatus.deleteMany({});
 
-    const statusesPayload = buses.map((bus, index) =>
-      busStatusRowForBus(bus, index),
-    );
-
-    const statuses = await BusStatus.insertMany(statusesPayload);
+    const statuses = await insertBusStatusesForSeedBuses(buses);
     console.log(`✅ Created ${statuses.length} bus statuses`);
   } catch (error) {
     console.error("❌ Error seeding bus statuses:", error);

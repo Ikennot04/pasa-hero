@@ -1,6 +1,6 @@
 /**
  * Seeds TerminalLog rows and BusAssignment ETAs for testing
- * GET /api/terminals/:id/operational-summary?date=2026-04-21
+ * GET /api/terminals/:id/operational-summary?date=YYYY-MM-DD (UTC day used when seed runs)
  *
  * Prerequisite: run `npm run seed` first (allSchema.seeder.js).
  * Then: `npm run seed:operational-summary`
