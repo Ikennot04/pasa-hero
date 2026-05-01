@@ -16,7 +16,7 @@ type ApiDriver = {
 };
 
 type ApiNameRef = { _id: string; f_name?: string; l_name?: string };
-type ApiBusRef = { _id: string; bus_number?: string };
+type ApiBusRef = { _id: string; bus_number?: string; plate_number?: string };
 type ApiRouteRef = { _id: string; route_name?: string };
 type ApiTerminalRef = { _id: string; terminal_name?: string };
 
@@ -31,6 +31,8 @@ export type ApiBusAssignmentRow = {
   _id: string;
   operator_name?: string;
   bus_number?: string;
+  plate_number?: string;
+  driver_name?: string;
   route_name?: string;
   status?: string;
   result?: string;
@@ -99,9 +101,11 @@ export function mapApiAssignmentToRow(raw: ApiBusAssignmentRow): AssignmentRow {
   const bus = raw.bus_id;
   const operator = raw.operator_user_id;
   const route = raw.route_id;
+  const driver = raw.driver_id;
   const operatorObj = typeof operator === "object" && operator ? operator : null;
   const busObj = typeof bus === "object" && bus ? bus : null;
   const routeObj = typeof route === "object" && route ? route : null;
+  const driverObj = typeof driver === "object" && driver ? driver : null;
 
   const assignment_status: AssignmentStatus =
     (raw.status ?? raw.assignment_status) === "inactive" ? "inactive" : "active";
@@ -118,7 +122,9 @@ export function mapApiAssignmentToRow(raw: ApiBusAssignmentRow): AssignmentRow {
     operator_user_id: refId(raw.operator_user_id),
     route_id: refId(raw.route_id),
     operator_name: raw.operator_name ?? displayFullName(operatorObj),
-    bus_number: raw.bus_number ?? String(busObj?.bus_number ?? "—"),
+    plate_number:
+      raw.plate_number ?? String(busObj?.plate_number ?? "—"),
+    driver_name: raw.driver_name ?? displayFullName(driverObj),
     route_name: raw.route_name ?? String(routeObj?.route_name ?? "—"),
     assignment_status,
     assignment_result,
