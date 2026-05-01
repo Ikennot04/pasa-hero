@@ -2,14 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import '../../../shared/nav_bar.dart';
+import '../../../core/services/backend_api_service.dart';
 
 /// Firestore users collection; operator documents use role_id / roleid = 2.
 const String _usersCollection = 'users';
-const String _operatorSigninUrl =
-    'https://pasa-hero-server.vercel.app/api/users/auth/signin';
+const String _operatorSigninPath = '/api/users/auth/signin';
 
 /// Operator role id (matches backend/users table).
 const int operatorRoleId = 2;
@@ -47,6 +45,7 @@ class _LoginFormState extends State<LoginForm> {
   bool _acceptedTerms = false;
   bool _attemptedSubmit = false;
   bool _attemptedTermsOnly = false;
+  final BackendApiService _backendApi = BackendApiService();
 
   static const String _termsText =
       'Effective Date: April 28, 2026\n\n'
@@ -513,18 +512,16 @@ class _LoginFormState extends State<LoginForm> {
       Map<String, dynamic>? backendPayload;
       try {
         for (final emailCandidate in emailCandidates) {
-          final backendResponse = await http.post(
-            Uri.parse(_operatorSigninUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
+          final backendResponse = await _backendApi.post(
+            _operatorSigninPath,
+            body: <String, dynamic>{
               'email': emailCandidate,
               'password': password,
-            }),
+            },
           );
-          final decoded = jsonDecode(backendResponse.body);
-          backendPayload = decoded is Map<String, dynamic> ? decoded : null;
+          backendPayload = backendResponse.data;
 
-          if (backendResponse.statusCode >= 200 && backendResponse.statusCode < 300) {
+          if (backendResponse.success) {
             final userMap = _userMapFromSigninPayload(backendPayload);
             if (!_isOperatorRoleFromUserMap(userMap)) {
               throw Exception('Account not found');
@@ -532,7 +529,7 @@ class _LoginFormState extends State<LoginForm> {
             break;
           }
 
-          final msg = backendPayload?['message']?.toString() ?? '';
+          final msg = backendResponse.error ?? backendPayload?['message']?.toString() ?? '';
           final msgLower = msg.toLowerCase();
           if (msgLower.contains('invalid password') ||
               msgLower.contains('wrong password') ||

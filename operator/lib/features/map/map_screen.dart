@@ -14,7 +14,7 @@ import 'services/bus_stop_icon_service.dart';
 /// Initial map center so bus stops are visible on first load.
 const CameraPosition _initialCameraOverBusStops = CameraPosition(
   target: LatLng(10.3270, 123.9475),
-  zoom: 14.0,
+  zoom: 16.0,
 );
 const String _userLocationsCollection = 'user_locations';
 
@@ -24,6 +24,7 @@ const int _zBusStopMarker = 1;
 const int _zRouteEndpointMarker = 2;
 const int _zOperatorMarker = 3;
 const int _zRiderMarker = 5;
+const Duration _inactiveUserThreshold = Duration(minutes: 5);
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -54,6 +55,17 @@ class _MapScreenState extends State<MapScreen> {
   /// When true, GoogleMap shows the OS "my location" dot (backup if custom marker fails).
   bool _myLocationLayerEnabled = false;
 
+  String get _debugMapText {
+    final busStopCount =
+        _markers.where((m) => m.markerId.value.startsWith('bus_stop_')).length;
+    final riderCount =
+        _markers.where((m) => m.markerId.value.startsWith('user_')).length;
+    final hasOperator =
+        _markers.any((m) => m.markerId.value == 'operator_location');
+    return 'Markers: bus stops $busStopCount, riders $riderCount, '
+        'operator ${hasOperator ? 'yes' : 'no'}';
+  }
+
   /// Polyline id for the bus stop route (so operator can see their route).
   static const String _busStopRoutePolylineId = 'bus_stop_route';
 
@@ -74,14 +86,30 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   static bool _userLocDocExplicitlyOffline(Map<String, dynamic> data) {
-    final online = data['online'];
-    if (online == 0 || online == false || online == '0') return true;
-    final status = data['status'];
-    if (status == 0 || status == false) return true;
-    if (status is String) {
-      final s = status.toLowerCase().trim();
-      if (s == '0' || s == 'offline' || s == 'inactive') return true;
+    bool _isFalsy(Object? value) {
+      if (value == null) return false;
+      if (value is bool) return value == false;
+      if (value is num) return value == 0;
+      final normalized = value.toString().trim().toLowerCase();
+      return normalized == '0' ||
+          normalized == 'false' ||
+          normalized == 'no' ||
+          normalized == 'off' ||
+          normalized == 'inactive' ||
+          normalized == 'offline';
     }
+
+    bool _isOfflineText(Object? value) {
+      if (value == null) return false;
+      final s = value.toString().trim().toLowerCase();
+      return s == 'offline' || s == 'inactive' || s == 'disconnected';
+    }
+
+    if (_isFalsy(data['online']) || _isFalsy(data['isOnline']) || _isFalsy(data['active'])) {
+      return true;
+    }
+    if (_isFalsy(data['status']) || _isOfflineText(data['status'])) return true;
+    if (_isOfflineText(data['state']) || _isOfflineText(data['presence'])) return true;
     return false;
   }
 
@@ -124,6 +152,61 @@ class _MapScreenState extends State<MapScreen> {
     return true;
   }
 
+  static DateTime? _readUserLocUpdatedAt(Map<String, dynamic> data) {
+    for (final key in const [
+      'updatedAt',
+      'updated_at',
+      'lastUpdated',
+      'last_updated',
+      'timestamp',
+      'locationUpdatedAt',
+      'location_updated_at',
+    ]) {
+      final raw = data[key];
+      if (raw == null) continue;
+      if (raw is Timestamp) return raw.toDate().toLocal();
+      if (raw is DateTime) return raw.toLocal();
+      if (raw is num) {
+        final ms = raw.toInt();
+        if (ms <= 0) continue;
+        return DateTime.fromMillisecondsSinceEpoch(
+          ms < 1000000000000 ? ms * 1000 : ms,
+          isUtc: false,
+        ).toLocal();
+      }
+      if (raw is String) {
+        final parsedIso = DateTime.tryParse(raw);
+        if (parsedIso != null) return parsedIso.toLocal();
+        final asInt = int.tryParse(raw.trim());
+        if (asInt != null && asInt > 0) {
+          return DateTime.fromMillisecondsSinceEpoch(
+            asInt < 1000000000000 ? asInt * 1000 : asInt,
+            isUtc: false,
+          ).toLocal();
+        }
+      }
+    }
+    return null;
+  }
+
+  static bool _userLocAppearsInactive(Map<String, dynamic> data) {
+    final updatedAt = _readUserLocUpdatedAt(data);
+    if (updatedAt == null) return true;
+    return DateTime.now().difference(updatedAt) > _inactiveUserThreshold;
+  }
+
+  static bool _userLocExplicitlyOnline(Map<String, dynamic> data) {
+    bool truthy(Object? value) {
+      if (value == null) return false;
+      if (value is bool) return value;
+      if (value is num) return value > 0;
+      final s = value.toString().trim().toLowerCase();
+      return s == '1' || s == 'true' || s == 'yes' || s == 'on' || s == 'active';
+    }
+
+    return truthy(data['online']) || truthy(data['isOnline']) || truthy(data['active']);
+  }
+
   Future<String?> _resolveOperatorRouteCode() async {
     final fromProfile = (await ProfileDataService.getOperatorRouteCode())?.trim();
     if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
@@ -141,6 +224,11 @@ class _MapScreenState extends State<MapScreen> {
       if (!mounted) return;
       _activeRouteCode = routeCode;
       if (routeCode == null || routeCode.isEmpty) {
+        final allStops = await _loadAllBusStopsFromFirestore();
+        if (!mounted) return;
+        if (allStops.isNotEmpty) {
+          await _addBusStopMarkers(allStops, _busStopIconService.defaultIcon);
+        }
         setState(() => _isLoading = false);
         return;
       }
@@ -148,7 +236,13 @@ class _MapScreenState extends State<MapScreen> {
           await RouteDataService.getRouteStops(routeCode);
       if (!mounted) return;
       if (stops.isNotEmpty) {
-        _addBusStopMarkers(stops, _busStopIconService.defaultIcon);
+        await _addBusStopMarkers(stops, _busStopIconService.defaultIcon);
+      } else {
+        final allStops = await _loadAllBusStopsFromFirestore();
+        if (!mounted) return;
+        if (allStops.isNotEmpty) {
+          await _addBusStopMarkers(allStops, _busStopIconService.defaultIcon);
+        }
       }
       if (!mounted) return;
 
@@ -164,6 +258,38 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  /// Fallback bus stops source used when route-specific stops are unavailable.
+  Future<List<({String name, LatLng position})>> _loadAllBusStopsFromFirestore() async {
+    try {
+      final snap = await FirebaseFirestore.instance.collection('bus_stops').get();
+      final out = <({String name, LatLng position})>[];
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final latRaw = data['latitude'] ?? data['lat'];
+        final lngRaw = data['longitude'] ?? data['lng'];
+        double? lat = (latRaw is num) ? latRaw.toDouble() : double.tryParse('$latRaw');
+        double? lng = (lngRaw is num) ? lngRaw.toDouble() : double.tryParse('$lngRaw');
+        final gp = data['location'];
+        if ((lat == null || lng == null) && gp is GeoPoint) {
+          lat = gp.latitude;
+          lng = gp.longitude;
+        }
+        if (lat == null || lng == null) continue;
+        final name = (data['name'] ??
+                data['stop_name'] ??
+                data['terminal_name'] ??
+                data['code'] ??
+                doc.id)
+            .toString();
+        out.add((name: name, position: LatLng(lat, lng)));
+      }
+      return out;
+    } catch (e) {
+      print('⚠️ [MapScreen] _loadAllBusStopsFromFirestore failed: $e');
+      return const [];
+    }
+  }
+
   void _watchUserLocations() {
     _userLocationsSub?.cancel();
     _userLocationsSub = FirebaseFirestore.instance
@@ -174,14 +300,14 @@ class _MapScreenState extends State<MapScreen> {
       final userMarkers = <Marker>{};
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        // Mirror the user app behavior: if a live location doc has coordinates,
-        // render it instead of dropping by role/status mismatches.
+        // Only keep rider docs that are explicitly online and recently updated.
         final isOffline = _userLocDocExplicitlyOffline(data);
-        _userLocMatchesRiderRole(data);
+        final isRider = _userLocMatchesRiderRole(data);
+        final isInactive = _userLocAppearsInactive(data);
+        final isExplicitlyOnline = _userLocExplicitlyOnline(data);
         final pos = _latLngFromUserLocData(data);
         if (pos == null) continue;
-        // Keep filtering out explicit offline docs only.
-        if (isOffline) continue;
+        if (!isRider || isOffline || isInactive || !isExplicitlyOnline) continue;
 
         final email = data['email']?.toString() ?? 'Rider';
         userMarkers.add(
@@ -812,15 +938,6 @@ class _MapScreenState extends State<MapScreen> {
         title: const Text('Map'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.my_location),
-            tooltip: 'Center on my location',
-            onPressed: _isLocationRequestInProgress
-                ? null
-                : () => _initializeLocation(forceRefresh: true),
-          ),
-        ],
       ),
       body: Stack(
         children: [
@@ -847,6 +964,41 @@ class _MapScreenState extends State<MapScreen> {
             const Center(
               child: CircularProgressIndicator(),
             ),
+          Positioned(
+            left: 16,
+            bottom: 84,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 260),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.65),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _debugMapText,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 16,
+            bottom: 16,
+            child: FloatingActionButton(
+              mini: true,
+              onPressed: _isLocationRequestInProgress
+                  ? null
+                  : () => _initializeLocation(forceRefresh: true),
+              tooltip: 'Center on my location',
+              child: const Icon(Icons.my_location),
+            ),
+          ),
         ],
       ),
     );
