@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   busRefLabel,
@@ -53,7 +53,10 @@ export type NotificationTableProps = {
   onSearchChange: (value: string) => void;
   priorityFilter: PriorityFilter;
   onPriorityFilterChange: (value: PriorityFilter) => void;
+  onBulkDelete?: (ids: string[]) => void;
 };
+
+const BULK_DELETE_MODAL_ID = "terminal-notification-bulk-delete-modal";
 
 export default function NotificationTable({
   sorted,
@@ -62,9 +65,13 @@ export default function NotificationTable({
   onSearchChange,
   priorityFilter,
   onPriorityFilterChange,
+  onBulkDelete,
 }: NotificationTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   const totalRows = sorted.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
@@ -77,6 +84,59 @@ export default function NotificationTable({
 
   const rangeStart = totalRows === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
   const rangeEnd = totalRows === 0 ? 0 : Math.min(clampedPage * pageSize, totalRows);
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    if (showDeleteModal) el.showModal();
+    else el.close();
+  }, [showDeleteModal]);
+
+  useEffect(() => {
+    const el = dialogRef.current;
+    if (!el) return;
+    const onClose = () => setShowDeleteModal(false);
+    el.addEventListener("close", onClose);
+    return () => el.removeEventListener("close", onClose);
+  }, []);
+
+  const pageIds = paginatedRows.map((n) => n.id);
+  const allSelectedOnPage =
+    pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+
+  function toggleAllOnPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelectedOnPage) {
+        for (const id of pageIds) next.delete(id);
+      } else {
+        for (const id of pageIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleConfirmBulkDelete() {
+    if (onBulkDelete && selectedIds.size > 0) {
+      onBulkDelete(Array.from(selectedIds));
+      setSelectedIds(new Set());
+    }
+    setShowDeleteModal(false);
+  }
+
+  const selectedCount = selectedIds.size;
+  const canBulkDelete = Boolean(onBulkDelete) && selectedCount > 0;
+  const showCheckboxColumn = Boolean(onBulkDelete);
+  const emptyColSpan = showCheckboxColumn ? 11 : 10;
 
   return (
     <>
@@ -138,6 +198,28 @@ export default function NotificationTable({
         </div>
       </div>
 
+      {canBulkDelete ? (
+        <div className="flex items-center justify-end gap-3 flex-wrap">
+          <span className="text-sm text-base-content/70">
+            {selectedCount} selected
+          </span>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Clear selection
+          </button>
+          <button
+            type="button"
+            className="btn btn-error"
+            onClick={() => setShowDeleteModal(true)}
+          >
+            Delete selected
+          </button>
+        </div>
+      ) : null}
+
       <div className="overflow-x-auto rounded-xl border border-base-300 bg-base-100 shadow-sm">
         <table className="table">
           <thead>
@@ -152,12 +234,23 @@ export default function NotificationTable({
               <th>Message</th>
               <th>Type</th>
               <th>Priority</th>
+              {showCheckboxColumn ? (
+                <th className="w-10">
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-sm"
+                    checked={allSelectedOnPage}
+                    onChange={toggleAllOnPage}
+                    aria-label="Select all on page"
+                  />
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center text-sm text-base-content/60 py-12">
+                <td colSpan={emptyColSpan} className="text-center text-sm text-base-content/60 py-12">
                   Nothing matches your filters.
                 </td>
               </tr>
@@ -180,6 +273,17 @@ export default function NotificationTable({
                     <span className="badge badge-ghost ">{notificationTypeLabel(n.notification_type)}</span>
                   </td>
                   <td>{priorityBadge(n.priority)}</td>
+                  {showCheckboxColumn ? (
+                    <td className="text-right">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={selectedIds.has(n.id)}
+                        onChange={() => toggleOne(n.id)}
+                        aria-label={`Select ${n.title}`}
+                      />
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}
@@ -214,6 +318,45 @@ export default function NotificationTable({
           </button>
         </div>
       </div>
+
+      <dialog
+        ref={dialogRef}
+        id={BULK_DELETE_MODAL_ID}
+        className="modal"
+        aria-labelledby="terminal-bulk-delete-title"
+        aria-describedby="terminal-bulk-delete-desc"
+      >
+        <div className="modal-box">
+          <h3 id="terminal-bulk-delete-title" className="font-bold text-lg">
+            Delete selected notifications?
+          </h3>
+          <p id="terminal-bulk-delete-desc" className="py-4 text-base-content/80">
+            Are you sure you want to delete {selectedCount} notification
+            {selectedCount !== 1 ? "s" : ""}? This action cannot be undone.
+          </p>
+          <div className="modal-action">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setShowDeleteModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-error"
+              onClick={handleConfirmBulkDelete}
+            >
+              Delete {selectedCount} notification{selectedCount !== 1 ? "s" : ""}
+            </button>
+          </div>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="submit" tabIndex={-1} aria-hidden>
+            close
+          </button>
+        </form>
+      </dialog>
     </>
   );
 }

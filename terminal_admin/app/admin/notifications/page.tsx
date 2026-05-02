@@ -7,6 +7,7 @@ import CreateNotificationModal from "./_components/CreateNotificationModal";
 import NotificationTable, {
   type PriorityFilter,
 } from "./_components/NotificationTable";
+import { useDeleteNotifications } from "./_hooks/useDeleteNotifications";
 import { useGetNotifications } from "./_hooks/useGetNotification";
 import {
   normalizeNotification,
@@ -30,6 +31,7 @@ type TerminalNotificationsPayload = {
 
 export default function NotificationsPage() {
   const { getNotifications } = useGetNotifications();
+  const { deleteNotifications } = useDeleteNotifications();
   const [items, setItems] = useState<NotificationFields[]>([]);
   const [counts, setCounts] = useState({
     visible_for_terminal: 0,
@@ -132,6 +134,31 @@ export default function NotificationsPage() {
     void loadNotifications();
   };
 
+  const onBulkDelete = useCallback(
+    (ids: string[]) => {
+      void (async () => {
+        const response = await deleteNotifications(ids);
+        if (!response) {
+          setToast("Failed to delete notifications");
+          return;
+        }
+        if (response.success === false) {
+          const message =
+            typeof response.message === "string"
+              ? response.message
+              : "Failed to delete notifications";
+          setToast(message);
+          return;
+        }
+        setToast(
+          `Deleted ${ids.length} notification${ids.length !== 1 ? "s" : ""}.`,
+        );
+        await loadNotifications();
+      })();
+    },
+    [deleteNotifications, loadNotifications],
+  );
+
   return (
     <div className="space-y-6 pb-8 pt-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -195,6 +222,7 @@ export default function NotificationsPage() {
             onSearchChange={setSearch}
             priorityFilter={priorityFilter}
             onPriorityFilterChange={setPriorityFilter}
+            onBulkDelete={onBulkDelete}
           />
         </>
       )}
