@@ -1642,6 +1642,7 @@ const seedData = async () => {
         end_location: { latitude: 10.3181, longitude: 123.9061 },
         estimated_duration: 45,
         status: "active",
+        is_free_ride: true,
       },
       {
         route_name: "Carbon to Mandaue Express",

@@ -36,6 +36,10 @@ const routeSchema = new mongoose.Schema(
       default: "normal",
       enum: ["normal", "vice_versa"],
     },
+    is_free_ride: {
+      type: Boolean,
+      default: false,
+    },
     is_deleted: {
       type: Boolean,
       default: false,
