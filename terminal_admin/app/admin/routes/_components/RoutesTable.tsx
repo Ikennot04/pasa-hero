@@ -3,29 +3,20 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeleteRoute } from "../_hooks/useDeleteRoute";
+import type { RouteProps, RouteStatus } from "../RouteProps";
 import EditRoute from "./EditRoute";
 
-export type RouteStatus = "active" | "inactive" | "suspended";
+export type { RouteStatus };
 
-export type RouteRow = {
-  id: string;
+export type RouteRow = RouteProps & {
   routeCode: string;
   routeName: string;
   startRoute: string;
   endRoute: string;
-  status: RouteStatus;
   active_buses_count: number;
-  updatedAt: string;
-  route_code: string;
-  route_name: string;
-  start_terminal_id: string;
   start_terminal_name: string;
-  end_terminal_id: string;
   end_terminal_name: string;
-  start_location: string | { latitude?: number; longitude?: number };
-  end_location: string | { latitude?: number; longitude?: number };
-  estimated_duration?: number;
-  is_free_ride?: boolean;
+  updatedAt: string;
 };
 
 type RoutesProps = {
@@ -34,7 +25,10 @@ type RoutesProps = {
 };
 
 function formatTimeAgo(iso: string) {
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  const minutes = Math.max(
+    0,
+    Math.round((Date.now() - new Date(iso).getTime()) / 60_000),
+  );
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
@@ -90,7 +84,9 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
     try {
       const res = await deleteRoute(routeToArchive.id);
       if (!res?.success) {
-        throw new Error(res?.message ?? deleteError ?? "Failed to archive route");
+        throw new Error(
+          res?.message ?? deleteError ?? "Failed to archive route",
+        );
       }
       await onRouteUpdated?.();
       setRouteToArchive(null);
@@ -124,7 +120,9 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
           <select
             className="select select-bordered w-full"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | RouteStatus)}
+            onChange={(e) =>
+              setStatusFilter(e.target.value as "all" | RouteStatus)
+            }
           >
             <option value="all">All statuses</option>
             <option value="active">Active</option>
@@ -150,7 +148,10 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
           <tbody>
             {filteredRoutes.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center text-sm text-base-content/60">
+                <td
+                  colSpan={7}
+                  className="text-center text-sm text-base-content/60"
+                >
                   No routes found for your search/filter.
                 </td>
               </tr>
@@ -161,7 +162,9 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
                     {row.routeName ? (
                       <>
                         <div className="font-semibold">{row.routeName}</div>
-                        <div className="text-sm text-base-content/60">{row.routeCode}</div>
+                        <div className="text-sm text-base-content/60">
+                          {row.routeCode}
+                        </div>
                       </>
                     ) : (
                       <div className="font-semibold">{row.routeCode}</div>
@@ -183,9 +186,21 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
                       {row.status}
                     </span>
                   </td>
-                  <td>{row.is_free_ride ? "Yes" : "No"}</td>
+                  <td>
+                    <span
+                      className={`badge badge-outline ${
+                        row.is_free_ride
+                          ? "badge-success badge-outline font-medium"
+                          : "badge-outline font-medium"
+                      }`}
+                    >
+                      {row.is_free_ride ? "Yes" : "No"}
+                    </span>
+                  </td>
                   <td>{row.active_buses_count}</td>
-                  <td className="text-sm text-base-content/70">{formatTimeAgo(row.updatedAt)}</td>
+                  <td className="text-sm text-base-content/70">
+                    {formatTimeAgo(row.updatedAt)}
+                  </td>
                   <td className="flex gap-2">
                     <Link
                       href={`/admin/routes/${encodeURIComponent(row.id)}`}
@@ -224,9 +239,17 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
           <h3 id="archive-route-confirm-title" className="font-bold text-lg">
             Archive route?
           </h3>
-          <p id="archive-route-confirm-desc" className="py-4 text-base-content/80">
+          <p
+            id="archive-route-confirm-desc"
+            className="py-4 text-base-content/80"
+          >
             Are you sure you want to archive{" "}
-            <strong>{routeToArchive?.routeName || routeToArchive?.routeCode || "this route"}</strong>?
+            <strong>
+              {routeToArchive?.routeName ||
+                routeToArchive?.routeCode ||
+                "this route"}
+            </strong>
+            ?
           </p>
           <div className="modal-action">
             <button
