@@ -18,6 +18,17 @@ function RouteStatusBadge({ status }: { status: string }) {
   );
 }
 
+function FreeRideBadge({ isFree }: { isFree: boolean }) {
+  if (isFree) {
+    return (
+      <span className="badge badge-success badge-outline font-medium">Yes</span>
+    );
+  }
+  return (
+    <span className="badge badge-outline font-medium">No</span>
+  );
+}
+
 type RouteTableProps = {
   routes: RouteProps[];
   onRouteUpdated?: () => void | Promise<void>;
@@ -104,7 +115,9 @@ export default function RouteTable({ routes, onRouteUpdated }: RouteTableProps) 
                     ? `${route.estimated_duration} min`
                     : "—"}
                 </td>
-                <td>{route.is_free_ride ? "Yes" : "No"}</td>
+                <td>
+                  <FreeRideBadge isFree={Boolean(route.is_free_ride)} />
+                </td>
                 <td>
                   <RouteStatusBadge status={route.status} />
                 </td>

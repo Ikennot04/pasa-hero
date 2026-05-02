@@ -182,28 +182,28 @@ export default function Route() {
   const summaryCards = [
     {
       key: "total_routes",
-      label: "total_routes",
+      label: "Total Routes",
       value: routeSummaryCounts.total_routes,
       accentClass: "from-primary/20 to-primary/5 border-primary/20",
       valueClass: "text-primary",
     },
     {
       key: "active_routes",
-      label: "active_routes",
+      label: "Active Routes",
       value: routeSummaryCounts.active_routes,
       accentClass: "from-success/20 to-success/5 border-success/20",
       valueClass: "text-success",
     },
     {
       key: "inactive_routes",
-      label: "inactive_routes",
+      label: "Inactive Routes",
       value: routeSummaryCounts.inactive_routes,
       accentClass: "from-warning/20 to-warning/5 border-warning/20",
       valueClass: "text-warning",
     },
     {
       key: "active_buses",
-      label: "active_buses",
+      label: "Active Buses",
       value: routeSummaryCounts.active_buses,
       accentClass: "from-info/20 to-info/5 border-info/20",
       valueClass: "text-info",
