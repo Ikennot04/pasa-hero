@@ -10,4 +10,9 @@ const userNotificationSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+userNotificationSchema.index(
+  { user_id: 1, notification_id: 1 },
+  { unique: true },
+);
+
 export default mongoose.model("UserNotification", userNotificationSchema);

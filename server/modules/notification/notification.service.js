@@ -32,10 +32,114 @@ function populateNotificationRefs(query) {
     .populate({ path: "terminal_id", select: "terminal_name" });
 }
 
+/**
+ * Collect user_ids that should receive this notification based on
+ * `UserSubscription` (route or bus) and optional terminal / system scope.
+ */
+async function resolveSubscriberUserIds(notification) {
+  const userIds = new Set();
+  const busId =
+    notification.bus_id != null ? String(notification.bus_id) : null;
+  const routeId =
+    notification.route_id != null ? String(notification.route_id) : null;
+  const terminalId =
+    notification.terminal_id != null
+      ? String(notification.terminal_id)
+      : null;
+  const scope = notification.scope || "";
+
+  if (busId) {
+    const ids = await UserSubscription.distinct("user_id", { bus_id: busId });
+    for (const id of ids) {
+      if (id) userIds.add(String(id));
+    }
+  }
+
+  if (routeId) {
+    const ids = await UserSubscription.distinct("user_id", {
+      route_id: routeId,
+    });
+    for (const id of ids) {
+      if (id) userIds.add(String(id));
+    }
+  }
+
+  const expandTerminalRoutes =
+    terminalId &&
+    !routeId &&
+    !busId &&
+    (scope === "terminal" || scope === "system");
+
+  if (expandTerminalRoutes) {
+    const routes = await Route.find({
+      $or: [
+        { start_terminal_id: terminalId },
+        { end_terminal_id: terminalId },
+      ],
+      is_deleted: { $ne: true },
+    })
+      .select("_id")
+      .lean();
+    const routeIds = routes.map((r) => String(r._id));
+    if (routeIds.length) {
+      const ids = await UserSubscription.distinct("user_id", {
+        route_id: { $in: routeIds },
+      });
+      for (const id of ids) {
+        if (id) userIds.add(String(id));
+      }
+    }
+  }
+
+  if (scope === "system" && !busId && !routeId && !terminalId) {
+    const ids = await UserSubscription.distinct("user_id", {});
+    for (const id of ids) {
+      if (id) userIds.add(String(id));
+    }
+  }
+
+  const senderId =
+    notification.sender_id != null ? String(notification.sender_id) : null;
+  if (senderId) userIds.delete(senderId);
+
+  return [...userIds];
+}
+
+async function fanOutNotificationToSubscribers(notification) {
+  const userIds = await resolveSubscriberUserIds(notification);
+  if (!userIds.length) {
+    return { delivered_count: 0 };
+  }
+
+  const nid = String(notification._id);
+  const ops = userIds.map((user_id) => ({
+    updateOne: {
+      filter: { user_id, notification_id: nid },
+      update: {
+        $setOnInsert: {
+          user_id,
+          notification_id: nid,
+          is_read: false,
+        },
+      },
+      upsert: true,
+    },
+  }));
+
+  await UserNotification.bulkWrite(ops, { ordered: false });
+  return { delivered_count: userIds.length };
+}
+
 export const NotificationService = {
   // CREATE NOTIFICATION ===================================================
   async createNotification(payload) {
     const doc = await Notification.create(payload);
+    try {
+      await fanOutNotificationToSubscribers(doc);
+    } catch (err) {
+      await Notification.findByIdAndDelete(doc._id);
+      throw err;
+    }
     const populated = await populateNotificationRefs(
       Notification.findById(doc._id),
     );
