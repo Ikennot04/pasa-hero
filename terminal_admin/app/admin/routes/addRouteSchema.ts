@@ -38,6 +38,7 @@ export function buildAddRouteSchema(
         return value === assignedTerminalId;
       }),
     end_terminal_id: endIdField,
+    is_free_ride: yup.boolean().default(false),
   });
 }
 

@@ -9,6 +9,19 @@ const normalizeTerminalId = (value) => {
   return value;
 };
 
+const terminalIdFromRouteField = (value) => {
+  if (value == null) return null;
+  if (typeof value === "object") {
+    const id = value._id ?? value.id;
+    if (id != null) {
+      const s = String(id).trim();
+      return s === "" ? null : s;
+    }
+    return null;
+  }
+  return normalizeTerminalId(value);
+};
+
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
   async getAllRoutes() {
@@ -298,6 +311,28 @@ export const RouteService = {
     )
       .populate("start_terminal_id")
       .populate("end_terminal_id");
+
+    if (
+      updated &&
+      Object.prototype.hasOwnProperty.call(normalizedUpdateData, "is_free_ride")
+    ) {
+      const startId = terminalIdFromRouteField(updated.start_terminal_id);
+      const endId = terminalIdFromRouteField(updated.end_terminal_id);
+      const siblingType = updated.route_type === "normal" ? "vice_versa" : "normal";
+      if (startId && endId) {
+        await Route.updateMany(
+          {
+            ...ACTIVE_ROUTE_FILTER,
+            _id: { $ne: updated._id },
+            start_terminal_id: endId,
+            end_terminal_id: startId,
+            route_type: siblingType,
+          },
+          { $set: { is_free_ride: Boolean(normalizedUpdateData.is_free_ride) } },
+        );
+      }
+    }
+
     return updated;
   },
 

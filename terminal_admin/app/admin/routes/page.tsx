@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AddRoute from "./_components/AddRoute";
 import Routes, { type RouteRow, type RouteStatus } from "./_components/RoutesTable";
+import type { RouteProps } from "./RouteProps";
 import { useGetRoutes } from "./_hooks/useGetRoutes";
 
 type ApiTerminal = { terminal_name?: string } | string | null | undefined;
@@ -17,6 +18,7 @@ type ApiRouteDoc = {
   end_location?: string | { latitude?: number; longitude?: number };
   estimated_duration?: number;
   status?: string;
+  is_free_ride?: boolean;
   updatedAt?: string;
   active_buses_count?: number;
 };
@@ -32,6 +34,19 @@ function terminalId(terminal: ApiRouteDoc["start_terminal_id"]): string {
   if (terminal && typeof terminal === "object") {
     if ("_id" in terminal && terminal._id) return String(terminal._id);
     if ("id" in terminal && terminal.id) return String(terminal.id);
+  }
+  return "";
+}
+
+function normalizeLocation(
+  loc: ApiRouteDoc["start_location"],
+): NonNullable<RouteProps["start_location"]> | "" {
+  if (loc == null || loc === "") return "";
+  if (typeof loc === "string") return loc;
+  const lat = loc.latitude;
+  const lng = loc.longitude;
+  if (typeof lat === "number" && typeof lng === "number") {
+    return { latitude: lat, longitude: lng };
   }
   return "";
 }
@@ -64,9 +79,10 @@ function mapApiRouteToRow(route: ApiRouteDoc): RouteRow {
     start_terminal_name: start || "",
     end_terminal_id: terminalId(route.end_terminal_id),
     end_terminal_name: end || "",
-    start_location: route.start_location ?? "",
-    end_location: route.end_location ?? "",
-    estimated_duration: route.estimated_duration,
+    start_location: normalizeLocation(route.start_location),
+    end_location: normalizeLocation(route.end_location),
+    estimated_duration: route.estimated_duration ?? null,
+    is_free_ride: Boolean(route.is_free_ride),
   };
 }
 

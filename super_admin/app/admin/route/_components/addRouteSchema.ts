@@ -27,6 +27,7 @@ export const addRouteSchema = yup.object({
   start_location: yup.string().required("Start location is required").trim(),
   end_location: yup.string().required("End location is required").trim(),
   estimated_duration: durationOptional,
+  is_free_ride: yup.boolean().default(false),
 });
 
 export type AddRouteFormData = yup.InferType<typeof addRouteSchema>;

@@ -11,6 +11,7 @@ export type RouteProps = {
   start_terminal_name?: string;
   end_terminal_name?: string;
   estimated_duration: number | null;
+  is_free_ride?: boolean;
   status: RouteStatus;
   createdAt?: string;
   updatedAt?: string;
