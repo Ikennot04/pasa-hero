@@ -16,6 +16,7 @@ type RouteDetailType = {
   start_terminal_id: { terminal_name: string };
   end_terminal_id: { terminal_name: string };
   status: string;
+  is_free_ride?: boolean;
   updatedAt: string;
 };
 
@@ -113,6 +114,14 @@ export default function RouteDetailsPage() {
               >
                 {route?.status}
               </span>
+            </p>
+          </div>
+          <div className="rounded-lg border border-base-300 bg-base-100 p-3">
+            <p className="text-xs uppercase tracking-wide text-base-content/60">
+              Free ride
+            </p>
+            <p className="mt-1 text-base font-medium">
+              {route?.is_free_ride ? "Yes" : "No"}
             </p>
           </div>
           <div className="rounded-lg border border-base-300 bg-base-100 p-3">

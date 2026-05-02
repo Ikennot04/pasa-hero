@@ -17,6 +17,7 @@ type ApiRouteDoc = {
   end_location?: string | { latitude?: number; longitude?: number };
   estimated_duration?: number;
   status?: string;
+  is_free_ride?: boolean;
   updatedAt?: string;
   active_buses_count?: number;
 };
@@ -67,6 +68,7 @@ function mapApiRouteToRow(route: ApiRouteDoc): RouteRow {
     start_location: route.start_location ?? "",
     end_location: route.end_location ?? "",
     estimated_duration: route.estimated_duration,
+    is_free_ride: Boolean(route.is_free_ride),
   };
 }
 

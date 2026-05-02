@@ -25,6 +25,7 @@ export type RouteRow = {
   start_location: string | { latitude?: number; longitude?: number };
   end_location: string | { latitude?: number; longitude?: number };
   estimated_duration?: number;
+  is_free_ride?: boolean;
 };
 
 type RoutesProps = {
@@ -140,6 +141,7 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
               <th>Route</th>
               <th>Start route → End route</th>
               <th>Status</th>
+              <th>Free ride</th>
               <th>Active buses</th>
               <th>Updated</th>
               <th>Actions</th>
@@ -148,7 +150,7 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
           <tbody>
             {filteredRoutes.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center text-sm text-base-content/60">
+                <td colSpan={7} className="text-center text-sm text-base-content/60">
                   No routes found for your search/filter.
                 </td>
               </tr>
@@ -181,6 +183,7 @@ export default function Routes({ routes, onRouteUpdated }: RoutesProps) {
                       {row.status}
                     </span>
                   </td>
+                  <td>{row.is_free_ride ? "Yes" : "No"}</td>
                   <td>{row.active_buses_count}</td>
                   <td className="text-sm text-base-content/70">{formatTimeAgo(row.updatedAt)}</td>
                   <td className="flex gap-2">
