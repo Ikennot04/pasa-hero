@@ -52,6 +52,7 @@ const defaultValues: EditRouteFormData = {
   end_location: "",
   estimated_duration: undefined,
   status: "active",
+  is_free_ride: false,
 };
 
 export default function EditRoute({
@@ -180,6 +181,7 @@ export default function EditRoute({
       end_location: endLocation,
       estimated_duration: route.estimated_duration ?? undefined,
       status: route.status,
+      is_free_ride: route.is_free_ride ?? false,
     });
 
     const parsedStart = parseCoordinatePair(startLocation);
@@ -217,6 +219,7 @@ export default function EditRoute({
         estimated_duration:
           data.estimated_duration != null ? data.estimated_duration : undefined,
         status: data.status,
+        is_free_ride: Boolean(data.is_free_ride),
       };
       console.log("[EditRoute] update payload:", payload);
 
@@ -483,6 +486,10 @@ export default function EditRoute({
                   )}
                 </div>
               </div>
+              <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-medium text-[#2D2D2D]">
+                <input type="checkbox" className="checkbox checkbox-sm rounded border-[#D1D5DB]" {...register("is_free_ride")} />
+                Free ride
+              </label>
             </section>
 
             <section className="rounded-md border border-[#E5E7EB] p-3.5">
@@ -552,7 +559,7 @@ export default function EditRoute({
                     Remove end terminal
                   </button>
                 </div>
-                <div className="md:col-span-1">
+                <div>
                   <label className="mb-1.5 block text-base font-medium text-[#2D2D2D]">
                     Status
                   </label>

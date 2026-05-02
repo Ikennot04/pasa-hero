@@ -83,6 +83,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
       start_location: "",
       end_location: "",
       estimated_duration: undefined,
+      is_free_ride: false,
     },
   });
 
@@ -346,6 +347,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
           : undefined,
       status: "active" as const,
       route_type: "normal" as const,
+      is_free_ride: Boolean(data.is_free_ride),
     };
 
     const routeStops = stopMarkers.map((stop, index) => {
@@ -572,6 +574,10 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                   )}
                 </div>
               </div>
+              <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-medium text-[#2D2D2D]">
+                <input type="checkbox" className="checkbox checkbox-sm rounded border-[#D1D5DB]" {...register("is_free_ride")} />
+                Free ride
+              </label>
             </section>
 
             <section className="rounded-md border border-[#E5E7EB] p-3.5">

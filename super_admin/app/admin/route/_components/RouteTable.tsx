@@ -80,6 +80,7 @@ export default function RouteTable({ routes, onRouteUpdated }: RouteTableProps) 
               <th>Start Terminal</th>
               <th>End Terminal</th>
               <th>Est. Duration</th>
+              <th>Free ride</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
@@ -103,6 +104,7 @@ export default function RouteTable({ routes, onRouteUpdated }: RouteTableProps) 
                     ? `${route.estimated_duration} min`
                     : "—"}
                 </td>
+                <td>{route.is_free_ride ? "Yes" : "No"}</td>
                 <td>
                   <RouteStatusBadge status={route.status} />
                 </td>

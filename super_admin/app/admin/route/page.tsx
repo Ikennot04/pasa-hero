@@ -28,6 +28,7 @@ type ApiRoute = {
   end_terminal_id: string | ApiTerminalRef | null;
   estimated_duration?: number | null;
   status?: string;
+  is_free_ride?: boolean;
   active_buses_count?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -98,6 +99,7 @@ function mapApiRouteToProps(route: ApiRoute): RouteProps {
     end_terminal_name: endTerminal.name,
     estimated_duration:
       typeof route.estimated_duration === "number" ? route.estimated_duration : null,
+    is_free_ride: Boolean(route.is_free_ride),
     status,
     createdAt: route.createdAt,
     updatedAt: route.updatedAt,
