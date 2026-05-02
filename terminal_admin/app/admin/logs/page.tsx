@@ -394,7 +394,12 @@ export default function TerminalLogs() {
         </div>
       </div>
 
-      <ArrivalDepartureLog events={filteredEvents} />
+      <ArrivalDepartureLog
+        key={[busFilter, dateFilter, eventTypeFilter, statusFilter, sourceFilter].join(
+          "|",
+        )}
+        events={filteredEvents}
+      />
         </>
       )}
     </div>

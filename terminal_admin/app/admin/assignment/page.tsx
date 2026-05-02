@@ -91,7 +91,8 @@ export default function AssignmentPage() {
       const matchSearch =
         !search ||
         row.operator_name.toLowerCase().includes(search) ||
-        row.bus_number.toLowerCase().includes(search) ||
+        row.driver_name.toLowerCase().includes(search) ||
+        row.plate_number.toLowerCase().includes(search) ||
         row.route_name.toLowerCase().includes(search);
       const matchStatus =
         assignmentStatusFilter === "all" ||
@@ -129,7 +130,7 @@ export default function AssignmentPage() {
           <div className="form-control w-64">
             <input
               type="text"
-              placeholder="Search operator, bus, route..."
+              placeholder="Search operator, driver, plate, route..."
               className="input input-bordered w-full"
               value={assignmentSearch}
               onChange={(e) => setAssignmentSearch(e.target.value)}

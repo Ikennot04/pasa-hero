@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { GoogleMap, useJsApiLoader, type Libraries } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
+import {
+  GOOGLE_MAPS_LIBRARIES,
+  GOOGLE_MAPS_SCRIPT_ID,
+} from "@/lib/googleMaps";
 
 type RouteStopRow = {
   id: string;
@@ -23,7 +27,6 @@ type AddBusStopProps = {
   onToast: (message: string) => void;
 };
 
-const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
 const DEFAULT_MAP_ZOOM = 14.5;
 
 export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }: AddBusStopProps) {
@@ -35,7 +38,7 @@ export default function AddBusStop({ routeId, activeStops, onAddStop, onToast }:
   const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const addStopDialogRef = useRef<HTMLDialogElement>(null);
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
-    id: "pasahero-admin-map-script",
+    id: GOOGLE_MAPS_SCRIPT_ID,
     googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
     libraries: GOOGLE_MAPS_LIBRARIES,
   });

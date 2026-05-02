@@ -28,7 +28,8 @@ export type AssignmentRow = {
   operator_user_id: string;
   route_id: string;
   operator_name: string;
-  bus_number: string;
+  plate_number: string;
+  driver_name: string;
   route_name: string;
   assignment_status: AssignmentStatus;
   assignment_result: AssignmentResult;

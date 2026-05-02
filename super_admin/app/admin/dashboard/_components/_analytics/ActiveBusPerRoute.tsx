@@ -52,8 +52,8 @@ export function ActiveBusPerRouteReport() {
       {
         label: "Active Buses",
         data: data.map((d) => d.active_buses_count),
-        backgroundColor: "rgb(28, 0, 167, 0.6)",
-        borderColor: "rgb(28, 0, 167)",
+        backgroundColor: "rgba(108, 173, 223, 0.6)",
+        borderColor: "rgba(108, 173, 223, 1)",
         borderWidth: 1.5,
         borderRadius: 10,
       },

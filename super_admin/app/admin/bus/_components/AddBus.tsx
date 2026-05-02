@@ -10,6 +10,14 @@ type AddBusModalProps = {
   onBusAdded?: () => void | Promise<void>;
 };
 
+function generateBusNumber(): string {
+  const letters = Array.from({ length: 3 }, () =>
+    String.fromCharCode(65 + Math.floor(Math.random() * 26)),
+  ).join("");
+  const digits = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
+  return `${letters}-${digits}`;
+}
+
 export default function AddBusModal({ onBusAdded }: AddBusModalProps) {
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -46,7 +54,11 @@ export default function AddBusModal({ onBusAdded }: AddBusModalProps) {
   function openModal() {
     setOpen(true);
     setSubmitError(null);
-    reset();
+    reset({
+      bus_number: generateBusNumber(),
+      plate_number: "",
+      maximum_capacity: undefined,
+    });
   }
 
   function closeModal() {
@@ -89,7 +101,7 @@ export default function AddBusModal({ onBusAdded }: AddBusModalProps) {
               </label>
               <input
                 type="text"
-                placeholder="e.g. 01"
+                placeholder="e.g. ABC-132"
                 className={`input input-bordered w-full ${errors.bus_number ? "input-error" : ""}`}
                 {...register("bus_number")}
               />

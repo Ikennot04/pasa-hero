@@ -2,8 +2,12 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
-import { GoogleMap, useJsApiLoader, type Libraries } from "@react-google-maps/api";
+import { GoogleMap, useJsApiLoader } from "@react-google-maps/api";
 import { googleMapsApiKey, isGoogleMapsConfigured } from "@/lib/firebaseClient";
+import {
+  GOOGLE_MAPS_LIBRARIES,
+  GOOGLE_MAPS_SCRIPT_ID,
+} from "@/lib/googleMaps";
 import { useUpdateRouteStop } from "../_hooks/useUpdateRouteStop";
 
 export type EditBusStopStop = {
@@ -21,8 +25,7 @@ type EditBusStopProps = {
   onUpdated: (stop: EditBusStopStop) => void;
 };
 
-const GOOGLE_MAPS_LIBRARIES: Libraries = ["marker"];
-const DEFAULT_MAP_ZOOM = 14.5;
+const DEFAULT_MAP_ZOOM = 16;
 
 export default function EditBusStop({
   stop,
@@ -40,7 +43,7 @@ export default function EditBusStop({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const onCloseRef = useRef(onClose);
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
-    id: "pasahero-admin-map-script",
+    id: GOOGLE_MAPS_SCRIPT_ID,
     googleMapsApiKey: isGoogleMapsConfigured ? googleMapsApiKey : "",
     libraries: GOOGLE_MAPS_LIBRARIES,
   });
@@ -184,7 +187,7 @@ export default function EditBusStop({
                     mapContainerStyle={{ width: "100%", height: "100%" }}
                     options={{
                       mapId: "DEMO_MAP_ID",
-                      mapTypeId: "hybrid",
+                      mapTypeId: "roadmap",
                       streetViewControl: false,
                       mapTypeControl: false,
                       fullscreenControl: false,

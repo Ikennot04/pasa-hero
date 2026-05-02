@@ -441,7 +441,7 @@ export default function AddRouteModal({ onRouteAdded }: AddRouteModalProps) {
                         }}
                         options={{
                           mapId: "DEMO_MAP_ID",
-                          mapTypeId: "hybrid",
+                          mapTypeId: "roadmap",
                           streetViewControl: false,
                           mapTypeControl: false,
                           fullscreenControl: false,

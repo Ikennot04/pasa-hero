@@ -207,7 +207,7 @@ export default function AddTerminalModal({ onCreated }: AddTerminalModalProps) {
                       mapContainerStyle={{ width: "100%", minHeight: "260px" }}
                       options={{
                         mapId: "DEMO_MAP_ID",
-                        mapTypeId: "hybrid",
+                        mapTypeId: "roadmap",
                         streetViewControl: false,
                         mapTypeControl: false,
                         fullscreenControl: false,

@@ -1,3 +1,7 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
 export type EventType = "arrival" | "departure";
 export type EventStatus = "pending" | "confirmed" | "rejected";
 export type ReportSource = "auto" | "manual";
@@ -43,9 +47,35 @@ function sourceBadgeClass(source: ReportSource) {
 
 type ArrivalDepartureLogProps = {
   events: TerminalLogEvent[];
+  pageSize?: number;
 };
 
-export function ArrivalDepartureLog({ events }: ArrivalDepartureLogProps) {
+export function ArrivalDepartureLog({
+  events,
+  pageSize = 10,
+}: ArrivalDepartureLogProps) {
+  const [page, setPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(events.length / pageSize));
+  const activePage = Math.min(Math.max(1, page), totalPages);
+
+  const pageEvents = useMemo(() => {
+    const start = (activePage - 1) * pageSize;
+    return events.slice(start, start + pageSize);
+  }, [events, activePage, pageSize]);
+
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const lo = Math.max(1, activePage - 2);
+    const hi = Math.min(totalPages, activePage + 2);
+    for (let i = lo; i <= hi; i += 1) pages.push(i);
+    return pages;
+  }, [activePage, totalPages]);
+
+  const go = (next: number) => {
+    setPage(Math.max(1, Math.min(totalPages, next)));
+  };
+
   return (
     <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -75,7 +105,7 @@ export function ArrivalDepartureLog({ events }: ArrivalDepartureLogProps) {
                 </td>
               </tr>
             ) : (
-              events.map((ev) => (
+              pageEvents.map((ev) => (
                 <tr key={ev.id}>
                   <td className="font-semibold">{ev.busNumber}</td>
                   <td>{ev.routeName}</td>
@@ -114,6 +144,59 @@ export function ArrivalDepartureLog({ events }: ArrivalDepartureLogProps) {
           </tbody>
         </table>
       </div>
+
+      {events.length > 0 ? (
+        <div className="mt-3 flex flex-col items-stretch gap-3 border-t border-base-content/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-base-content/70">
+            {(activePage - 1) * pageSize + 1}-{Math.min(activePage * pageSize, events.length)} of{" "}
+            {events.length}
+          </p>
+          <div className="join flex-wrap justify-center">
+            <button
+              type="button"
+              className="btn join-item btn-sm"
+              disabled={activePage <= 1}
+              onClick={() => go(1)}
+            >
+              First
+            </button>
+            <button
+              type="button"
+              className="btn join-item btn-sm"
+              disabled={activePage <= 1}
+              onClick={() => go(activePage - 1)}
+            >
+              Prev
+            </button>
+            {pageNumbers.map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={`btn join-item btn-sm ${p === activePage ? "btn-active" : ""}`}
+                onClick={() => go(p)}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="btn join-item btn-sm"
+              disabled={activePage >= totalPages}
+              onClick={() => go(activePage + 1)}
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              className="btn join-item btn-sm"
+              disabled={activePage >= totalPages}
+              onClick={() => go(totalPages)}
+            >
+              Last
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useGetAvailables } from "../_hooks/useGetAvailables";
+import { usePostAssignment } from "../_hooks/usePostAssignment";
 import { addAssignmentSchema } from "./addAssignmentSchema";
 import type { AssignmentFormData } from "./assignmentTypes";
 
@@ -30,6 +31,7 @@ export default function AddAssignmentModal({ onAdded }: AddAssignmentModalProps)
   const [loadingAvailables, setLoadingAvailables] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const { getAvailables, error: availablesError } = useGetAvailables();
+  const { postAssignment, error: postError, clearError: clearPostError } = usePostAssignment();
 
   const {
     register,
@@ -57,6 +59,7 @@ export default function AddAssignmentModal({ onAdded }: AddAssignmentModalProps)
   }, [open]);
 
   function closeModal() {
+    clearPostError();
     setOpen(false);
     reset();
   }
@@ -81,22 +84,10 @@ export default function AddAssignmentModal({ onAdded }: AddAssignmentModalProps)
   }, [getAvailables, open]);
 
   async function onSubmit(data: AssignmentFormData) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/api/bus-assignments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to add assignment");
-      }
-      closeModal();
-      onAdded?.();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to add assignment");
-    }
+    const result = await postAssignment(data);
+    if (result === null) return;
+    closeModal();
+    onAdded?.();
   }
 
   return (
@@ -105,6 +96,7 @@ export default function AddAssignmentModal({ onAdded }: AddAssignmentModalProps)
         type="button"
         className="btn bg-[#0062CA] text-white hover:bg-[#0062CA]/80"
         onClick={() => {
+          clearPostError();
           setOpen(true);
           reset();
         }}
@@ -119,6 +111,11 @@ export default function AddAssignmentModal({ onAdded }: AddAssignmentModalProps)
             {availablesError ? (
               <div role="alert" className="alert alert-error text-sm">
                 {availablesError}
+              </div>
+            ) : null}
+            {postError ? (
+              <div role="alert" className="alert alert-error text-sm">
+                {postError}
               </div>
             ) : null}
             <div className="form-control">

@@ -96,9 +96,13 @@ function normalizeOperators(payload: unknown): Operator[] {
 
 type OperatorTableProps = {
   refreshSignal?: number;
+  pageSize?: number;
 };
 
-export default function OperatorTable({ refreshSignal = 0 }: OperatorTableProps) {
+export default function OperatorTable({
+  refreshSignal = 0,
+  pageSize = 10,
+}: OperatorTableProps) {
   const { getOperators, error } = useGetOperators();
   const { suspendOperator, unsuspendOperator } = useSuspendOperator();
   const [operators, setOperators] = useState<Operator[]>([]);
@@ -111,6 +115,7 @@ export default function OperatorTable({ refreshSignal = 0 }: OperatorTableProps)
     operator: Operator;
     mode: ConfirmOperatorStatusModalMode;
   } | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const assignedTerminal = localStorage.getItem("assigned_terminal")?.trim();
@@ -143,6 +148,27 @@ export default function OperatorTable({ refreshSignal = 0 }: OperatorTableProps)
       return matchesStatus && matchesSearch;
     });
   }, [operators, searchTerm, statusFilter]);
+
+  const totalRows = filteredOperators.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const activePage = Math.min(Math.max(1, page), totalPages);
+
+  const pageOperators = useMemo(() => {
+    const start = (activePage - 1) * pageSize;
+    return filteredOperators.slice(start, start + pageSize);
+  }, [filteredOperators, activePage, pageSize]);
+
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const lo = Math.max(1, activePage - 2);
+    const hi = Math.min(totalPages, activePage + 2);
+    for (let i = lo; i <= hi; i += 1) pages.push(i);
+    return pages;
+  }, [activePage, totalPages]);
+
+  const goToPage = (next: number) => {
+    setPage(Math.max(1, Math.min(totalPages, next)));
+  };
 
   const openStatusModal = (
     operator: Operator,
@@ -187,14 +213,18 @@ export default function OperatorTable({ refreshSignal = 0 }: OperatorTableProps)
             placeholder="Search operator, email, terminal, creator"
             className="input input-bordered w-full md:max-w-sm"
             value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
+            onChange={(event) => {
+              setPage(1);
+              setSearchTerm(event.target.value);
+            }}
           />
           <select
             className="select select-bordered w-full md:w-52"
             value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value as "All" | Operator["status"])
-            }
+            onChange={(event) => {
+              setPage(1);
+              setStatusFilter(event.target.value as "All" | Operator["status"]);
+            }}
           >
             <option value="All">All status</option>
             <option value="Active">Active</option>
@@ -225,8 +255,8 @@ export default function OperatorTable({ refreshSignal = 0 }: OperatorTableProps)
                   {error}
                 </td>
               </tr>
-            ) : filteredOperators.length > 0 ? (
-              filteredOperators.map((operator) => (
+            ) : totalRows > 0 ? (
+              pageOperators.map((operator) => (
                 <tr key={operator.id}>
                   <td className="font-medium">{operator.name}</td>
                   <td>{operator.email}</td>
@@ -273,6 +303,58 @@ export default function OperatorTable({ refreshSignal = 0 }: OperatorTableProps)
             )}
           </tbody>
         </table>
+        {!isLoading && !error && totalRows > 0 ? (
+          <div className="flex flex-col items-stretch gap-3 border-t border-base-300 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-base-content/70">
+              {(activePage - 1) * pageSize + 1}-
+              {Math.min(activePage * pageSize, totalRows)} of {totalRows}
+            </p>
+            <div className="join flex-wrap justify-center">
+              <button
+                type="button"
+                className="btn join-item btn-sm"
+                disabled={activePage <= 1}
+                onClick={() => goToPage(1)}
+              >
+                First
+              </button>
+              <button
+                type="button"
+                className="btn join-item btn-sm"
+                disabled={activePage <= 1}
+                onClick={() => goToPage(activePage - 1)}
+              >
+                Prev
+              </button>
+              {pageNumbers.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`btn join-item btn-sm ${p === activePage ? "btn-active" : ""}`}
+                  onClick={() => goToPage(p)}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="btn join-item btn-sm"
+                disabled={activePage >= totalPages}
+                onClick={() => goToPage(activePage + 1)}
+              >
+                Next
+              </button>
+              <button
+                type="button"
+                className="btn join-item btn-sm"
+                disabled={activePage >= totalPages}
+                onClick={() => goToPage(totalPages)}
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
       <SuspendOperator
         operator={statusConfirm?.operator ?? null}

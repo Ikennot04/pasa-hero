@@ -29,7 +29,6 @@ type BusStatusApiResponse = {
       status: "pending" | "confirmed";
       event_time: string;
     } | null;
-    ops_status: BusStatusRow["ops_status"];
     occupancy_status: BusStatusRow["occupancy_status"];
   }>;
 };
@@ -76,7 +75,6 @@ export default function BusStatus() {
           driver: row.driver,
           bus_status: row.bus_status,
           last_terminal_log: row.last_terminal_log,
-          ops_status: row.ops_status,
           occupancy_status: row.occupancy_status,
         }));
         setBusStatuses(mappedRows);
@@ -102,7 +100,7 @@ export default function BusStatus() {
         <h1 className="text-2xl font-bold tracking-tight">Bus status monitoring</h1>
         <p className="mt-1 max-w-3xl text-sm text-base-content/70">
           Live view of buses assigned to routes that serve <span className="font-medium">{TERMINAL_NAME}</span>.
-          Operational status follows arrival and departure confirmations for today&apos;s scheduled trips.
+          Fleet state, routes, drivers, and terminal event logs refresh automatically.
         </p>
       </div>
 
@@ -116,29 +114,19 @@ export default function BusStatus() {
             <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">Active buses</p>
               <p className="mt-1 text-2xl font-semibold">{busStatusCountSummary.active_buses}</p>
-              <p className="mt-1 text-xs text-base-content/60">
-                At terminal {busStatusCountSummary.at_terminal} · En route / queue {busStatusCountSummary.en_route_or_queue}
-              </p>
             </div>
             <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
               <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">At terminal</p>
               <p className="mt-1 text-2xl font-semibold text-emerald-500">{busStatusCountSummary.at_terminal}</p>
-              <p className="mt-1 text-xs text-base-content/60">Arrival confirmed, not departed</p>
             </div>
             <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">En route / queue</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">In route</p>
               <p className="mt-1 text-2xl font-semibold text-cyan-700">{busStatusCountSummary.en_route_or_queue}</p>
-              <p className="mt-1 text-xs text-base-content/60">
-                Currently en route or in queue
-              </p>
             </div>
             <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm">
-              <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">Confirmations</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-base-content/60">Pending Confirmations</p>
               <p className="mt-1 text-2xl font-semibold text-orange-700">
                 {busStatusCountSummary.confirmations}
-              </p>
-              <p className="mt-1 text-xs text-base-content/60">
-                All arrivals and departures waiting for confirmation
               </p>
             </div>
           </div>
