@@ -4,59 +4,49 @@ import { yupResolver } from "@hookform/resolvers/yup";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { MdOutlineEdit } from "react-icons/md";
-import { addAssignmentSchema } from "./addAssignmentSchema";
+import { usePatchAssignment } from "../_hooks/usePatchAssignment";
+import { updateAssignmentSchema } from "./updateAssignmentSchema";
 import type {
-  AssignmentFormData,
+  AssignmentResult,
   AssignmentRow,
-  DriverOption,
+  AssignmentStatus,
+  AssignmentUpdateFormData,
 } from "./assignmentTypes";
 
-const BUS_OPTIONS = [
-  { id: "b1", bus_number: "BUS-101" },
-  { id: "b2", bus_number: "BUS-102" },
-  { id: "b3", bus_number: "BUS-103" },
-  { id: "b4", bus_number: "BUS-104" },
-  { id: "b5", bus_number: "BUS-105" },
-];
-
-const ROUTE_OPTIONS = [
-  { id: "r1", route_name: "EDSA - Monumento to PITX" },
-  { id: "r2", route_name: "Commonwealth - Fairview to SM North" },
-  { id: "r3", route_name: "Quezon Ave - QC Circle to Quiapo" },
-];
-
-const OPERATOR_OPTIONS = [
-  { id: "op1", name: "Carlos Reyes" },
-  { id: "op2", name: "Elena Torres" },
-  { id: "op3", name: "Miguel Santos" },
+const STATUS_OPTIONS: AssignmentStatus[] = ["active", "inactive"];
+const RESULT_OPTIONS: AssignmentResult[] = [
+  "pending",
+  "completed",
+  "cancelled",
 ];
 
 type UpdateAssignmentModalProps = {
   assignment: AssignmentRow;
-  drivers: DriverOption[];
   onUpdated?: () => void;
 };
 
 export default function UpdateAssignmentModal({
   assignment,
-  drivers,
   onUpdated,
 }: UpdateAssignmentModalProps) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const {
+    patchAssignment,
+    error: patchError,
+    clearError: clearPatchError,
+  } = usePatchAssignment();
 
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<AssignmentFormData>({
-    resolver: yupResolver(addAssignmentSchema),
+  } = useForm<AssignmentUpdateFormData>({
+    resolver: yupResolver(updateAssignmentSchema),
     defaultValues: {
-      driver_id: assignment.driver_id,
-      bus_id: assignment.bus_id,
-      route_id: assignment.route_id,
-      operator_user_id: assignment.operator_user_id,
+      assignment_status: assignment.assignment_status,
+      assignment_result: assignment.assignment_result,
     },
   });
 
@@ -66,10 +56,8 @@ export default function UpdateAssignmentModal({
     if (open) {
       dialog.showModal();
       reset({
-        driver_id: assignment.driver_id,
-        bus_id: assignment.bus_id,
-        route_id: assignment.route_id,
-        operator_user_id: assignment.operator_user_id,
+        assignment_status: assignment.assignment_status,
+        assignment_result: assignment.assignment_result,
       });
     } else {
       dialog.close();
@@ -79,28 +67,28 @@ export default function UpdateAssignmentModal({
     return () => dialog.removeEventListener("close", onClose);
   }, [assignment, open, reset]);
 
-  async function onSubmit(data: AssignmentFormData) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/bus-assignments/${assignment.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to update assignment");
-      }
-      setOpen(false);
-      onUpdated?.();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update assignment");
-    }
+  function closeModal() {
+    clearPatchError();
+    setOpen(false);
+  }
+
+  async function onSubmit(data: AssignmentUpdateFormData) {
+    const result = await patchAssignment(assignment.id, data);
+    if (result === null) return;
+    closeModal();
+    onUpdated?.();
   }
 
   return (
     <>
-      <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className="btn btn-sm"
+        onClick={() => {
+          clearPatchError();
+          setOpen(true);
+        }}
+      >
         <MdOutlineEdit className="w-4 h-4" />
         Update
       </button>
@@ -108,84 +96,50 @@ export default function UpdateAssignmentModal({
         <div className="modal-box">
           <h3 className="font-bold text-lg">Update assignment</h3>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-4">
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Driver</span>
-              </label>
-              <select
-                className={`select select-bordered w-full ${errors.driver_id ? "select-error" : ""}`}
-                {...register("driver_id")}
-              >
-                <option value="">Select driver</option>
-                {drivers.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.f_name} {d.l_name}
-                  </option>
-                ))}
-              </select>
-              {errors.driver_id ? (
-                <p className="text-error text-sm mt-1">{errors.driver_id.message}</p>
-              ) : null}
-            </div>
+            {patchError ? (
+              <div role="alert" className="alert alert-error text-sm">
+                {patchError}
+              </div>
+            ) : null}
 
             <div className="form-control">
               <label className="label">
-                <span className="label-text">Bus</span>
+                <span className="label-text">Status</span>
               </label>
               <select
-                className={`select select-bordered w-full ${errors.bus_id ? "select-error" : ""}`}
-                {...register("bus_id")}
+                className={`select select-bordered w-full ${errors.assignment_status ? "select-error" : ""}`}
+                {...register("assignment_status")}
               >
-                <option value="">Select bus</option>
-                {BUS_OPTIONS.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.bus_number}
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
                   </option>
                 ))}
               </select>
-              {errors.bus_id ? (
-                <p className="text-error text-sm mt-1">{errors.bus_id.message}</p>
-              ) : null}
-            </div>
-
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Route</span>
-              </label>
-              <select
-                className={`select select-bordered w-full ${errors.route_id ? "select-error" : ""}`}
-                {...register("route_id")}
-              >
-                <option value="">Select route</option>
-                {ROUTE_OPTIONS.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.route_name}
-                  </option>
-                ))}
-              </select>
-              {errors.route_id ? (
-                <p className="text-error text-sm mt-1">{errors.route_id.message}</p>
-              ) : null}
-            </div>
-
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Operator name</span>
-              </label>
-              <select
-                className={`select select-bordered w-full ${errors.operator_user_id ? "select-error" : ""}`}
-                {...register("operator_user_id")}
-              >
-                <option value="">Select operator</option>
-                {OPERATOR_OPTIONS.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-              {errors.operator_user_id ? (
+              {errors.assignment_status ? (
                 <p className="text-error text-sm mt-1">
-                  {errors.operator_user_id.message}
+                  {errors.assignment_status.message}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Result</span>
+              </label>
+              <select
+                className={`select select-bordered w-full ${errors.assignment_result ? "select-error" : ""}`}
+                {...register("assignment_result")}
+              >
+                {RESULT_OPTIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+              {errors.assignment_result ? (
+                <p className="text-error text-sm mt-1">
+                  {errors.assignment_result.message}
                 </p>
               ) : null}
             </div>
@@ -194,7 +148,7 @@ export default function UpdateAssignmentModal({
               <button
                 type="button"
                 className="btn btn-ghost"
-                onClick={() => setOpen(false)}
+                onClick={closeModal}
               >
                 Cancel
               </button>
@@ -211,7 +165,7 @@ export default function UpdateAssignmentModal({
         <form
           method="dialog"
           className="modal-backdrop"
-          onSubmit={() => setOpen(false)}
+          onSubmit={closeModal}
         >
           <button type="submit" aria-label="Close">
             close

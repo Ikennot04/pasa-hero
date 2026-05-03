@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import UpdateAssignmentModal from "./UpdateAssignment";
-import type { AssignmentRow, DriverOption } from "./assignmentTypes";
+import type { AssignmentRow } from "./assignmentTypes";
 
 function StatusBadge({ status }: { status: string }) {
   const classMap: Record<string, string> = {
@@ -32,14 +32,12 @@ function formatDate(value: string | null) {
 
 type AssignmentsTableProps = {
   assignments: AssignmentRow[];
-  drivers: DriverOption[];
   onAssignmentUpdated?: () => void;
   pageSize?: number;
 };
 
 export default function AssignmentsTable({
   assignments,
-  drivers,
   onAssignmentUpdated,
   pageSize = 10,
 }: AssignmentsTableProps) {
@@ -124,7 +122,6 @@ export default function AssignmentsTable({
                   <td>
                     <UpdateAssignmentModal
                       assignment={a}
-                      drivers={drivers}
                       onUpdated={onAssignmentUpdated}
                     />
                   </td>
