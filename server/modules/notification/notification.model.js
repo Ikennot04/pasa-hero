@@ -12,9 +12,9 @@ const notificationSchema = new mongoose.Schema(
       type: String,
       enum: [
         "arrival_reported",
-        "arrival_confirmed",
+        "arrival_rejected",
         "departure_reported",
-        "departure_confirmed",
+        "departure_rejected",
         "delay",
         "full",
         "skipped_stop",

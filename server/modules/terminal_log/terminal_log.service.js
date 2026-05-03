@@ -7,9 +7,15 @@ import Route from "../route/route.model.js";
 import User from "../user/user.model.js";
 import { NotificationService } from "../notification/notification.service.js";
 
-const REPORT_NOTIFICATION_TYPE_BY_EVENT = {
-  arrival: "arrival_reported",
-  departure: "departure_reported",
+const NOTIFICATION_TYPE_BY_EVENT_AND_ACTION = {
+  report: {
+    arrival: "arrival_reported",
+    departure: "departure_reported",
+  },
+  reject: {
+    arrival: "arrival_rejected",
+    departure: "departure_rejected",
+  },
 };
 
 // Fallback sender for auto-generated notifications when neither the reporter
@@ -24,11 +30,16 @@ async function getSystemSenderId() {
   return cachedSystemSenderId;
 }
 
-async function emitTerminalLogReportNotification(terminalLog) {
+async function emitTerminalLogNotification(
+  terminalLog,
+  action,
+  { actorUserId } = {},
+) {
   if (!terminalLog) return;
 
   const eventType = terminalLog.event_type;
-  const notificationType = REPORT_NOTIFICATION_TYPE_BY_EVENT[eventType];
+  const notificationType =
+    NOTIFICATION_TYPE_BY_EVENT_AND_ACTION[action]?.[eventType];
   if (!notificationType) return;
 
   const [assignment, bus, terminal] = await Promise.all([
@@ -51,24 +62,45 @@ async function emitTerminalLogReportNotification(terminalLog) {
         .lean()
     : null;
 
+  const preferredSenderId =
+    action === "reject"
+      ? actorUserId && String(actorUserId)
+      : terminalLog.reported_by && String(terminalLog.reported_by);
+
   const senderId =
-    (terminalLog.reported_by && String(terminalLog.reported_by)) ||
+    preferredSenderId ||
     (assignment?.operator_user_id && String(assignment.operator_user_id)) ||
     (await getSystemSenderId());
 
   if (!senderId) return;
 
-  const busLabel =
-    bus?.bus_number || bus?.plate_number || "A bus";
+  const busLabel = bus?.bus_number || bus?.plate_number || "A bus";
   const terminalLabel = terminal?.terminal_name || "the terminal";
   const routeLabel = route
     ? `route ${route.route_code ?? ""}${route.route_name ? ` (${route.route_name})` : ""}`.trim()
     : "its route";
 
-  const title =
-    eventType === "arrival" ? "Bus arrival reported" : "Bus departure reported";
-  const verb = eventType === "arrival" ? "arriving at" : "departing from";
-  const message = `Operator reported ${busLabel} on ${routeLabel} ${verb} ${terminalLabel}.`;
+  let title;
+  let message;
+  let priority;
+
+  if (action === "reject") {
+    title =
+      eventType === "arrival"
+        ? "Bus arrival rejected"
+        : "Bus departure rejected";
+    const verb = eventType === "arrival" ? "arrival at" : "departure from";
+    message = `Terminal admin rejected the reported ${verb} ${terminalLabel} for ${busLabel} on ${routeLabel}.`;
+    priority = "high";
+  } else {
+    title =
+      eventType === "arrival"
+        ? "Bus arrival reported"
+        : "Bus departure reported";
+    const verb = eventType === "arrival" ? "arriving at" : "departing from";
+    message = `Operator reported ${busLabel} on ${routeLabel} ${verb} ${terminalLabel}.`;
+    priority = "medium";
+  }
 
   await NotificationService.createNotification({
     sender_id: senderId,
@@ -78,7 +110,7 @@ async function emitTerminalLogReportNotification(terminalLog) {
     title,
     message,
     notification_type: notificationType,
-    priority: "medium",
+    priority,
     scope: "route",
   });
 }
@@ -247,7 +279,7 @@ export const TerminalLogService = {
     });
 
     try {
-      await emitTerminalLogReportNotification(terminalLog);
+      await emitTerminalLogNotification(terminalLog, "report");
     } catch (err) {
       console.error(
         "[terminal_log] failed to emit report notification:",
@@ -360,6 +392,17 @@ export const TerminalLogService = {
       { $set: updateData },
       { new: true, runValidators: true }
     );
+
+    try {
+      await emitTerminalLogNotification(updated, "reject", {
+        actorUserId: payload.confirmed_by,
+      });
+    } catch (err) {
+      console.error(
+        "[terminal_log] failed to emit reject notification:",
+        err,
+      );
+    }
 
     return updated;
   },
