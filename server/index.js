@@ -1,9 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from "dotenv";
-import mongoose from "mongoose";
 import compression from 'compression';
 import admin from './config/firebase.config.js';
+import { connectDB } from "./db.js";
 
 // Import routes
 import userRoutes from "./modules/user/user.route.js";
@@ -22,7 +22,6 @@ import userNotificationRoutes from "./modules/user_notification/user_notificatio
 import userSubscriptionRoutes from "./modules/user_subscription/user_subscription.route.js";
 import systemLogRoutes from "./modules/system_log/system_log.route.js";
 import dashboardRoutes from "./modules/admin_dashboard/dashboard.route.js";
-import seedUnassignedBusDriverOperator from "./seeders/unassignedBusDriverOperator.seeder.js";
 
 const app = express();
 
@@ -42,30 +41,20 @@ app.get('/health', (req, res) => {
   });
 });
 
-// MongoDB Connection
-const _dbURI = process.env.MONGO_DB_URI;
-if (!_dbURI) {
-  console.warn('⚠️  MONGO_DB_URI is not set in .env file');
-  console.warn('   MongoDB connection will not be established');
-  console.warn('   Some features may not work without MongoDB');
-  console.warn('   To fix: Add MONGO_DB_URI=your_mongodb_connection_string to server/.env file');
-} else {
-  mongoose.connect(_dbURI)
-    .then(() => {
-      console.log("✅ Connected to Mongo DB");
-      seedUnassignedBusDriverOperator().catch((seedError) => {
-        console.error(
-          "❌ Failed to seed unassigned SM bus/driver/operator:",
-          seedError.message,
-        );
-      });
-    })
-    .catch((error) => {
-      console.error('❌ MongoDB connection failed:', error.message);
-      console.error('   Please check your MONGO_DB_URI in .env file');
-      console.error('   Server will continue running, but database features will not work');
+// Ensure MongoDB is connected before API handlers (avoids Mongoose buffering timeouts on Vercel)
+app.use("/api", async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error("MongoDB connection error:", err.message);
+    res.status(503).json({
+      success: false,
+      message: "Database unavailable",
+      detail: err.message,
     });
-}
+  }
+});
 
 // Image static folder
 app.use("/images", express.static("images"));
@@ -99,9 +88,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error', message: err.message });
 });
 
-// Local Server
-app.listen(process.env.PORT, () =>
-  console.log(`Listening to port ${process.env.PORT}`),
-);
+// Local server only — Vercel invokes the exported app without listening
+if (process.env.VERCEL !== "1") {
+  const port = process.env.PORT ?? 3000;
+  app.listen(port, () => console.log(`Listening to port ${port}`));
+}
 
 export default app;
