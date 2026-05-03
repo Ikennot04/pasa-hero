@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../../../core/themes/validation_theme.dart';
 import '../../../core/models/operator_route_option.dart';
 import '../../../core/services/operator_route_options_service.dart';
@@ -17,13 +19,16 @@ class RouteScreen extends StatefulWidget {
   State<RouteScreen> createState() => _RouteScreenState();
 }
 
-class _RouteScreenState extends State<RouteScreen> {
+class _RouteScreenState extends State<RouteScreen> with WidgetsBindingObserver {
+  static const Duration _mongoPollInterval = Duration(seconds: 45);
+
   final OperatorRouteOptionsService _routeOptionsService =
       OperatorRouteOptionsService();
   final NearbyOperatorsService _nearbyOperatorsService =
       NearbyOperatorsService();
   final TextEditingController _searchController = TextEditingController();
 
+  Timer? _pollTimer;
   List<OperatorRouteOption> _routes = [];
   Map<String, int> _activeByRoute = {};
   Map<String, String> _mongoRouteIdByCode = {};
@@ -35,17 +40,33 @@ class _RouteScreenState extends State<RouteScreen> {
   @override
   void initState() {
     super.initState();
-    _loadRoutes();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshFromMongo(showFullLoading: true);
+    _pollTimer = Timer.periodic(_mongoPollInterval, (_) {
+      if (mounted) _refreshFromMongo(showFullLoading: false);
+    });
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadRoutes() async {
-    setState(() => _loading = true);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _refreshFromMongo(showFullLoading: false);
+    }
+  }
+
+  /// Reloads routes, operator counts, id map, and follow state from the API (MongoDB).
+  Future<void> _refreshFromMongo({required bool showFullLoading}) async {
+    if (showFullLoading && mounted) {
+      setState(() => _loading = true);
+    }
     try {
       final routes = await _routeOptionsService.fetchAvailableRoutes();
       final counts = <String, int>{};
@@ -88,7 +109,9 @@ class _RouteScreenState extends State<RouteScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        if (showFullLoading) _loading = false;
+      });
     }
   }
 
@@ -310,40 +333,47 @@ class _RouteScreenState extends State<RouteScreen> {
                   padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
                   child: _loading
                       ? const Center(child: CircularProgressIndicator())
-                      : ListView.builder(
-                          itemCount: filtered.length + 1,
-                          itemBuilder: (context, index) {
-                            if (index == filtered.length) {
-                              return const SizedBox(height: 16);
-                            }
-                            final route = filtered[index];
-                            final routeCode = route.code.toUpperCase();
-                            final active = _activeByRoute[routeCode] ?? 0;
-                            return RouteCard(
-                              routeId: '$kRouteIdPrefix${route.code}',
-                              estimatedTime:
-                                  '$kEstimatedLabelPrefix$kEstimatedFallback',
-                              routeDescription: route.description ??
-                                  route.displayName,
-                              status: null,
-                              showFollowButton: true,
-                              isFollowing:
-                                  _followingRouteCodes.contains(routeCode),
-                              activeBuses: active,
-                              backendUserId: _backendUserId,
-                              backendRouteId: _mongoRouteIdByCode[routeCode],
-                              followRouteCode: routeCode,
-                              onFollowChanged: (code, isFollowing) {
-                                setState(() {
-                                  if (isFollowing) {
-                                    _followingRouteCodes.add(code);
-                                  } else {
-                                    _followingRouteCodes.remove(code);
-                                  }
-                                });
-                              },
-                            );
-                          },
+                      : RefreshIndicator(
+                          color: ValidationTheme.textPrimary,
+                          onRefresh: () =>
+                              _refreshFromMongo(showFullLoading: false),
+                          child: ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemCount: filtered.length + 1,
+                            itemBuilder: (context, index) {
+                              if (index == filtered.length) {
+                                return const SizedBox(height: 16);
+                              }
+                              final route = filtered[index];
+                              final routeCode = route.code.toUpperCase();
+                              final active = _activeByRoute[routeCode] ?? 0;
+                              return RouteCard(
+                                routeId: '$kRouteIdPrefix${route.code}',
+                                estimatedTime:
+                                    '$kEstimatedLabelPrefix$kEstimatedFallback',
+                                routeDescription: route.description ??
+                                    route.displayName,
+                                status: null,
+                                showFollowButton: true,
+                                isFollowing:
+                                    _followingRouteCodes.contains(routeCode),
+                                activeBuses: active,
+                                backendUserId: _backendUserId,
+                                backendRouteId:
+                                    _mongoRouteIdByCode[routeCode],
+                                followRouteCode: routeCode,
+                                onFollowChanged: (code, isFollowing) {
+                                  setState(() {
+                                    if (isFollowing) {
+                                      _followingRouteCodes.add(code);
+                                    } else {
+                                      _followingRouteCodes.remove(code);
+                                    }
+                                  });
+                                },
+                              );
+                            },
+                          ),
                         ),
                 ),
               ),

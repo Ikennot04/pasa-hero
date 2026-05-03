@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../features/routes/route_constants.dart';
+
 /// Resolves Mongo `user_id` and `route_id` for `/api/user-subscriptions/`.
 class SubscriptionIdsService {
   SubscriptionIdsService._();
@@ -127,5 +129,136 @@ class SubscriptionIdsService {
       }
     } catch (_) {}
     return null;
+  }
+
+  /// MongoDB `Route._id` values for routes the user follows (from subscriptions API).
+  static Future<Set<String>> fetchSubscribedMongoRouteIds({
+    required String effectiveUserId,
+  }) async {
+    if (effectiveUserId.isEmpty) return {};
+    try {
+      final request = http.Request(
+        'GET',
+        Uri.parse(kRouteSubscriptionsApiUrl),
+      )
+        ..headers.addAll(const {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        })
+        ..body = jsonEncode({'user_id': effectiveUserId});
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      String body = response.body;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final fallback = await http.get(
+          Uri.parse(
+            '$kRouteSubscriptionsApiUrl?user_id=${Uri.encodeQueryComponent(effectiveUserId)}',
+          ),
+          headers: const {'Accept': 'application/json'},
+        );
+        if (fallback.statusCode < 200 || fallback.statusCode >= 300) {
+          return {};
+        }
+        body = fallback.body;
+      }
+
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) return {};
+      final data = decoded['data'];
+      if (data is! List) return {};
+
+      final ids = <String>{};
+      for (final item in data) {
+        if (item is! Map<String, dynamic>) continue;
+        final routeRef = item['route_id'];
+        if (routeRef == null) continue;
+        if (routeRef is Map<String, dynamic>) {
+          final id = routeRef['_id']?.toString().trim();
+          if (id != null && id.isNotEmpty) ids.add(id);
+          continue;
+        }
+        final id = routeRef.toString().trim();
+        if (id.isNotEmpty) ids.add(id);
+      }
+      return ids;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Route codes (uppercase) for followed routes. Matches Firestore `driver_status`
+  /// document ids — operators use [route_code], not Mongo `Route._id`.
+  static Future<Set<String>> fetchSubscribedRouteCodes({
+    required String effectiveUserId,
+    required Map<String, String> routeIdByCode,
+  }) async {
+    if (effectiveUserId.isEmpty) return {};
+    final codeByMongoId = <String, String>{};
+    for (final e in routeIdByCode.entries) {
+      if (e.value.isNotEmpty) {
+        codeByMongoId[e.value] = e.key.toUpperCase();
+      }
+    }
+    try {
+      final request = http.Request(
+        'GET',
+        Uri.parse(kRouteSubscriptionsApiUrl),
+      )
+        ..headers.addAll(const {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        })
+        ..body = jsonEncode({'user_id': effectiveUserId});
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      String body = response.body;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final fallback = await http.get(
+          Uri.parse(
+            '$kRouteSubscriptionsApiUrl?user_id=${Uri.encodeQueryComponent(effectiveUserId)}',
+          ),
+          headers: const {'Accept': 'application/json'},
+        );
+        if (fallback.statusCode < 200 || fallback.statusCode >= 300) {
+          return {};
+        }
+        body = fallback.body;
+      }
+
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) return {};
+      final data = decoded['data'];
+      if (data is! List) return {};
+
+      final codes = <String>{};
+      for (final item in data) {
+        if (item is! Map<String, dynamic>) continue;
+        final routeRef = item['route_id'];
+        if (routeRef == null) continue;
+        if (routeRef is Map<String, dynamic>) {
+          final code = routeRef['route_code']?.toString().trim().toUpperCase();
+          if (code != null && code.isNotEmpty) {
+            codes.add(code);
+            continue;
+          }
+          final mongoId = routeRef['_id']?.toString().trim();
+          if (mongoId != null && mongoId.isNotEmpty) {
+            final c = codeByMongoId[mongoId];
+            if (c != null && c.isNotEmpty) codes.add(c);
+          }
+          continue;
+        }
+        final rawId = routeRef.toString().trim();
+        if (rawId.isNotEmpty) {
+          final c = codeByMongoId[rawId];
+          if (c != null && c.isNotEmpty) codes.add(c);
+        }
+      }
+      return codes;
+    } catch (_) {
+      return {};
+    }
   }
 }

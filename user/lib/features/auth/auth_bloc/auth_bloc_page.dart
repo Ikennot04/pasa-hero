@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'auth_bloc_bloc.dart';
+import 'auth_bloc_state.dart';
 import 'auth_bloc_event.dart';
 import 'auth_bloc_screen.dart';
 import 'auth_bloc_provider.dart';
@@ -40,28 +42,39 @@ class _AuthBlocPageState extends State<AuthBlocPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: const Text('Auth Bloc'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              bloc.add(LogoutEvent());
-            },
-            tooltip: 'Logout',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              bloc.add(CheckAuthStateEvent());
-            },
-            tooltip: 'Refresh Auth State',
-          ),
-        ],
+    return BlocProvider.value(
+      value: bloc,
+      child: BlocBuilder<AuthBlocBloc, AuthBlocState>(
+        builder: (context, state) {
+          return Scaffold(
+            appBar: AppBar(
+              centerTitle: true,
+              title: const Text('Auth Bloc'),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  onPressed: state.isLoading
+                      ? null
+                      : () {
+                          bloc.add(LogoutEvent());
+                        },
+                  tooltip: 'Logout',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: state.isLoading
+                      ? null
+                      : () {
+                          bloc.add(CheckAuthStateEvent());
+                        },
+                  tooltip: 'Refresh Auth State',
+                ),
+              ],
+            ),
+            body: AuthBlocScreen(bloc: bloc),
+          );
+        },
       ),
-      body: AuthBlocScreen(bloc: bloc),
     );
   }
 }

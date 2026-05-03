@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/services/operator_location_sync_service.dart';
+import '../../../core/services/operator_session_service.dart';
 import 'modal/free_ride.dart';
 import 'screen/profile_screen_data.dart';
 
@@ -116,10 +117,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _showRouteSelection() async {
     if (_isUpdatingRoute) return;
-    final latestOptions = await RouteCatalogService.fetchAvailableRoutes();
+    final catalog = await RouteCatalogService.fetchRouteCatalog();
     if (!mounted) return;
     String? selectedRouteCode = _currentRouteCode;
-    final options = latestOptions.isNotEmpty ? latestOptions : _routeOptions;
+    final options =
+        catalog.routes.isNotEmpty ? catalog.routes : _routeOptions;
 
     if (!mounted) return;
 
@@ -130,9 +132,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           title: const Text('Select Route'),
           content: SingleChildScrollView(
             child: options.isEmpty
-                ? const Text(
-                    'No routes found in Firestore yet. Add routes in `route_code` or `routes` first.',
-                  )
+                ? Text(catalog.emptySelectionMessage)
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: options.map((route) {
@@ -311,6 +311,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await db.collection(operatorLocationsCollection).doc(user.uid).delete();
     }
     OperatorLocationSyncService.instance.stop();
+    await OperatorSessionService.instance.clear();
     await FirebaseAuth.instance.signOut();
     if (context.mounted) {
       Navigator.of(context).pushReplacementNamed('/login');

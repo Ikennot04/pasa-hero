@@ -16,10 +16,12 @@ class NavBar extends StatefulWidget {
 class _NavBarState extends State<NavBar> {
   int _currentIndex = 0;
 
-  static const List<Widget> _screens = [
-    RouteScreen(),
-    ProfileScreen(),
-  ];
+  final GlobalKey<RouteScreenState> _routeScreenKey = GlobalKey<RouteScreenState>();
+
+  List<Widget> get _screens => [
+        RouteScreen(key: _routeScreenKey),
+        const ProfileScreen(),
+      ];
 
   @override
   void initState() {
@@ -42,7 +44,12 @@ class _NavBarState extends State<NavBar> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        onTap: (index) {
+          setState(() => _currentIndex = index);
+          if (index == 0) {
+            _routeScreenKey.currentState?.reloadOperatorRouteFromProfile();
+          }
+        },
         selectedItemColor: Colors.blue,
         unselectedItemColor: Colors.grey,
         items: const [

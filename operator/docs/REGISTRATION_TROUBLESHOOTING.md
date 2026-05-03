@@ -1,5 +1,7 @@
 # Operator Registration Troubleshooting Guide
 
+> **Note:** The operator app no longer supports in-app self-registration. Operators are created in the admin backend (Mongo). This document is kept for historical reference only.
+
 ## Common Issues and Solutions
 
 ### Issue: "Cannot create account" or "Permission denied"

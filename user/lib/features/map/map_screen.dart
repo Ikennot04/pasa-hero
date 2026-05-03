@@ -15,7 +15,7 @@ import 'services/map_style_service.dart';
 
 /// Main map screen: transportation-focused map with bus stops from Firestore streams.
 ///
-/// - Custom map style hides POIs, transit icons, building/admin labels; keeps roads.
+/// - Custom map style hides POIs and transit; keeps roads, road names, and city/neighborhood labels.
 /// - Bus stop [Marker]s from [FirestoreBusStopMarkersStream] ([bus_stops] or route doc [stops]).
 /// - User location remains visible (blue dot).
 /// - When [routeOrigin] and [routeDestination] are set, draws driving route polyline.

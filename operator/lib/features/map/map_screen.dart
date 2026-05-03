@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/services/location_service.dart';
@@ -43,6 +44,7 @@ class _MapScreenState extends State<MapScreen> {
   final DirectionsService _directionsService = DirectionsService();
   final BusStopIconService _busStopIconService = BusStopIconService.instance;
   GoogleMapController? _mapController;
+  String? _mapStyleJson;
   BitmapDescriptor? _operatorIcon;
   List<WaitingRiderInput> _lastWaitingRiders = [];
   int _lastWaitingRiderTotal = 0;
@@ -79,6 +81,7 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _initialCameraPosition = _initialCameraOverBusStops;
     _loadOperatorIcon();
+    unawaited(_loadMapStyle());
     unawaited(_loadClusterIconsThenRebuild());
     // Load bus stop sign icon and dynamic route stops from Firestore.
     _loadBusStopsFromDatabaseAndShow();
@@ -215,11 +218,9 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<String?> _resolveOperatorRouteCode() async {
-    final fromProfile = (await ProfileDataService.getOperatorRouteCode())?.trim();
-    if (fromProfile != null && fromProfile.isNotEmpty) return fromProfile;
-    final routes = await RouteCatalogService.fetchAvailableRoutes();
-    if (routes.isNotEmpty) return routes.first.code.trim();
-    return null;
+    final s = await ProfileDataService.resolveRouteCodeForLocationPublish();
+    final t = s.trim();
+    return t.isEmpty ? null : t;
   }
 
   /// Load bus stop sign icon and route geometry from Firestore.
@@ -243,7 +244,11 @@ class _MapScreenState extends State<MapScreen> {
           await RouteDataService.getRouteStops(routeCode);
       if (!mounted) return;
       if (stops.isNotEmpty) {
-        await _addBusStopMarkers(stops, _busStopIconService.defaultIcon);
+        await _addBusStopMarkers(
+          stops,
+          _busStopIconService.defaultIcon,
+          markRouteTerminals: true,
+        );
       } else {
         final allStops = await _loadAllBusStopsFromFirestore();
         if (!mounted) return;
@@ -388,28 +393,64 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
+  /// When [markRouteTerminals] is true (operator has a route code and ordered stops), the first and last
+  /// stops use green/red pins labeled Start/End; otherwise every stop uses the bus-stop icon.
   Future<void> _addBusStopMarkers(
     List<({String name, LatLng position})> stops,
-    BitmapDescriptor icon,
-  ) async {
+    BitmapDescriptor icon, {
+    bool markRouteTerminals = false,
+  }) async {
     if (!mounted || stops.isEmpty) return;
     final points = stops.map((s) => s.position).toList();
     setState(() {
       final existingNonBusStop = _markers.where(
-        (m) => !m.markerId.value.startsWith('bus_stop_'),
+        (m) =>
+            !m.markerId.value.startsWith('bus_stop_') &&
+            m.markerId.value != 'route_start' &&
+            m.markerId.value != 'route_end',
       ).toSet();
       final busStopMarkers = <Marker>{};
+      final routeLabel = _activeRouteCode ?? 'Route';
       for (int i = 0; i < stops.length; i++) {
         final stop = stops[i];
+        final isFirst = i == 0;
+        final isLast = i == stops.length - 1;
+        BitmapDescriptor stopIcon = icon;
+        String title = stop.name;
+        String snippet = 'Bus stop · $routeLabel';
+        int z = _zBusStopMarker;
+        if (markRouteTerminals) {
+          if (stops.length >= 2) {
+            if (isFirst) {
+              stopIcon =
+                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+              title = 'Start · ${stop.name}';
+              snippet = 'Route start · $routeLabel';
+              z = _zRouteEndpointMarker;
+            } else if (isLast) {
+              stopIcon =
+                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+              title = 'End · ${stop.name}';
+              snippet = 'Route end · $routeLabel';
+              z = _zRouteEndpointMarker;
+            }
+          } else if (stops.length == 1) {
+            stopIcon =
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+            title = 'Start / end · ${stop.name}';
+            snippet = 'Single terminal · $routeLabel';
+            z = _zRouteEndpointMarker;
+          }
+        }
         busStopMarkers.add(
           Marker(
             markerId: MarkerId('bus_stop_$i'),
             position: stop.position,
-            zIndexInt: _zBusStopMarker,
-            icon: icon,
+            zIndexInt: z,
+            icon: stopIcon,
             infoWindow: InfoWindow(
-              title: stop.name,
-              snippet: 'Bus stop · ${_activeRouteCode ?? 'Route'}',
+              title: title,
+              snippet: snippet,
             ),
           ),
         );
@@ -440,6 +481,17 @@ class _MapScreenState extends State<MapScreen> {
     print('✅ [MapScreen] Added ${stops.length} bus stop markers and street route');
   }
 
+  Future<void> _loadMapStyle() async {
+    try {
+      final json = await rootBundle.loadString(
+        'assets/map_styles/traffic_only_style.json',
+      );
+      if (!mounted) return;
+      setState(() => _mapStyleJson = json);
+      _mapController?.setMapStyle(_mapStyleJson);
+    } catch (_) {}
+  }
+
   Future<void> _loadOperatorIcon() async {
     try {
       final icon = await BitmapDescriptor.fromAssetImage(
@@ -465,9 +517,9 @@ class _MapScreenState extends State<MapScreen> {
   /// Bus stops are always shown (hardcoded); route polyline/start/end require a route in Profile.
   Future<void> _loadOperatorRoute() async {
     try {
-      final routeCode = await ProfileDataService.getOperatorRouteCode();
-      final trimmedCode = routeCode?.trim();
-      if (mounted && trimmedCode != null && trimmedCode.isNotEmpty) {
+      final routeCode = await ProfileDataService.resolveRouteCodeForLocationPublish();
+      final trimmedCode = routeCode.trim();
+      if (mounted && trimmedCode.isNotEmpty) {
         _activeRouteCode = trimmedCode;
         await _highlightRoute(trimmedCode);
       }
@@ -532,10 +584,6 @@ class _MapScreenState extends State<MapScreen> {
           break;
         }
       }
-      final routeStops = await RouteDataService.getRouteStops(code);
-      final startStopName = routeStops.isNotEmpty ? routeStops.first.name : 'Route Start';
-      final endStopName = routeStops.isNotEmpty ? routeStops.last.name : 'Route End';
-
       if (mounted) {
         setState(() {
           // One visible road: operator highlight only (same path as bus stops; no stacked lines).
@@ -552,41 +600,23 @@ class _MapScreenState extends State<MapScreen> {
           }
           // else keep existing _routePolylines (bus stop route stays)
 
-          // Add route start/end markers; preserve operator and hardcoded bus stop markers
-          final updatedMarkers = <Marker>{
-            ..._markers.where(
-              (m) =>
-                  m.markerId.value != 'route_start' &&
-                  m.markerId.value != 'route_end',
-            ),
-            // Start point marker
-            Marker(
-              markerId: const MarkerId('route_start'),
-              position: coordinates.startPoint,
-              zIndexInt: _zRouteEndpointMarker,
-              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-              infoWindow: InfoWindow(
-                title: startStopName,
-                snippet: 'Start · ${routeInfo?.name ?? code}',
-              ),
-            ),
-            // End point marker
-            Marker(
-              markerId: const MarkerId('route_end'),
-              position: coordinates.endPoint,
-              zIndexInt: _zRouteEndpointMarker,
-              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-              infoWindow: InfoWindow(
-                title: endStopName,
-                snippet: 'End · ${routeInfo?.name ?? code}',
-              ),
-            ),
-          };
-
-          _markers = _mergeWithUserMarkers(updatedMarkers);
+          // Start/end of route: first & last stops use green/red pins in [_addBusStopMarkers].
+          // Drop legacy route_start / route_end so we do not stack duplicate pins.
+          _markers = _mergeWithUserMarkers(
+            _markers
+                .where(
+                  (m) =>
+                      m.markerId.value != 'route_start' &&
+                      m.markerId.value != 'route_end',
+                )
+                .toSet(),
+          );
         });
 
-        print('✅ [MapScreen] Added route start/end markers. Total markers: ${_markers.length}');
+        print(
+          '✅ [MapScreen] Route polyline updated. Markers: ${_markers.length} '
+          '(${routeInfo?.name ?? code})',
+        );
 
         // Fit camera to show the entire route if we have a polyline
         if (_mapController != null && highlightPoints.isNotEmpty) {
@@ -952,6 +982,9 @@ class _MapScreenState extends State<MapScreen> {
             initialCameraPosition: _initialCameraPosition ?? MapService.getDefaultCameraPosition(),
             onMapCreated: (c) {
               _mapController = c;
+              if (_mapStyleJson != null) {
+                _mapController!.setMapStyle(_mapStyleJson);
+              }
               // If we already have a position, center the map on it
               if (_currentPosition != null) {
                 _mapController!.moveCamera(
