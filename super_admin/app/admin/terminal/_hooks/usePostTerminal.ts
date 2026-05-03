@@ -11,7 +11,17 @@ export const usePostTerminal = () => {
     setError(null);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.post(`${baseUrl}/api/terminals`, data);
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("super_admin_auth_token")
+          : null;
+      const { data: response } = await axios.post(
+        `${baseUrl}/api/terminals`,
+        data,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      );
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {

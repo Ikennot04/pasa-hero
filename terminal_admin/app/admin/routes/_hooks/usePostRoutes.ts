@@ -10,9 +10,16 @@ export const usePostRoutes = () => {
     setError(null);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("terminal_admin_auth_token")
+          : null;
       const { data: response } = await axios.post(
         `${baseUrl}/api/routes`,
         routeData,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
       );
       return response;
     } catch (error) {

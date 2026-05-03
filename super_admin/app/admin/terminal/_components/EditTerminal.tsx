@@ -76,9 +76,16 @@ export default function EditTerminal({ terminal }: EditTerminalProps) {
   async function onSubmit(data: EditTerminalFormData) {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/terminals/${terminal.id}`, {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("super_admin_auth_token")
+          : null;
+      const res = await fetch(`${baseUrl}/api/terminals/${terminal.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           terminal_name: data.terminal_name,
           location_lat: data.location_lat,

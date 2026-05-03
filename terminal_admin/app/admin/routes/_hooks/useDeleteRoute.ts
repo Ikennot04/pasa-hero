@@ -10,7 +10,16 @@ export const useDeleteRoute = () => {
     setError(null);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.delete(`${baseUrl}/api/routes/${routeId}`);
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("terminal_admin_auth_token")
+          : null;
+      const { data: response } = await axios.delete(
+        `${baseUrl}/api/routes/${routeId}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      );
       return response;
     } catch (error) {
       if (axios.isAxiosError(error)) {
