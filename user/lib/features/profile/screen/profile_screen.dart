@@ -39,7 +39,7 @@ class ProfileScreen extends StatelessWidget {
             // Navigate to splash screen and clear navigation stack
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
+                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                   MaterialPageRoute(
                     builder: (context) => const SplashScreen(),
                   ),
@@ -318,68 +318,15 @@ class ProfileScreen extends StatelessWidget {
                                 onTap: state.isLoading
                                     ? null
                                     : () {
-                                        // Show confirmation dialog
-                                        showDialog(
+                                        showDialog<void>(
                                           context: context,
-                                          builder: (BuildContext dialogContext) {
-                                            return AlertDialog(
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(16),
-                                              ),
-                                              title: const Text(
-                                                'Logout',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                              content: const Text(
-                                                'Are you sure you want to logout?',
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () {
-                                                    Navigator.of(dialogContext).pop();
-                                                  },
-                                                  child: const Text('Cancel'),
-                                                ),
-                                                TextButton(
-                                                  onPressed: () async {
-                                                    // Close dialog first
-                                                    Navigator.of(dialogContext).pop();
-                                                    
-                                                    try {
-                                                      // Sign out directly from Firebase Auth
-                                                      final authService = AuthService();
-                                                      await authService.signOut();
-                                                      
-                                                      // Use root navigator to navigate to splash screen
-                                                      if (context.mounted) {
-                                                        final rootNavigator = Navigator.of(context, rootNavigator: true);
-                                                        rootNavigator.pushAndRemoveUntil(
-                                                          MaterialPageRoute(
-                                                            builder: (context) => const SplashScreen(),
-                                                          ),
-                                                          (route) => false,
-                                                        );
-                                                      }
-                                                    } catch (e) {
-                                                      // Show error if logout fails
-                                                      if (context.mounted) {
-                                                        ScaffoldMessenger.of(context).showSnackBar(
-                                                          SnackBar(
-                                                            content: Text('Logout failed: ${e.toString()}'),
-                                                            backgroundColor: ValidationTheme.errorRed,
-                                                          ),
-                                                        );
-                                                      }
-                                                    }
-                                                  },
-                                                  style: TextButton.styleFrom(
-                                                    foregroundColor: ValidationTheme.errorRed,
-                                                  ),
-                                                  child: const Text('Logout'),
-                                                ),
-                                              ],
+                                          builder: (dialogContext) {
+                                            return _LogoutConfirmDialog(
+                                              onConfirm: () {
+                                                context
+                                                    .read<AuthBlocBloc>()
+                                                    .add(LogoutEvent());
+                                              },
                                             );
                                           },
                                         );
@@ -398,6 +345,65 @@ class ProfileScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _LogoutConfirmDialog extends StatefulWidget {
+  const _LogoutConfirmDialog({required this.onConfirm});
+
+  final VoidCallback onConfirm;
+
+  @override
+  State<_LogoutConfirmDialog> createState() => _LogoutConfirmDialogState();
+}
+
+class _LogoutConfirmDialogState extends State<_LogoutConfirmDialog> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: const Text(
+        'Logout',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      content: const Text(
+        'Are you sure you want to logout?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _busy
+              ? null
+              : () {
+                  setState(() => _busy = true);
+                  Navigator.of(context).pop();
+                  widget.onConfirm();
+                },
+          style: TextButton.styleFrom(
+            foregroundColor: ValidationTheme.errorRed,
+          ),
+          child: _busy
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: ValidationTheme.errorRed,
+                  ),
+                )
+              : const Text('Logout'),
+        ),
+      ],
     );
   }
 }

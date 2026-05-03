@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import '../features/routes/screen/route_screen.dart';
+
+import '../core/services/notification_badge_service.dart';
 import '../features/notification/screen/notification_screen.dart';
 import '../features/profile/screen/profile_screen.dart';
+import '../features/routes/screen/route_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final Widget nearMeContent;
@@ -37,6 +39,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     setState(() {
       _selectedIndex = index;
     });
+    if (index == 2) {
+      NotificationBadgeService.instance.notifyNotificationTabOpened();
+    }
   }
 
   @override
@@ -46,9 +51,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         index: _selectedIndex,
         children: _screens,
       ),
-      bottomNavigationBar: BottomNavBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
+      bottomNavigationBar: ValueListenableBuilder<bool>(
+        valueListenable: NotificationBadgeService.instance.showBadge,
+        builder: (context, showNotificationBadge, _) {
+          return BottomNavBar(
+            currentIndex: _selectedIndex,
+            onTap: _onItemTapped,
+            showNotificationBadge: showNotificationBadge,
+          );
+        },
       ),
     );
   }
@@ -57,11 +68,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 class BottomNavBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
+  final bool showNotificationBadge;
 
   const BottomNavBar({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.showNotificationBadge = false,
   });
 
   @override
@@ -105,6 +118,7 @@ class BottomNavBar extends StatelessWidget {
                   label: 'Notification',
                   isActive: currentIndex == 2,
                   onTap: () => onTap(2),
+                  showRedBadge: showNotificationBadge,
                 ),
               ),
               Expanded(
@@ -127,6 +141,7 @@ class BottomNavBar extends StatelessWidget {
     required String label,
     required bool isActive,
     required VoidCallback onTap,
+    bool showRedBadge = false,
   }) {
     final color = isActive ? const Color(0xFF3B82F6) : const Color(0xFF9CA3AF);
     
@@ -140,10 +155,28 @@ class BottomNavBar extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 24,
-              color: color,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  icon,
+                  size: 24,
+                  color: color,
+                ),
+                if (showRedBadge)
+                  Positioned(
+                    right: -2,
+                    top: -2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 4),
             Flexible(

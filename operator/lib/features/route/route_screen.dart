@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,10 +33,10 @@ class RouteScreen extends StatefulWidget {
   static const String routeName = '/route';
 
   @override
-  State<RouteScreen> createState() => _RouteScreenState();
+  State<RouteScreen> createState() => RouteScreenState();
 }
 
-class _RouteScreenState extends State<RouteScreen> {
+class RouteScreenState extends State<RouteScreen> {
   final LocationService _locationService = LocationService();
   final DirectionsService _directionsService = DirectionsService();
   final BusStopIconService _busStopIconService = BusStopIconService.instance;
@@ -52,9 +53,16 @@ class _RouteScreenState extends State<RouteScreen> {
   bool _isLocationRequestInProgress = false;
   String? _routeId;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _userLocationsSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userProfileSub;
   StreamSubscription<Position>? _positionStreamSub;
 
   static const String _busStopRoutePolylineId = 'bus_stop_route';
+
+  /// When using a shell with [IndexedStack], call this after changing the route in Profile
+  /// so the map reloads without guessing from the route catalog.
+  void reloadOperatorRouteFromProfile() {
+    unawaited(_loadRouteId());
+  }
 
   @override
   void initState() {
@@ -63,6 +71,7 @@ class _RouteScreenState extends State<RouteScreen> {
     _loadOperatorIcon();
     unawaited(_loadClusterIconsThenRebuild());
     _loadMapStyle();
+    _listenOperatorRouteFromProfile();
     _loadRouteId();
     _watchUserLocations();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -274,13 +283,29 @@ class _RouteScreenState extends State<RouteScreen> {
     });
   }
 
+  void _listenOperatorRouteFromProfile() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _userProfileSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      final data = snap.data();
+      final raw = data?['routeCode'] ?? data?['route_code'];
+      final code = raw?.toString().trim();
+      final next = (code == null || code.isEmpty) ? null : code.toUpperCase();
+      final cur = _routeId?.trim().toUpperCase();
+      if (next != cur) {
+        unawaited(_loadRouteId());
+      }
+    });
+  }
+
   Future<void> _loadRouteId() async {
-    final code = (await ProfileDataService.getOperatorRouteCode())?.trim();
-    String? t = code;
-    if (t == null || t.isEmpty) {
-      final options = await RouteCatalogService.fetchAvailableRoutes();
-      if (options.isNotEmpty) t = options.first.code.trim();
-    }
+    final published = await ProfileDataService.resolveRouteCodeForLocationPublish();
+    final t = published.trim().isEmpty ? null : published.trim();
     ProfileDataService.setLocationSyncRouteFallback(t);
     if (mounted) {
       setState(() => _routeId = t);
@@ -585,6 +610,7 @@ class _RouteScreenState extends State<RouteScreen> {
 
   @override
   void dispose() {
+    _userProfileSub?.cancel();
     _userLocationsSub?.cancel();
     _positionStreamSub?.cancel();
     _mapController?.dispose();

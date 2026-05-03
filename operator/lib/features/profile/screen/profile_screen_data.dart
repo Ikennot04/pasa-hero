@@ -44,16 +44,66 @@ class RouteCoordinates {
   });
 }
 
-/// Dynamic route catalog used by operator profile/selection.
+/// Result of loading the route catalog (Vercel API, with optional Firestore fallback).
+class RouteCatalogFetchResult {
+  const RouteCatalogFetchResult({
+    required this.routes,
+    this.apiFailureMessage,
+  });
+
+  final List<RouteInfo> routes;
+  /// Present when the route list is empty and the API reported failure or was unreachable.
+  final String? apiFailureMessage;
+
+  String get emptySelectionMessage {
+    if (routes.isNotEmpty) return '';
+    final api = apiFailureMessage?.trim();
+    if (api != null && api.isNotEmpty) {
+      return 'Could not load routes from the server (Vercel API).\n\n$api\n\n'
+          'Check your connection or try again. If routes exist only in Firestore, '
+          'ensure `route_code` or `routes` is populated.';
+    }
+    return 'No routes are available. The server list was empty and no routes '
+        'were found in Firestore (`route_code` / `routes`).';
+  }
+}
+
+/// Dynamic route catalog used by operator profile, map, and route screens.
 ///
-/// Source priority:
-/// 1) `route_code` (primary)
-/// 2) `routes`
+/// Loads from the published Vercel/Mongo `GET /api/routes` first; if that yields
+/// no routes (unreachable, error, or empty), falls back to Firestore `route_code`
+/// then `routes` so operators can still select a code when the API is down.
 class RouteCatalogService {
   static const String _routeCodeCollection = 'route_code';
   static const String _routesCollection = 'routes';
   static const String _routesApiUrl =
       'https://pasa-hero-server.vercel.app/api/routes';
+
+  static Map<String, dynamic>? _jsonObject(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+    return null;
+  }
+
+  static String? _firstNonEmptyField(Map<String, dynamic> row, List<String> keys) {
+    for (final k in keys) {
+      final v = row[k];
+      if (v == null) continue;
+      final s = v.toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+    return null;
+  }
+
+  static List<dynamic> _routeRowListFromDecoded(Map<String, dynamic> decoded) {
+    final data = decoded['data'];
+    if (data is List) return data;
+    final routes = decoded['routes'];
+    if (routes is List) return routes;
+    return const [];
+  }
 
   static void _put(
     Map<String, RouteInfo> out, {
@@ -122,43 +172,141 @@ class RouteCatalogService {
     }
   }
 
-  static Future<List<RouteInfo>> fetchAvailableRoutes() async {
-    final byCode = <String, RouteInfo>{};
+  static void _mergeRowsInto(
+    Map<String, RouteInfo> byCode,
+    List<dynamic> rows, {
+    required String sourceLabel,
+  }) {
+    for (final row in rows) {
+      final sm = _jsonObject(row);
+      if (sm == null) continue;
+      final code = _firstNonEmptyField(sm, const [
+        'route_code',
+        'routeCode',
+        'code',
+      ]);
+      if (code == null || code.isEmpty) continue;
+      final name = _firstNonEmptyField(sm, const [
+        'route_name',
+        'routeName',
+        'name',
+      ]);
+      final status = _firstNonEmptyField(sm, const ['status']);
+      _put(
+        byCode,
+        codeRaw: code,
+        nameRaw: (name == null || name.isEmpty) ? code : name,
+        descriptionRaw: (status == null || status.isEmpty)
+            ? (sourceLabel == 'api' ? 'Live route from API' : 'Route from Firestore')
+            : 'Status: $status',
+      );
+    }
+  }
 
-    // Only source: published backend routes API.
+  static Future<void> _mergeFirestoreRouteCatalog(Map<String, RouteInfo> byCode) async {
+    try {
+      final snap =
+          await FirebaseFirestore.instance.collection(_routeCodeCollection).get();
+      for (final doc in snap.docs) {
+        final m = firestoreMap(doc.data());
+        if (m == null) continue;
+        final name = m['name'] as String?;
+        final desc = m['description'] as String?;
+        _put(
+          byCode,
+          codeRaw: doc.id,
+          nameRaw: name ?? doc.id,
+          descriptionRaw: desc,
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ [RouteCatalog] route_code Firestore read failed: $e');
+    }
+
+    try {
+      final snap =
+          await FirebaseFirestore.instance.collection(_routesCollection).get();
+      for (final doc in snap.docs) {
+        final m = firestoreMap(doc.data());
+        if (m == null) continue;
+        final fromField = (m['code'] as String?)?.trim();
+        final code =
+            (fromField != null && fromField.isNotEmpty) ? fromField : doc.id.trim();
+        if (code.isEmpty) continue;
+        final name = m['name'] as String?;
+        final desc = m['description'] as String?;
+        _put(
+          byCode,
+          codeRaw: code,
+          nameRaw: name ?? code,
+          descriptionRaw: desc,
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ [RouteCatalog] routes Firestore read failed: $e');
+    }
+  }
+
+  static Future<RouteCatalogFetchResult> fetchRouteCatalog() async {
+    final byCode = <String, RouteInfo>{};
+    String? apiFailure;
+
     try {
       final uri = Uri.parse(_routesApiUrl);
-      final response = await http.get(uri).timeout(const Duration(seconds: 12));
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) {
-          final rows = decoded['data'];
-          if (rows is List) {
-            for (final row in rows) {
-              if (row is! Map) continue;
-              final code = row['route_code']?.toString().trim() ?? '';
-              if (code.isEmpty) continue;
-              final name = row['route_name']?.toString().trim();
-              final status = row['status']?.toString().trim();
-              _put(
-                byCode,
-                codeRaw: code,
-                nameRaw: (name == null || name.isEmpty) ? code : name,
-                descriptionRaw: (status == null || status.isEmpty)
-                    ? 'Live route from API'
-                    : 'Status: $status',
-              );
-            }
-          }
-        }
+      final response = await http
+          .get(
+            uri,
+            headers: const {'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 20));
+
+      Map<String, dynamic>? decoded;
+      try {
+        decoded = _jsonObject(jsonDecode(response.body));
+      } catch (_) {
+        apiFailure =
+            'Could not parse server response (HTTP ${response.statusCode}).';
       }
-    } catch (_) {
-      // Return empty when API is unavailable; operator routes are API-only.
+
+      if (decoded != null && decoded['success'] == false) {
+        final raw = decoded['message'] ?? decoded['error'];
+        final msg = raw?.toString().trim();
+        apiFailure =
+            (msg != null && msg.isNotEmpty) ? msg : 'Server returned an error.';
+      }
+
+      final okHttp = response.statusCode >= 200 && response.statusCode < 300;
+
+      if (okHttp &&
+          decoded != null &&
+          decoded['success'] != false) {
+        _mergeRowsInto(byCode, _routeRowListFromDecoded(decoded), sourceLabel: 'api');
+      } else if (apiFailure == null && !okHttp) {
+        apiFailure =
+            'HTTP ${response.statusCode} from routes service.';
+      }
+    } on TimeoutException {
+      apiFailure = 'Request to the routes service timed out.';
+    } catch (e) {
+      apiFailure = 'Network error while loading routes: $e';
+    }
+
+    if (byCode.isEmpty) {
+      await _mergeFirestoreRouteCatalog(byCode);
     }
 
     final list = byCode.values.toList();
     list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return list;
+
+    return RouteCatalogFetchResult(
+      routes: list,
+      apiFailureMessage: list.isEmpty ? apiFailure : null,
+    );
+  }
+
+  static Future<List<RouteInfo>> fetchAvailableRoutes() async {
+    final r = await fetchRouteCatalog();
+    return r.routes;
   }
 }
 
@@ -275,6 +423,123 @@ const String _routesCollection = 'routes';
 
 /// Service to save and load route definitions (e.g. Route1 with bus stops) in Firestore.
 class RouteDataService {
+  static const String _routesApiBase = 'https://pasa-hero-server.vercel.app/api';
+
+  static Map<String, dynamic>? _apiJsonObject(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  /// Mongo [_id] from list/detail JSON (string or extended JSON map).
+  static String? _mongoIdToString(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is String) {
+      final t = raw.trim();
+      return t.isEmpty ? null : t;
+    }
+    if (raw is Map) {
+      final m = Map<String, dynamic>.from(raw);
+      for (final k in const [r'$oid', 'oid', '_id']) {
+        final v = m[k];
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+      }
+    }
+    final s = raw.toString().trim();
+    if (s.isEmpty || s == 'null') return null;
+    return s;
+  }
+
+  /// Loads ordered bus stops from the same Vercel/Mongo API as the admin app
+  /// (`GET /api/routes`, then `GET /api/routes/:id` with [route_stops]).
+  static Future<List<({String name, LatLng position})>> _getRouteStopsFromVercelApi(
+    String routeCode,
+  ) async {
+    final want = routeCode.trim().toUpperCase();
+    if (want.isEmpty) return const [];
+
+    try {
+      final listUri = Uri.parse('${_routesApiBase}/routes');
+      final listResp = await http
+          .get(listUri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 20));
+      if (listResp.statusCode < 200 || listResp.statusCode >= 300) {
+        return const [];
+      }
+
+      final listDecoded = _apiJsonObject(jsonDecode(listResp.body));
+      if (listDecoded == null || listDecoded['success'] == false) {
+        return const [];
+      }
+
+      final rowsRaw = listDecoded['data'] ?? listDecoded['routes'];
+      if (rowsRaw is! List) return const [];
+
+      String? routeId;
+      for (final row in rowsRaw) {
+        final sm = _apiJsonObject(row);
+        if (sm == null) continue;
+        final code =
+            (sm['route_code'] ?? sm['routeCode'])?.toString().trim() ?? '';
+        if (code.toUpperCase() != want) continue;
+        routeId = _mongoIdToString(sm['_id'] ?? sm['id']);
+        break;
+      }
+      if (routeId == null || routeId.isEmpty) return const [];
+
+      final detailUri = Uri.parse('${_routesApiBase}/routes/$routeId');
+      final detailResp = await http
+          .get(detailUri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 20));
+      if (detailResp.statusCode < 200 || detailResp.statusCode >= 300) {
+        return const [];
+      }
+
+      final detailDecoded = _apiJsonObject(jsonDecode(detailResp.body));
+      if (detailDecoded == null || detailDecoded['success'] == false) {
+        return const [];
+      }
+
+      final payload = _apiJsonObject(detailDecoded['data']);
+      if (payload == null) return const [];
+
+      final rawStops = payload['route_stops'] ?? payload['routeStops'];
+      if (rawStops is! List || rawStops.isEmpty) return const [];
+
+      final parsed = <({String name, LatLng position, int order})>[];
+      for (var i = 0; i < rawStops.length; i++) {
+        final sm = _apiJsonObject(rawStops[i]);
+        if (sm == null) continue;
+        final order = (sm['stop_order'] as num?)?.toInt() ??
+            (sm['route_order'] as num?)?.toInt() ??
+            (sm['order'] as num?)?.toInt() ??
+            i;
+        final nameRaw =
+            (sm['stop_name'] ?? sm['name'])?.toString().trim() ?? '';
+        final lat = (sm['latitude'] as num?)?.toDouble();
+        final lng = (sm['longitude'] as num?)?.toDouble();
+        if (lat == null || lng == null) continue;
+        parsed.add((
+          name: nameRaw.isNotEmpty ? nameRaw : 'Stop ${i + 1}',
+          position: LatLng(lat, lng),
+          order: order,
+        ));
+      }
+      if (parsed.isEmpty) return const [];
+      parsed.sort((a, b) => a.order.compareTo(b.order));
+      return parsed.map((e) => (name: e.name, position: e.position)).toList();
+    } catch (e) {
+      debugPrint('⚠️ [RouteDataService] Vercel route stops failed: $e');
+      return const [];
+    }
+  }
+
+  /// Mongo/API stops only (no Firestore). Used when syncing `route_code` from the backend catalog.
+  static Future<List<({String name, LatLng position})>> fetchBackendRouteStopsOnly(
+    String routeCode,
+  ) =>
+      _getRouteStopsFromVercelApi(routeCode);
+
   /// Fetches a route definition from Firestore by code.
   /// Returns map with code, name, description, stops (list of { name, latitude, longitude }).
   static Future<Map<String, dynamic>?> getRouteFromFirestore(String code) async {
@@ -347,12 +612,16 @@ class RouteDataService {
     return out;
   }
 
-  /// Dynamic route stops: prefer `route_code.busStops`, then `routes.stops`.
+  /// Route stops: **Mongo (Vercel API) first** when it returns a full path, then Firestore
+  /// `route_code` / `routes`, so the driver map matches the admin backend for the selected code.
   static Future<List<({String name, LatLng position})>> getRouteStops(
     String routeCode,
   ) async {
     final code = routeCode.trim();
     if (code.isEmpty) return const [];
+
+    final apiStops = await _getRouteStopsFromVercelApi(code);
+    if (apiStops.length >= 2) return apiStops;
 
     try {
       final fromRouteCode = await RouteCodeService.get(code);
@@ -361,34 +630,59 @@ class RouteDataService {
     } catch (_) {}
 
     final routeDoc = await getRouteFromFirestore(code);
-    return _parseStopsFromRoutesDoc(routeDoc);
+    final fsStops = _parseStopsFromRoutesDoc(routeDoc);
+    if (fsStops.length >= 2) return fsStops;
+
+    if (apiStops.isNotEmpty) return apiStops;
+
+    try {
+      final fromRouteCode = await RouteCodeService.get(code);
+      final rcStops = fromRouteCode?.busStops ?? const <({String name, LatLng position})>[];
+      if (rcStops.isNotEmpty) return rcStops;
+    } catch (_) {}
+
+    return fsStops;
   }
 
-  /// Dynamic route coordinates used by map highlight/start-end markers.
+  /// Route polyline / endpoints: same stop ordering as [getRouteStops] (Mongo-first when available).
   static Future<RouteCoordinates?> getRouteCoordinatesFromFirestore(String routeCode) async {
     final code = routeCode.trim();
     if (code.isEmpty) return null;
 
+    final stops = await getRouteStops(code);
+    if (stops.length >= 2) {
+      return RouteCoordinates(
+        startPoint: stops.first.position,
+        endPoint: stops.last.position,
+        stops: stops.map((s) => s.position).toList(),
+      );
+    }
+
     try {
       final fromRouteCode = await RouteCodeService.get(code);
       if (fromRouteCode != null) {
-        final stops = fromRouteCode.busStops.map((s) => s.position).toList();
-        final hasStops = stops.length >= 2;
+        if (stops.length == 1) {
+          final p = stops.first.position;
+          return RouteCoordinates(
+            startPoint: p,
+            endPoint: fromRouteCode.pointB,
+            stops: [p, fromRouteCode.pointB],
+          );
+        }
         return RouteCoordinates(
-          startPoint: hasStops ? stops.first : fromRouteCode.pointA,
-          endPoint: hasStops ? stops.last : fromRouteCode.pointB,
-          stops: hasStops ? stops : [fromRouteCode.pointA, fromRouteCode.pointB],
+          startPoint: fromRouteCode.pointA,
+          endPoint: fromRouteCode.pointB,
+          stops: [fromRouteCode.pointA, fromRouteCode.pointB],
         );
       }
     } catch (_) {}
 
-    final stops = await getRouteStops(code);
-    if (stops.length < 2) return null;
-    return RouteCoordinates(
-      startPoint: stops.first.position,
-      endPoint: stops.last.position,
-      stops: stops.map((s) => s.position).toList(),
-    );
+    if (stops.length == 1) {
+      final p = stops.first.position;
+      return RouteCoordinates(startPoint: p, endPoint: p, stops: [p]);
+    }
+
+    return null;
   }
 
   /// Saves or updates a route in Firestore (e.g. Route1 with stops).
@@ -602,6 +896,12 @@ class RouteCodeService {
 
     final routeDoc = await RouteDataService.getRouteFromFirestore(logicalCode);
     var catalogStops = RouteDataService.stopsFromRoutesDocument(routeDoc);
+    if (catalogStops.length < 2) {
+      final apiStops = await RouteDataService.fetchBackendRouteStopsOnly(logicalCode);
+      if (apiStops.isNotEmpty) {
+        catalogStops = apiStops;
+      }
+    }
 
     Position? gps;
     try {
