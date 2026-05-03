@@ -133,10 +133,10 @@ export default function Dashboard() {
     TerminalNotificationType[]
   >([]);
   const [notificationCounts, setNotificationCounts] = useState({
-    arrival_confirmed: 0,
     arrival_reported: 0,
-    departure_confirmed: 0,
+    arrival_rejected: 0,
     departure_reported: 0,
+    departure_rejected: 0,
   });
 
   // Pending Confirmations States

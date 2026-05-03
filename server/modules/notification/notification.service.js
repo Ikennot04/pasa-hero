@@ -9,9 +9,9 @@ const TERMINAL_STAFF_ROLES = ["terminal admin", "operator"];
 
 const TERMINAL_OPERATION_NOTIFICATION_TYPES = [
   "arrival_reported",
-  "arrival_confirmed",
+  "arrival_rejected",
   "departure_reported",
-  "departure_confirmed",
+  "departure_rejected",
 ];
 
 function getTodayRange() {
