@@ -163,7 +163,7 @@ export default function AdminShell({
             <div className="pl-2 text-xl font-semibold">Pasahero Admin</div>
           </div>
           <div className="navbar-end gap-2 pr-2">
-            <span className="pl-2 text-xl font-semibold">
+            <span className="pl-2 text-xl font-semibold text-[#0062CA]">
               Admin {profileName || "Admin"}
             </span>
             <button
