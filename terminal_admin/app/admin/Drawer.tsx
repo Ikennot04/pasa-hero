@@ -1,6 +1,7 @@
 "use client";
 
 import axios from "axios";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useSyncExternalStore } from "react";
@@ -114,7 +115,15 @@ export default function Drawer({ children }: { children: React.ReactNode }) {
             >
               <LiaBarsSolid className="size-7" />
             </label>
-            <div className="pl-0.5 sm:pl-1 text-xl sm:text-2xl font-semibold truncate">
+            <Image
+              src="/one-mandaue-logo.png"
+              alt="One Mandaue"
+              width={160}
+              height={48}
+              className="ml-1 h-8 w-auto max-w-36 shrink-0 object-contain sm:h-9"
+              priority
+            />
+            <div className="pl-2 text-xl font-semibold">
               Terminal Admin
             </div>
           </div>

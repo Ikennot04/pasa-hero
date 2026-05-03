@@ -1,6 +1,7 @@
 "use client";
 
 import axios from "axios";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
@@ -151,10 +152,18 @@ export default function AdminShell({
             >
               <LiaBarsSolid className="size-6" />
             </label>
-            <div className="pl-3 text-xl font-semibold">Pasahero Admin</div>
+            <Image
+              src="/one-mandaue-logo.png"
+              alt="One Mandaue"
+              width={160}
+              height={48}
+              className="ml-1 h-8 w-auto max-w-36 shrink-0 object-contain sm:h-9"
+              priority
+            />
+            <div className="pl-2 text-xl font-semibold">Pasahero Admin</div>
           </div>
           <div className="navbar-end gap-2 pr-2">
-            <span className="hidden max-w-48 truncate text-[#0062CA] font-semibold   sm:inline">
+            <span className="pl-2 text-xl font-semibold">
               Admin {profileName || "Admin"}
             </span>
             <button
