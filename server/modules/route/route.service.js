@@ -1,6 +1,8 @@
 import Route from "./route.model.js"; // Model
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import RouteStop from "../route_stop/route_stop.model.js";
+import User from "../user/user.model.js";
+import { NotificationService } from "../notification/notification.service.js";
 
 const ACTIVE_ROUTE_FILTER = { is_deleted: { $ne: true } };
 const normalizeTerminalId = (value) => {
@@ -21,6 +23,47 @@ const terminalIdFromRouteField = (value) => {
   }
   return normalizeTerminalId(value);
 };
+
+// Fallback sender for auto-generated notifications when the caller did not
+// supply a sender_id. Resolves to the first `super admin` user, since
+// Notification.sender_id is required on the schema.
+let cachedSystemSenderId = null;
+async function getSystemSenderId() {
+  if (cachedSystemSenderId) return cachedSystemSenderId;
+  const admin = await User.findOne({ role: "super admin" })
+    .select("_id")
+    .lean();
+  cachedSystemSenderId = admin ? String(admin._id) : null;
+  return cachedSystemSenderId;
+}
+
+async function emitRouteFreeNotifications(route, senderId) {
+  const resolvedSender = senderId || (await getSystemSenderId());
+  if (!resolvedSender) return;
+
+  const startId = terminalIdFromRouteField(route.start_terminal_id);
+  const endId = terminalIdFromRouteField(route.end_terminal_id);
+  const terminals = [...new Set([startId, endId].filter(Boolean))];
+  if (!terminals.length) return;
+
+  const title = `Free ride on ${route.route_name}`;
+  const message =
+    `Route ${route.route_code} (${route.route_name}) is now a free ride. ` +
+    `Passengers can board without fare until further notice.`;
+
+  for (const tid of terminals) {
+    await NotificationService.createNotification({
+      sender_id: resolvedSender,
+      route_id: String(route._id),
+      terminal_id: tid,
+      title,
+      message,
+      notification_type: "route_free",
+      priority: "high",
+      scope: "terminal",
+    });
+  }
+}
 
 export const RouteService = {
   // GET ALL ROUTES ===================================================================
@@ -246,13 +289,15 @@ export const RouteService = {
     };
   },
   // UPDATE ROUTE BY ID ===================================================================
-  async updateRouteById(id, updateData) {
+  async updateRouteById(id, updateData, options = {}) {
+    const { senderId = null } = options;
     const route = await Route.findOne({ _id: id, ...ACTIVE_ROUTE_FILTER });
     if (!route) {
       const error = new Error("Route not found.");
       error.statusCode = 404;
       throw error;
     }
+    const wasFree = route.is_free_ride === true;
 
     const normalizedUpdateData = { ...updateData };
     if (Object.prototype.hasOwnProperty.call(normalizedUpdateData, "start_terminal_id")) {
@@ -329,6 +374,19 @@ export const RouteService = {
             route_type: siblingType,
           },
           { $set: { is_free_ride: Boolean(normalizedUpdateData.is_free_ride) } },
+        );
+      }
+    }
+
+    const nowFree = updated?.is_free_ride === true;
+    const transitionedToFree = !wasFree && nowFree;
+    if (transitionedToFree) {
+      try {
+        await emitRouteFreeNotifications(updated, senderId);
+      } catch (err) {
+        console.error(
+          "[RouteService.updateRouteById] Failed to emit route_free notification:",
+          err,
         );
       }
     }
