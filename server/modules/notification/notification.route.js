@@ -4,7 +4,7 @@ import {
   bulkDeleteNotifications,
   listNotifications,
   listNotificationsByTerminal,
-  listTodaysNotificationsByTerminal,
+  listLatestNotificationsByTerminal,
   listUserInboxNotifications,
 } from "./notification.controller.js";
 
@@ -12,7 +12,7 @@ const router = express.Router();
 
 router.get("/", listNotifications);
 router.get("/inbox/:userId", listUserInboxNotifications);
-router.get("/today/:terminalId", listTodaysNotificationsByTerminal);
+router.get("/latest/:terminalId", listLatestNotificationsByTerminal);
 router.get("/terminal/:terminalId", listNotificationsByTerminal);
 router.post("/", addNotification);
 router.delete("/bulk", bulkDeleteNotifications);
