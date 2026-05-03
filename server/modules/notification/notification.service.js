@@ -66,7 +66,6 @@ async function resolveSubscriberUserIds(notification) {
 
   const expandTerminalRoutes =
     terminalId &&
-    !routeId &&
     !busId &&
     (scope === "terminal" || scope === "system");
 

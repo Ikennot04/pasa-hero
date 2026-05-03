@@ -21,6 +21,7 @@ const notificationSchema = new mongoose.Schema(
         "info",
         "other",
         "custom",
+        "route_free",
       ],
       required: true,
     },
