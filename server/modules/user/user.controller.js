@@ -87,15 +87,19 @@ export const createAdminUser = async (req, res) => {
     const userData = JSON.parse(req?.body?.data);
     const userImg = req.file?.filename;
 
-    let creatorUserId = null;
-    const authHeader = req.headers.authorization;
-    if (authHeader?.startsWith("Bearer ")) {
-      try {
-        const token = authHeader.split(" ")[1];
-        const { user: authUser } = await UserService.verifyJwtAuth(token);
-        creatorUserId = authUser._id;
-      } catch {
-        creatorUserId = null;
+    let creatorUserId = req.user?._id ?? null;
+    if (!creatorUserId) {
+      // Fallback: decode the bearer token directly when the optional auth
+      // middleware was not applied to this route.
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith("Bearer ")) {
+        try {
+          const token = authHeader.split(" ")[1];
+          const { user: authUser } = await UserService.verifyJwtAuth(token);
+          creatorUserId = authUser._id;
+        } catch {
+          creatorUserId = null;
+        }
       }
     }
 
@@ -120,10 +124,14 @@ export const updateUser = async (req, res) => {
     const userData = JSON.parse(req?.body?.data);
     const profile_image = req.file?.filename;
 
-    const user = await UserService.updateUser(userId, {
-      ...userData,
-      profile_image,
-    });
+    const user = await UserService.updateUser(
+      userId,
+      {
+        ...userData,
+        profile_image,
+      },
+      { actorUserId: req.user?._id ?? null },
+    );
     res.status(200).json({ success: true, data: user });
   } catch (error) {
     res.status(400).json({

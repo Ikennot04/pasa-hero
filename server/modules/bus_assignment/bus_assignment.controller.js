@@ -52,8 +52,10 @@ export const updateBusAssignmentById = async (req, res) => {
 export const createBusAssignment = async (req, res) => {
   try {
     const busAssignmentData = req.body;
-    const busAssignment =
-      await BusAssignmentService.createBusAssignment(busAssignmentData);
+    const busAssignment = await BusAssignmentService.createBusAssignment(
+      busAssignmentData,
+      { actorUserId: req.user?._id ?? null },
+    );
     res.status(201).json({ success: true, data: busAssignment });
   } catch (error) {
     const statusCode = error.statusCode || 400;
@@ -64,8 +66,9 @@ export const createBusAssignment = async (req, res) => {
 export const deleteBusAssignmentById = async (req, res) => {
   try {
     const { id } = req.params;
-    const assignment =
-      await BusAssignmentService.deleteBusAssignmentById(id);
+    const assignment = await BusAssignmentService.deleteBusAssignmentById(id, {
+      actorUserId: req.user?._id ?? null,
+    });
     res.status(200).json({ success: true, data: assignment });
   } catch (error) {
     const statusCode = error.statusCode || 400;
