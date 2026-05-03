@@ -54,7 +54,7 @@ export default function Notifications({ notifications }: Props) {
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Recent notifications</h2>
         <span className="badge badge-sm badge-outline text-[0.85rem]">
-          Last {notifications.length}
+          Latest 5
         </span>
       </div>
 

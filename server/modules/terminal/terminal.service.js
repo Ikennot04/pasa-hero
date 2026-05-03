@@ -4,6 +4,7 @@ import User from "../user/user.model.js";
 import Route from "../route/route.model.js";
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import TerminalLog from "../terminal_log/terminal_log.model.js";
+import { logSystemEvent } from "../../utils/systemLogger.js";
 
 function parseUtcDayBounds(dateStr) {
   let start;
@@ -78,7 +79,8 @@ export const TerminalService = {
       .lean();
   },
   // CREATE TERMINAL ===================================================================
-  async createTerminal(terminalData) {
+  async createTerminal(terminalData, options = {}) {
+    const { actorUserId = null } = options;
     const existingTerminal = await Terminal.findOne({ terminal_name: terminalData.terminal_name });
     if (existingTerminal) {
       throw new Error(`Terminal name "${terminalData.terminal_name}" already exists.`);
@@ -93,6 +95,13 @@ export const TerminalService = {
     }
 
     const terminal = await Terminal.create(terminalData);
+
+    await logSystemEvent({
+      userId: actorUserId,
+      action: "Create Terminal",
+      description: `Created terminal ${terminal.terminal_name} at ${terminal.location_lat}, ${terminal.location_lng}.`,
+    });
+
     return terminal;
   },
   // GET TERMINAL BY ID ===================================================================
@@ -129,7 +138,8 @@ export const TerminalService = {
     };
   },
   // UPDATE TERMINAL BY ID ===================================================================
-  async updateTerminalById(terminalId, updateData) {
+  async updateTerminalById(terminalId, updateData, options = {}) {
+    const { actorUserId = null } = options;
     const terminal = await Terminal.findById(terminalId);
     if (!terminal) {
       throw new Error('Terminal not found.');
@@ -156,6 +166,20 @@ export const TerminalService = {
     }
 
     const updated = await Terminal.findByIdAndUpdate(terminalId, updateData, { new: true });
+
+    if (updated && actorUserId) {
+      const changedFields = Object.keys(updateData || {}).filter(
+        (key) => updateData[key] !== undefined,
+      );
+      if (changedFields.length > 0) {
+        await logSystemEvent({
+          userId: actorUserId,
+          action: "Update Terminal",
+          description: `Updated terminal ${updated.terminal_name} (fields: ${changedFields.join(", ")}).`,
+        });
+      }
+    }
+
     return updated;
   },
 

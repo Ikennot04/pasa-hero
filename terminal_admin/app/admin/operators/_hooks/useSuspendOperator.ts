@@ -16,11 +16,18 @@ async function patchOperatorStatus(
   status: "suspended" | "active",
 ) {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("terminal_admin_auth_token")
+      : null;
   const formData = new FormData();
   formData.append("data", JSON.stringify({ status }));
   const { data: response } = await axios.patch(
     `${baseUrl}/api/users/${operatorId}`,
     formData,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
   );
   return response;
 }

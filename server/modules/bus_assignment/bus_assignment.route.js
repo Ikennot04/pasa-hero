@@ -1,4 +1,5 @@
 import express from "express";
+import { attachAuthUser } from "../../middlewear/auth.middleware.js";
 import {
   createBusAssignment,
   deleteBusAssignmentById,
@@ -12,9 +13,9 @@ const router = express.Router();
 
 router.get("/", getAllBusAssignments);
 router.get("/available/terminal/:terminalId", getAvailableAssignmentResourcesByTerminalId);
-router.post("/", createBusAssignment);
+router.post("/", attachAuthUser, createBusAssignment);
 router.get("/:id", getBusAssignmentById);
-router.patch("/:id", updateBusAssignmentById);
-router.delete("/:id", deleteBusAssignmentById);
+router.patch("/:id", attachAuthUser, updateBusAssignmentById);
+router.delete("/:id", attachAuthUser, deleteBusAssignmentById);
 
 export default router;

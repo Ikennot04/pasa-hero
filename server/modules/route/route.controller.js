@@ -22,7 +22,9 @@ export const getRoutesByTerminalId = async (req, res) => {
 export const createRoute = async (req, res) => {
   try {
     const routeData = req.body;
-    const route = await RouteService.createRoute(routeData);
+    const route = await RouteService.createRoute(routeData, {
+      actorUserId: req.user?._id ?? null,
+    });
     res.status(201).json({ success: true, data: route });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -46,6 +48,7 @@ export const updateRouteById = async (req, res) => {
     const { sender_id, ...updateData } = req.body ?? {};
     const route = await RouteService.updateRouteById(id, updateData, {
       senderId: sender_id,
+      actorUserId: req.user?._id ?? null,
     });
     res.status(200).json({ success: true, data: route });
   } catch (error) {

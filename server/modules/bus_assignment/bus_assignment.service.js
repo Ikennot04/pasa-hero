@@ -3,6 +3,44 @@ import Bus from "../bus/bus.model.js";
 import Driver from "../driver/driver.model.js";
 import User from "../user/user.model.js";
 import Route from "../route/route.model.js";
+import { logSystemEvent } from "../../utils/systemLogger.js";
+
+function fullName(doc) {
+  if (!doc) return "";
+  return `${doc.f_name ?? ""} ${doc.l_name ?? ""}`.trim();
+}
+
+async function describeBusAssignment(assignment) {
+  if (!assignment) return "bus assignment";
+  const [bus, route, operator, driver] = await Promise.all([
+    assignment.bus_id
+      ? Bus.findById(assignment.bus_id).select("bus_number plate_number").lean()
+      : null,
+    assignment.route_id
+      ? Route.findById(assignment.route_id)
+          .select("route_name route_code")
+          .lean()
+      : null,
+    assignment.operator_user_id
+      ? User.findById(assignment.operator_user_id)
+          .select("f_name l_name")
+          .lean()
+      : null,
+    assignment.driver_id
+      ? Driver.findById(assignment.driver_id).select("f_name l_name").lean()
+      : null,
+  ]);
+  const busLabel =
+    bus?.bus_number || bus?.plate_number ? `bus ${bus.bus_number ?? bus.plate_number}` : "bus";
+  const routeLabel = route
+    ? `route ${route.route_name || route.route_code || ""}`.trim()
+    : "route";
+  const driverLabel = fullName(driver) ? `driver ${fullName(driver)}` : "driver";
+  const operatorLabel = fullName(operator)
+    ? `operator ${fullName(operator)}`
+    : "operator";
+  return `${busLabel} on ${routeLabel} (${driverLabel}, ${operatorLabel})`;
+}
 
 function populateBusAssignmentRefs(query) {
   return query
@@ -221,7 +259,8 @@ export const BusAssignmentService = {
   },
 
   // CREATE BUS ASSIGNMENT ===================================================================
-  async createBusAssignment(busAssignmentData) {
+  async createBusAssignment(busAssignmentData, options = {}) {
+    const { actorUserId = null } = options;
     const { bus_id, driver_id, operator_user_id, route_id } = busAssignmentData;
 
     const [
@@ -268,6 +307,15 @@ export const BusAssignmentService = {
 
     const busAssignment = await BusAssignment.create(busAssignmentData);
 
+    if (busAssignment && actorUserId) {
+      const description = await describeBusAssignment(busAssignment);
+      await logSystemEvent({
+        userId: actorUserId,
+        action: "Assign Bus",
+        description: `Assigned ${description}.`,
+      });
+    }
+
     return busAssignment;
   },
 
@@ -309,14 +357,30 @@ export const BusAssignmentService = {
   },
 
   // DELETE BUS ASSIGNMENT BY ID ===================================================================
-  async deleteBusAssignmentById(id) {
+  async deleteBusAssignmentById(id, options = {}) {
+    const { actorUserId = null } = options;
     const assignment = await BusAssignment.findById(id);
     if (!assignment) {
       const error = new Error("Bus assignment not found.");
       error.statusCode = 404;
       throw error;
     }
+
+    let description;
+    if (actorUserId) {
+      description = await describeBusAssignment(assignment);
+    }
+
     await BusAssignment.findByIdAndDelete(id);
+
+    if (actorUserId) {
+      await logSystemEvent({
+        userId: actorUserId,
+        action: "Remove Bus Assignment",
+        description: `Removed assignment for ${description}.`,
+      });
+    }
+
     return assignment;
   },
 };

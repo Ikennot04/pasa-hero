@@ -3,6 +3,15 @@ import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import RouteStop from "../route_stop/route_stop.model.js";
 import User from "../user/user.model.js";
 import { NotificationService } from "../notification/notification.service.js";
+import { logSystemEvent } from "../../utils/systemLogger.js";
+
+function routeDisplayLabel(route) {
+  if (!route) return "route";
+  const code = route.route_code ? `${route.route_code}` : "";
+  const name = route.route_name ? `${route.route_name}` : "";
+  if (code && name) return `${name} (${code})`;
+  return name || code || "route";
+}
 
 const ACTIVE_ROUTE_FILTER = { is_deleted: { $ne: true } };
 const normalizeTerminalId = (value) => {
@@ -164,7 +173,8 @@ export const RouteService = {
     };
   },
   // CREATE ROUTE ===================================================================
-  async createRoute(routeData) {
+  async createRoute(routeData, options = {}) {
+    const { actorUserId = null } = options;
     const normalizedRouteData = {
       ...routeData,
       start_terminal_id: normalizeTerminalId(routeData.start_terminal_id),
@@ -222,8 +232,9 @@ export const RouteService = {
     }
 
     const session = await Route.startSession().catch(() => null);
+    let createdRoute;
     if (!session) {
-      const route = await Route.create(primaryRouteData);
+      createdRoute = await Route.create(primaryRouteData);
 
       const reverseExists = await Route.findOne({
         start_terminal_id: reverseRouteData.start_terminal_id,
@@ -233,37 +244,41 @@ export const RouteService = {
       if (!reverseExists) {
         await Route.create(reverseRouteData);
       }
+    } else {
+      try {
+        await session.withTransaction(async () => {
+          createdRoute = await Route.create([primaryRouteData], { session }).then(
+            (docs) => docs[0],
+          );
 
-      return route;
+          const reverseExists = await Route.findOne(
+            {
+              start_terminal_id: reverseRouteData.start_terminal_id,
+              end_terminal_id: reverseRouteData.end_terminal_id,
+              ...ACTIVE_ROUTE_FILTER,
+            },
+            null,
+            { session },
+          );
+
+          if (!reverseExists) {
+            await Route.create([reverseRouteData], { session });
+          }
+        });
+      } finally {
+        session.endSession();
+      }
     }
 
-    try {
-      let createdRoute;
-
-      await session.withTransaction(async () => {
-        createdRoute = await Route.create([primaryRouteData], { session }).then(
-          (docs) => docs[0],
-        );
-
-        const reverseExists = await Route.findOne(
-          {
-            start_terminal_id: reverseRouteData.start_terminal_id,
-            end_terminal_id: reverseRouteData.end_terminal_id,
-            ...ACTIVE_ROUTE_FILTER,
-          },
-          null,
-          { session },
-        );
-
-        if (!reverseExists) {
-          await Route.create([reverseRouteData], { session });
-        }
+    if (createdRoute) {
+      await logSystemEvent({
+        userId: actorUserId,
+        action: "Create Route",
+        description: `Created route ${routeDisplayLabel(createdRoute)}.`,
       });
-
-      return createdRoute;
-    } finally {
-      session.endSession();
     }
+
+    return createdRoute;
   },
   // GET ROUTE BY ID ===================================================================
   async getRouteById(id) {
@@ -290,7 +305,7 @@ export const RouteService = {
   },
   // UPDATE ROUTE BY ID ===================================================================
   async updateRouteById(id, updateData, options = {}) {
-    const { senderId = null } = options;
+    const { senderId = null, actorUserId = null } = options;
     const route = await Route.findOne({ _id: id, ...ACTIVE_ROUTE_FILTER });
     if (!route) {
       const error = new Error("Route not found.");
@@ -298,6 +313,7 @@ export const RouteService = {
       throw error;
     }
     const wasFree = route.is_free_ride === true;
+    const previousStatus = route.status;
 
     const normalizedUpdateData = { ...updateData };
     if (Object.prototype.hasOwnProperty.call(normalizedUpdateData, "start_terminal_id")) {
@@ -388,6 +404,37 @@ export const RouteService = {
           "[RouteService.updateRouteById] Failed to emit route_free notification:",
           err,
         );
+      }
+    }
+
+    if (updated && actorUserId) {
+      const newStatus = updated.status;
+      const routeLabel = routeDisplayLabel(updated);
+      if (newStatus === "suspended" && previousStatus !== "suspended") {
+        await logSystemEvent({
+          userId: actorUserId,
+          action: "Suspend Route",
+          description: `Suspended route ${routeLabel}.`,
+        });
+      } else if (newStatus === "active" && previousStatus === "suspended") {
+        await logSystemEvent({
+          userId: actorUserId,
+          action: "Reactivate Route",
+          description: `Reactivated route ${routeLabel}.`,
+        });
+      } else {
+        const ignoredKeys = new Set(["sender_id"]);
+        const changedFields = Object.keys(normalizedUpdateData || {}).filter(
+          (key) =>
+            !ignoredKeys.has(key) && normalizedUpdateData[key] !== undefined,
+        );
+        if (changedFields.length > 0) {
+          await logSystemEvent({
+            userId: actorUserId,
+            action: "Update Route",
+            description: `Updated route ${routeLabel} (fields: ${changedFields.join(", ")}).`,
+          });
+        }
       }
     }
 

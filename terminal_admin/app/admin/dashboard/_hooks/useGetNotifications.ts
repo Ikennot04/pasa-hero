@@ -11,7 +11,7 @@ export const useGetNotifications = () => {
       const assignedTerminal = localStorage?.getItem("assigned_terminal");
 
       const { data: response } = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/notifications/today/${assignedTerminal}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/notifications/latest/${assignedTerminal}`,
       );
 
       return response;

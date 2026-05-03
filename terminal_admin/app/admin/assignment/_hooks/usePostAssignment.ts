@@ -13,7 +13,17 @@ export const usePostAssignment = () => {
     setError(null);
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const { data: response } = await axios.post(`${baseUrl}/api/bus-assignments`, data);
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("terminal_admin_auth_token")
+          : null;
+      const { data: response } = await axios.post(
+        `${baseUrl}/api/bus-assignments`,
+        data,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        },
+      );
       return response;
     } catch (err) {
       if (axios.isAxiosError(err)) {

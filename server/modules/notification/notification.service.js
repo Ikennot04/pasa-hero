@@ -286,21 +286,20 @@ export const NotificationService = {
     };
   },
 
-  // GET TODAY'S NOTIFICATIONS BY TERMINAL =================================
-  async getTodaysNotificationsByTerminalId(terminalId) {
+  // GET LATEST NOTIFICATIONS BY TERMINAL ==================================
+  async getLatestNotificationsByTerminalId(terminalId, limit = 5) {
     const terminal = await Terminal.findById(terminalId);
     if (!terminal) {
       throw new Error("Terminal not found");
     }
 
     const { start, end } = getTodayRange();
-    const query = Notification.find({
-      terminal_id: terminalId,
-      createdAt: { $gte: start, $lt: end },
-    }).sort({ createdAt: -1 });
+    const listQuery = Notification.find({ terminal_id: terminalId })
+      .sort({ createdAt: -1 })
+      .limit(limit);
 
     const [notifications, countsAgg] = await Promise.all([
-      populateNotificationRefs(query),
+      populateNotificationRefs(listQuery),
       Notification.aggregate([
         {
           $match: {

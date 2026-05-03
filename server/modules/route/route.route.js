@@ -1,4 +1,5 @@
 import express from "express";
+import { attachAuthUser } from "../../middlewear/auth.middleware.js";
 import {
   getAllRoutes,
   getRoutesByTerminalId,
@@ -12,9 +13,9 @@ const router = express.Router();
 
 router.get('/', getAllRoutes);
 router.get('/terminal/:terminalId', getRoutesByTerminalId);
-router.post('/', createRoute);
+router.post('/', attachAuthUser, createRoute);
 router.get('/:id', getRouteById);
-router.patch('/:id', updateRouteById);
-router.delete('/:id', softDeleteRouteById);
+router.patch('/:id', attachAuthUser, updateRouteById);
+router.delete('/:id', attachAuthUser, softDeleteRouteById);
 
 export default router;

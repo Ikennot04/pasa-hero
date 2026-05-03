@@ -68,7 +68,9 @@ export const getAllTerminals = async (req, res) => {
 export const createTerminal = async (req, res) => {
   try {
     const terminalData = req.body;
-    const terminal = await TerminalService.createTerminal(terminalData);
+    const terminal = await TerminalService.createTerminal(terminalData, {
+      actorUserId: req.user?._id ?? null,
+    });
     res.status(201).json({ success: true, data: terminal });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
@@ -89,7 +91,11 @@ export const updateTerminalById = async (req, res) => {
   try {
     const terminalId = req.params.id;
     const updateData = req.body;
-    const terminal = await TerminalService.updateTerminalById(terminalId, updateData);
+    const terminal = await TerminalService.updateTerminalById(
+      terminalId,
+      updateData,
+      { actorUserId: req.user?._id ?? null },
+    );
     res.status(200).json({ success: true, data: terminal });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });

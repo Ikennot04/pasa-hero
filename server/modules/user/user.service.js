@@ -5,7 +5,16 @@ import fs from "fs";
 import path from "path";
 
 import User from "./user.model.js"; // Model
+import Terminal from "../terminal/terminal.model.js";
 import { getRoleId } from "../../utils/roleMapper.js";
+import { logSystemEvent } from "../../utils/systemLogger.js";
+
+function userDisplayName(user) {
+  if (!user) return "User";
+  const name = `${user.f_name ?? ""} ${user.l_name ?? ""}`.trim();
+  if (name && user.email) return `${name} (${user.email})`;
+  return name || user.email || "User";
+}
 
 async function unlinkUserUploadQuietly(filePath) {
   if (!filePath) return;
@@ -105,6 +114,16 @@ export const UserService = {
 
     const userObj = user.toObject();
     delete userObj.password;
+
+    const ADMIN_ROLES = new Set(["super admin", "admin", "terminal admin"]);
+    if (ADMIN_ROLES.has(user.role)) {
+      await logSystemEvent({
+        userId: user._id,
+        action: "Login",
+        description: `${userDisplayName(user)} signed in as ${user.role}.`,
+      });
+    }
+
     return { user: userObj, token };
   },
   // VERIFY JWT (auth check) =========================================================
@@ -134,9 +153,18 @@ export const UserService = {
     if (!user) {
       throw new Error("User not found");
     }
-    user = await User.findByIdAndUpdate(id, { status: "inactive" });
+    const updated = await User.findByIdAndUpdate(id, { status: "inactive" });
 
-    return user;
+    const ADMIN_ROLES = new Set(["super admin", "admin", "terminal admin"]);
+    if (ADMIN_ROLES.has(user.role)) {
+      await logSystemEvent({
+        userId: user._id,
+        action: "Logout",
+        description: `${userDisplayName(user)} signed out from ${user.role} portal.`,
+      });
+    }
+
+    return updated;
   },
   // GET USER BY ID ===================================================================
   async getUserById(id) {
@@ -290,16 +318,36 @@ export const UserService = {
       roleid: roleid,
       ...(role === "operator" ? { created_by } : {}),
     });
+
+    if (role === "operator" && (creatorUserId || created_by)) {
+      let terminalLabel = "";
+      if (payload.assigned_terminal) {
+        const terminalDoc = await Terminal.findById(payload.assigned_terminal)
+          .select("terminal_name")
+          .lean();
+        if (terminalDoc?.terminal_name) {
+          terminalLabel = ` for terminal ${terminalDoc.terminal_name}`;
+        }
+      }
+      await logSystemEvent({
+        userId: creatorUserId || created_by,
+        action: "Create Operator",
+        description: `Created operator ${userDisplayName(createUser)}${terminalLabel}.`,
+      });
+    }
+
     return createUser;
   },
   // UPDATE USER ===================================================================
-  async updateUser(id, data) {
+  async updateUser(id, data, options = {}) {
+    const { actorUserId = null } = options;
     // Get current user data to check existing profile_image
     const user = await User.findById(id);
     if (!user) {
       throw new Error("User not found");
     }
     let oldImage = user?.profile_image;
+    const previousStatus = user?.status;
 
     console.log(data?.profile_image);
 
@@ -353,6 +401,52 @@ export const UserService = {
       },
       { returnDocument: "after" },
     );
+
+    // Log operator-related changes only when an admin (different from the
+    // target) performs them. Self-profile updates and non-operator targets
+    // produce no log because the system_log enum has no matching action.
+    if (
+      user.role === "operator" &&
+      actorUserId &&
+      String(actorUserId) !== String(id)
+    ) {
+      const newStatus =
+        Object.prototype.hasOwnProperty.call(data, "status") &&
+        typeof data.status === "string"
+          ? data.status
+          : previousStatus;
+
+      const ignoredKeys = new Set([
+        "status",
+        "old_password",
+        "profile_image",
+        "roleid",
+      ]);
+      const changedFields = Object.keys(data || {}).filter(
+        (key) => !ignoredKeys.has(key) && data[key] !== undefined,
+      );
+
+      if (newStatus === "suspended" && previousStatus !== "suspended") {
+        await logSystemEvent({
+          userId: actorUserId,
+          action: "Suspend Operator",
+          description: `Suspended operator ${userDisplayName(user)}.`,
+        });
+      } else if (newStatus === "active" && previousStatus === "suspended") {
+        await logSystemEvent({
+          userId: actorUserId,
+          action: "Reactivate Operator",
+          description: `Reactivated operator ${userDisplayName(user)}.`,
+        });
+      } else if (changedFields.length > 0) {
+        await logSystemEvent({
+          userId: actorUserId,
+          action: "Update Operator",
+          description: `Updated operator ${userDisplayName(user)} (fields: ${changedFields.join(", ")}).`,
+        });
+      }
+    }
+
     return updatedUser;
   },
 };

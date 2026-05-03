@@ -84,9 +84,16 @@ export default function AddAssignmentModal({ drivers }: AddAssignmentModalProps)
   async function onSubmit(data: AddAssignmentFormData) {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
-      const res = await fetch(`${baseUrl}/bus-assignments`, {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("super_admin_auth_token")
+          : null;
+      const res = await fetch(`${baseUrl}/api/bus-assignments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           bus_id: data.bus_id,
           driver_id: data.driver_id,
