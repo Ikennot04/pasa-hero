@@ -2,6 +2,118 @@ import mongoose from "mongoose";
 import TerminalLog from "./terminal_log.model.js";
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
 import Terminal from "../terminal/terminal.model.js";
+import Bus from "../bus/bus.model.js";
+import Route from "../route/route.model.js";
+import User from "../user/user.model.js";
+import { NotificationService } from "../notification/notification.service.js";
+
+const NOTIFICATION_TYPE_BY_EVENT_AND_ACTION = {
+  report: {
+    arrival: "arrival_reported",
+    departure: "departure_reported",
+  },
+  reject: {
+    arrival: "arrival_rejected",
+    departure: "departure_rejected",
+  },
+};
+
+// Fallback sender for auto-generated notifications when neither the reporter
+// nor the assignment's operator is available. Notification.sender_id is required.
+let cachedSystemSenderId = null;
+async function getSystemSenderId() {
+  if (cachedSystemSenderId) return cachedSystemSenderId;
+  const admin = await User.findOne({ role: "super admin" })
+    .select("_id")
+    .lean();
+  cachedSystemSenderId = admin ? String(admin._id) : null;
+  return cachedSystemSenderId;
+}
+
+async function emitTerminalLogNotification(
+  terminalLog,
+  action,
+  { actorUserId } = {},
+) {
+  if (!terminalLog) return;
+
+  const eventType = terminalLog.event_type;
+  const notificationType =
+    NOTIFICATION_TYPE_BY_EVENT_AND_ACTION[action]?.[eventType];
+  if (!notificationType) return;
+
+  const [assignment, bus, terminal] = await Promise.all([
+    terminalLog.bus_assignment_id
+      ? BusAssignment.findById(terminalLog.bus_assignment_id)
+          .select("route_id operator_user_id")
+          .lean()
+      : Promise.resolve(null),
+    terminalLog.bus_id
+      ? Bus.findById(terminalLog.bus_id).select("bus_number plate_number").lean()
+      : Promise.resolve(null),
+    terminalLog.terminal_id
+      ? Terminal.findById(terminalLog.terminal_id).select("terminal_name").lean()
+      : Promise.resolve(null),
+  ]);
+
+  const route = assignment?.route_id
+    ? await Route.findById(assignment.route_id)
+        .select("route_name route_code")
+        .lean()
+    : null;
+
+  const preferredSenderId =
+    action === "reject"
+      ? actorUserId && String(actorUserId)
+      : terminalLog.reported_by && String(terminalLog.reported_by);
+
+  const senderId =
+    preferredSenderId ||
+    (assignment?.operator_user_id && String(assignment.operator_user_id)) ||
+    (await getSystemSenderId());
+
+  if (!senderId) return;
+
+  const busLabel = bus?.bus_number || bus?.plate_number || "A bus";
+  const terminalLabel = terminal?.terminal_name || "the terminal";
+  const routeLabel = route
+    ? `route ${route.route_code ?? ""}${route.route_name ? ` (${route.route_name})` : ""}`.trim()
+    : "its route";
+
+  let title;
+  let message;
+  let priority;
+
+  if (action === "reject") {
+    title =
+      eventType === "arrival"
+        ? "Bus arrival rejected"
+        : "Bus departure rejected";
+    const verb = eventType === "arrival" ? "arrival at" : "departure from";
+    message = `Terminal admin rejected the reported ${verb} ${terminalLabel} for ${busLabel} on ${routeLabel}.`;
+    priority = "high";
+  } else {
+    title =
+      eventType === "arrival"
+        ? "Bus arrival reported"
+        : "Bus departure reported";
+    const verb = eventType === "arrival" ? "arriving at" : "departing from";
+    message = `Operator reported ${busLabel} on ${routeLabel} ${verb} ${terminalLabel}.`;
+    priority = "medium";
+  }
+
+  await NotificationService.createNotification({
+    sender_id: senderId,
+    bus_id: terminalLog.bus_id ? String(terminalLog.bus_id) : null,
+    route_id: assignment?.route_id ? String(assignment.route_id) : null,
+    terminal_id: terminalLog.terminal_id ? String(terminalLog.terminal_id) : null,
+    title,
+    message,
+    notification_type: notificationType,
+    priority,
+    scope: "route",
+  });
+}
 
 export const TerminalLogService = {
   // GET ALL TERMINAL LOGS =============================================================
@@ -166,6 +278,15 @@ export const TerminalLogService = {
       latest_terminal_log_id: terminalLog._id,
     });
 
+    try {
+      await emitTerminalLogNotification(terminalLog, "report");
+    } catch (err) {
+      console.error(
+        "[terminal_log] failed to emit report notification:",
+        err,
+      );
+    }
+
     return terminalLog;
   },
 
@@ -271,6 +392,17 @@ export const TerminalLogService = {
       { $set: updateData },
       { new: true, runValidators: true }
     );
+
+    try {
+      await emitTerminalLogNotification(updated, "reject", {
+        actorUserId: payload.confirmed_by,
+      });
+    } catch (err) {
+      console.error(
+        "[terminal_log] failed to emit reject notification:",
+        err,
+      );
+    }
 
     return updated;
   },

@@ -7,22 +7,12 @@ import type {
   AssignmentResult,
   AssignmentRow,
   AssignmentStatus,
-  DriverOption,
 } from "./_components/assignmentTypes";
 import { useGetAssignments } from "./_hooks/useGetAssignments";
-import { useGetAvailables } from "./_hooks/useGetAvailables";
 import {
   mapApiAssignmentToRow,
-  mapApiDriverToOption,
   type ApiBusAssignmentRow,
 } from "./_lib/apiMappers";
-
-type ApiDriver = {
-  _id: string;
-  f_name: string;
-  l_name: string;
-  status?: string;
-};
 
 const ASSIGNMENT_STATUS_OPTIONS: AssignmentStatus[] = ["active", "inactive"];
 const ASSIGNMENT_RESULT_OPTIONS: AssignmentResult[] = [
@@ -33,9 +23,7 @@ const ASSIGNMENT_RESULT_OPTIONS: AssignmentResult[] = [
 
 export default function AssignmentPage() {
   const { getAssignments, error: assignmentsError } = useGetAssignments();
-  const { getAvailables, error: availablesError } = useGetAvailables();
   const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
-  const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
 
   const [assignmentSearch, setAssignmentSearch] = useState("");
@@ -45,20 +33,6 @@ export default function AssignmentPage() {
   const [assignmentResultFilter, setAssignmentResultFilter] = useState<
     AssignmentResult | "all"
   >("all");
-
-  const loadDrivers = useCallback(async () => {
-    const response = await getAvailables();
-    const availableDrivers =
-      response?.success === true && response?.data
-        ? (response.data as { drivers?: ApiDriver[] }).drivers
-        : null;
-
-    if (Array.isArray(availableDrivers)) {
-      setDrivers(availableDrivers.map(mapApiDriverToOption));
-      return;
-    }
-    setDrivers([]);
-  }, [getAvailables]);
 
   const loadAssignments = useCallback(async () => {
     const response = await getAssignments();
@@ -76,14 +50,14 @@ export default function AssignmentPage() {
 
     (async () => {
       setAssignmentsLoading(true);
-      await Promise.all([loadDrivers(), loadAssignments()]);
+      await loadAssignments();
       if (!cancelled) setAssignmentsLoading(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [loadAssignments, loadDrivers]);
+  }, [loadAssignments]);
 
   const filteredAssignments = useMemo(() => {
     const search = assignmentSearch.trim().toLowerCase();
@@ -114,11 +88,6 @@ export default function AssignmentPage() {
     <div className="space-y-4 pt-6">
       <div className="text-xl font-bold">Assignment Management Table</div>
 
-      {availablesError ? (
-        <div role="alert" className="alert alert-error text-sm">
-          {availablesError}
-        </div>
-      ) : null}
       {assignmentsError ? (
         <div role="alert" className="alert alert-error text-sm">
           {assignmentsError}
@@ -182,7 +151,6 @@ export default function AssignmentPage() {
       ) : (
         <AssignmentsTable
           assignments={filteredAssignments}
-          drivers={drivers}
           onAssignmentUpdated={loadAssignments}
         />
       )}

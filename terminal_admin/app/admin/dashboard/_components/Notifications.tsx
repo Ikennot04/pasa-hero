@@ -37,12 +37,12 @@ function eventTypeBadgeClass(
   switch (notificationType) {
     case "arrival_reported":
       return "badge badge-info badge-sm font-semibold text-[0.8rem]";
-    case "arrival_confirmed":
-      return "badge badge-success badge-sm font-semibold text-[0.8rem]";
+    case "arrival_rejected":
+      return "badge badge-error badge-sm font-semibold text-[0.8rem]";
     case "departure_reported":
       return "badge badge-warning badge-sm font-semibold text-[0.8rem]";
-    case "departure_confirmed":
-      return "badge badge-primary badge-sm font-semibold text-[0.8rem]";
+    case "departure_rejected":
+      return "badge badge-error badge-sm font-semibold text-[0.8rem]";
     default:
       return "badge badge-ghost badge-sm font-semibold text-[0.8rem]";
   }

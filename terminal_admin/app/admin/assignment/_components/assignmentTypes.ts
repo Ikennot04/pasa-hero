@@ -42,3 +42,8 @@ export type AssignmentFormData = {
   route_id: string;
   operator_user_id: string;
 };
+
+export type AssignmentUpdateFormData = {
+  assignment_status: AssignmentStatus;
+  assignment_result: AssignmentResult;
+};

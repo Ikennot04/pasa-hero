@@ -27,9 +27,9 @@ const TYPE_LABEL: Record<NotificationFields["notification_type"], string> = {
   skipped_stop: "Skipped stop",
   info: "Info",
   arrival_reported: "Arrival reported",
-  arrival_confirmed: "Arrival confirmed",
+  arrival_rejected: "Arrival rejected",
   departure_reported: "Departure reported",
-  departure_confirmed: "Departure confirmed",
+  departure_rejected: "Departure rejected",
   other: "Other",
   custom: "Custom",
 };

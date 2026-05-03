@@ -14,10 +14,10 @@ const terminalEventsBarOptions: ChartOptions<"bar"> = {
 };
 
 type NotificationCounts = {
-  arrival_confirmed: number;
   arrival_reported: number;
-  departure_confirmed: number;
+  arrival_rejected: number;
   departure_reported: number;
+  departure_rejected: number;
 };
 
 type TerminalEventFlowProps = {
@@ -27,23 +27,23 @@ type TerminalEventFlowProps = {
 
 const EVENT_LABELS = [
   "Arrival pending",
-  "Arrival confirmed",
+  "Arrival rejected",
   "Departure pending",
-  "Departure confirmed",
+  "Departure rejected",
 ];
 
 const EVENT_BACKGROUND_COLORS = [
   "rgba(204, 255, 140, 0.7)",
-  "rgba(129, 222, 118, 0.7)",
+  "rgba(239, 68, 68, 0.7)",
   "rgba(58, 85, 180, 0.7)",
-  "rgba(108, 173, 223, 0.7)",
+  "rgba(220, 38, 38, 0.7)",
 ];
 
 const EVENT_BORDER_COLORS = [
   "rgba(204, 255, 140, 1)",
-  "rgba(129, 222, 118, 1)",
+  "rgba(239, 68, 68, 1)",
   "rgba(58, 85, 180, 1)",
-  "rgba(108, 173, 223, 1)",
+  "rgba(220, 38, 38, 1)",
 ];
 
 function areNotificationCountsEqual(
@@ -52,9 +52,9 @@ function areNotificationCountsEqual(
 ) {
   return (
     prevCounts.arrival_reported === nextCounts.arrival_reported &&
-    prevCounts.arrival_confirmed === nextCounts.arrival_confirmed &&
+    prevCounts.arrival_rejected === nextCounts.arrival_rejected &&
     prevCounts.departure_reported === nextCounts.departure_reported &&
-    prevCounts.departure_confirmed === nextCounts.departure_confirmed
+    prevCounts.departure_rejected === nextCounts.departure_rejected
   );
 }
 
@@ -67,9 +67,9 @@ function TerminalEventFlow({ notificationCounts, mounted }: TerminalEventFlowPro
           label: "Events",
           data: [
             notificationCounts.arrival_reported,
-            notificationCounts.arrival_confirmed,
+            notificationCounts.arrival_rejected,
             notificationCounts.departure_reported,
-            notificationCounts.departure_confirmed,
+            notificationCounts.departure_rejected,
           ],
           backgroundColor: EVENT_BACKGROUND_COLORS,
           borderColor: EVENT_BORDER_COLORS,

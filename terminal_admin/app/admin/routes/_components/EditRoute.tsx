@@ -209,6 +209,11 @@ export default function EditRoute({
         return;
       }
 
+      const senderId =
+        typeof window !== "undefined"
+          ? localStorage.getItem("terminal_admin_user_id")?.trim() || undefined
+          : undefined;
+
       const payload = {
         route_name: data.route_name,
         route_code: data.route_code,
@@ -220,6 +225,7 @@ export default function EditRoute({
           data.estimated_duration != null ? data.estimated_duration : undefined,
         status: data.status,
         is_free_ride: Boolean(data.is_free_ride),
+        sender_id: senderId,
       };
       console.log("[EditRoute] update payload:", payload);
 

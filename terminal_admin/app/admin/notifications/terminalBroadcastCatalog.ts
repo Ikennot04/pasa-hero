@@ -9,9 +9,9 @@ export type NotificationType =
   | "skipped_stop"
   | "info"
   | "arrival_reported"
-  | "arrival_confirmed"
+  | "arrival_rejected"
   | "departure_reported"
-  | "departure_confirmed"
+  | "departure_rejected"
   | "other"
   | "custom";
 export type NotificationPriority = "high" | "medium" | "low";
