@@ -17,7 +17,7 @@ export const addDriverSchema = yup.object({
         if (normalized.includes("-")) return false;
         const digitsOnly = normalized.replace(/\D/g, "");
         if (!digitsOnly) return true;
-        return BigInt(digitsOnly) > 0n;
+        return BigInt(digitsOnly) > BigInt(0);
       },
     ),
   profile_image: yup

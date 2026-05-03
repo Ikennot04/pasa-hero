@@ -12,9 +12,9 @@ import {
 } from "../user/_components/createUserSchema";
 import ConfirmSuspendModal from "../user/_components/ConfirmSuspend";
 import type { UserRow } from "../user/_components/UserTable";
-import { useGetUsers } from "./_hooks/useGetUsers";
-import { usePostUser } from "./_hooks/usePostUser";
-import { useSuspendUser } from "./_hooks/useSuspendUser";
+import { useGetUsers } from "../user/_hooks/useGetUsers";
+import { usePostUser } from "../user/_hooks/usePostUser";
+import { useSuspendUser } from "../user/_hooks/useSuspendUser";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { FaUserPlus } from "react-icons/fa6";
 import { MdOutlinePersonOff } from "react-icons/md";

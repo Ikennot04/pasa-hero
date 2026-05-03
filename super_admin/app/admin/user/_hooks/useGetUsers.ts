@@ -8,6 +8,7 @@ export const useGetUsers = () => {
 
   const getUsers = useCallback(async () => {
     try {
+      setError(null);
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
       const { data: response } = await axios.get(`${baseUrl}/api/users`);
       return response;
