@@ -1,4 +1,5 @@
 import express from "express";
+import { attachAuthUser } from "../../middlewear/auth.middleware.js";
 import {
   createBusStatus,
   getBusStatusById,
@@ -11,6 +12,6 @@ const router = express.Router();
 router.post("/", createBusStatus);
 router.get("/terminal/:terminalId", getBusStatusesByTerminalId);
 router.get("/:id", getBusStatusById);
-router.patch("/:id", updateBusStatusById);
+router.patch("/:id", attachAuthUser, updateBusStatusById);
 
 export default router;

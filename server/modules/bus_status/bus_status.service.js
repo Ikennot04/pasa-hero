@@ -4,6 +4,86 @@ import mongoose from "mongoose";
 import Terminal from "../terminal/terminal.model.js";
 import TerminalLog from "../terminal_log/terminal_log.model.js";
 import BusAssignment from "../bus_assignment/bus_assignment.model.js";
+import Route from "../route/route.model.js";
+import User from "../user/user.model.js";
+import { NotificationService } from "../notification/notification.service.js";
+import { getOccupancyStatus } from "./occupancy.util.js";
+
+let cachedSystemSenderId = null;
+async function getSystemSenderId() {
+  if (cachedSystemSenderId) return cachedSystemSenderId;
+  const admin = await User.findOne({ role: "super admin" })
+    .select("_id")
+    .lean();
+  cachedSystemSenderId = admin ? String(admin._id) : null;
+  return cachedSystemSenderId;
+}
+
+async function loadOccupancyNotificationContext(busIdStr) {
+  const busObjectId = mongoose.Types.ObjectId.isValid(busIdStr)
+    ? new mongoose.Types.ObjectId(busIdStr)
+    : null;
+  if (!busObjectId) {
+    return { route: null, terminalId: null };
+  }
+
+  const assignment = await BusAssignment.findOne({
+    bus_id: busObjectId,
+    assignment_status: "active",
+    assignment_result: "pending",
+  })
+    .sort({ updatedAt: -1 })
+    .select("route_id")
+    .lean();
+
+  if (!assignment?.route_id) {
+    return { route: null, terminalId: null };
+  }
+
+  const route = await Route.findById(assignment.route_id)
+    .select("route_code route_name end_terminal_id")
+    .lean();
+
+  return {
+    route,
+    terminalId: route?.end_terminal_id ? String(route.end_terminal_id) : null,
+  };
+}
+
+async function emitOccupancyChangeNotification({
+  previousOccupancyStatus,
+  updatedDoc,
+  bus,
+  senderUserId,
+}) {
+  const senderId =
+    (senderUserId && String(senderUserId)) || (await getSystemSenderId());
+  if (!senderId) return;
+
+  const ctx = await loadOccupancyNotificationContext(String(updatedDoc.bus_id));
+  const route = ctx.route;
+  const busLabel = bus?.bus_number || bus?.plate_number || "Bus";
+  const routeLabel = route
+    ? `Route ${route.route_code ?? ""}${route.route_name ? ` (${route.route_name})` : ""}`.trim()
+    : "its assigned route";
+
+  const cap = Number(bus?.capacity) || 0;
+  const count = Number(updatedDoc.occupancy_count) || 0;
+  const title = `${busLabel} — ${updatedDoc.occupancy_status}`;
+  const message = `Operator updated occupancy for ${busLabel} on ${routeLabel}: ${count}/${cap || "—"} passengers (${updatedDoc.occupancy_status}; was ${previousOccupancyStatus}).`;
+
+  await NotificationService.createNotification({
+    sender_id: senderId,
+    bus_id: String(updatedDoc.bus_id),
+    route_id: route?._id ? String(route._id) : null,
+    terminal_id: ctx.terminalId,
+    title,
+    message,
+    notification_type: "occupancy_update",
+    priority: updatedDoc.occupancy_status === "full" ? "high" : "medium",
+    scope: "route",
+  });
+}
 
 export const BusStatusService = {
   // CREATE BUS STATUS ===================================================================
@@ -172,7 +252,7 @@ export const BusStatusService = {
   },
 
   // UPDATE BUS STATUS BY ID =============================================================
-  async updateBusStatusById(id, updateData) {
+  async updateBusStatusById(id, updateData, options = {}) {
     const status = await BusStatus.findOne({
       _id: id,
       is_deleted: false,
@@ -183,21 +263,53 @@ export const BusStatusService = {
       throw error;
     }
 
-    const allowed = [
-      "occupancy_count",
-      "occupancy_status",
-      "delay_minutes",
-      "is_skipping_stops",
-    ];
-    const filtered = Object.fromEntries(
-      Object.entries(updateData).filter(([k]) => allowed.includes(k))
-    );
+    const bus = await Bus.findOne({
+      _id: status.bus_id,
+      is_deleted: false,
+    })
+      .select("bus_number plate_number capacity")
+      .lean();
 
-    const updated = await BusStatus.findByIdAndUpdate(
-      id,
-      { $set: filtered },
-      { new: true, runValidators: true }
-    );
+    const capacity = Number(bus?.capacity) || 0;
+    const merged = { ...updateData };
+
+    if (Object.prototype.hasOwnProperty.call(merged, "occupancy_count")) {
+      let count = Number(merged.occupancy_count);
+      if (!Number.isFinite(count)) count = 0;
+      merged.occupancy_count =
+        capacity > 0
+          ? Math.max(0, Math.min(capacity, count))
+          : Math.max(0, count);
+      merged.occupancy_status = getOccupancyStatus(
+        merged.occupancy_count,
+        capacity,
+      );
+    }
+
+    const previousOccupancyStatus = status.occupancy_status;
+
+    const updated = await BusStatus.findByIdAndUpdate(id, merged, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (
+      bus &&
+      updated &&
+      updated.occupancy_status !== previousOccupancyStatus
+    ) {
+      try {
+        await emitOccupancyChangeNotification({
+          previousOccupancyStatus,
+          updatedDoc: updated,
+          bus,
+          senderUserId: options.senderUserId,
+        });
+      } catch (err) {
+        console.error("Occupancy notification fan-out failed:", err.message);
+      }
+    }
+
     return updated;
   },
 };
