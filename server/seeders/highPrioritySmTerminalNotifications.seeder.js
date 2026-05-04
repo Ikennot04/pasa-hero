@@ -65,7 +65,7 @@ export default async function seedHighPrioritySmTerminalNotifications() {
       title: "SM Terminal — urgent platform safety hold",
       message:
         "Hold departures on affected bays for equipment inspection; follow marshal instructions.",
-      notification_type: "delay",
+      notification_type: "info",
       priority: "high",
       scope: "terminal",
       createdAt: t(62),
@@ -103,7 +103,7 @@ export default async function seedHighPrioritySmTerminalNotifications() {
       title: "CEB-011 — weather-related delay",
       message:
         "Outbound 06F trip delayed approximately 15 minutes due to heavy rainfall.",
-      notification_type: "delay",
+      notification_type: "info",
       priority: "high",
       scope: "terminal",
       createdAt: t(50),

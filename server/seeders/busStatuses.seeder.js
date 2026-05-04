@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { fileURLToPath } from "url";
 import Bus from "../modules/bus/bus.model.js";
 import BusStatus from "../modules/bus_status/bus_status.model.js";
+import { getOccupancyStatus } from "../modules/bus_status/occupancy.util.js";
 
 async function ensureDbConnected() {
   if (mongoose.connection.readyState === 1) return;
@@ -15,13 +16,7 @@ async function ensureDbConnected() {
   console.log("📦 Connected to MongoDB");
 }
 
-export function getOccupancyStatus(occupancyCount, capacity) {
-  const ratio = capacity > 0 ? occupancyCount / capacity : 0;
-  if (ratio >= 1) return "full";
-  if (ratio >= 0.7) return "standing room";
-  if (ratio >= 0.3) return "few seats";
-  return "empty";
-}
+export { getOccupancyStatus };
 
 /** Seeded bus status row: out-of-service and maintenance buses are always empty. */
 export function busStatusPayloadForSeedBus(bus, index) {

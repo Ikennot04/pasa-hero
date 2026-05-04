@@ -25,7 +25,7 @@ const NOTIFICATIONS_STATIC: NotificationProps[] = [
     terminal_id: "1",
     title: "Delay on PITX — SM North EDSA",
     message: "Bus 01-AB is running approximately 15 minutes behind schedule due to traffic.",
-    notification_type: "delay",
+    notification_type: "info",
     priority: "high",
     scope: "route",
     sender_name: "System Admin",
@@ -112,7 +112,7 @@ const NOTIFICATIONS_STATIC: NotificationProps[] = [
     terminal_id: "4",
     title: "Fairview terminal delay",
     message: "Heavy traffic on Commonwealth Ave. Expect 20 min delay for Fairview — SM North EDSA.",
-    notification_type: "delay",
+    notification_type: "info",
     priority: "high",
     scope: "route",
     sender_name: "System Admin",
@@ -125,7 +125,6 @@ const NOTIFICATIONS_STATIC: NotificationProps[] = [
 ];
 
 const NOTIFICATION_TYPE_OPTIONS: NotificationType[] = [
-  "delay",
   "full",
   "skipped_stop",
   "info",

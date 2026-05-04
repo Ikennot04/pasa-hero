@@ -5,7 +5,6 @@ import { NotificationProps } from "../NotificationProps";
 
 function TypeBadge({ type }: { type: string }) {
   const map: Record<string, string> = {
-    delay: "badge-warning",
     full: "badge-error",
     skipped_stop: "badge-warning",
     info: "badge-info",

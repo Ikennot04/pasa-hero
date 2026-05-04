@@ -238,15 +238,15 @@ export const DashboardService = {
         {
           $match: {
             route_id: { $ne: null },
-            notification_type: { $in: ["delay", "full"] },
+            notification_type: { $in: ["skipped_stop", "full"] },
           },
         },
         {
           $group: {
             _id: "$route_id",
-            total_delay_count: {
+            total_skipped_stop_count: {
               $sum: {
-                $cond: [{ $eq: ["$notification_type", "delay"] }, 1, 0],
+                $cond: [{ $eq: ["$notification_type", "skipped_stop"] }, 1, 0],
               },
             },
             total_full_count: {
@@ -263,7 +263,7 @@ export const DashboardService = {
       notificationCountsByRoute.map((row) => [
         String(row._id),
         {
-          total_delay_count: row.total_delay_count ?? 0,
+          total_skipped_stop_count: row.total_skipped_stop_count ?? 0,
           total_full_count: row.total_full_count ?? 0,
         },
       ]),
@@ -275,7 +275,7 @@ export const DashboardService = {
       return {
         route_id: route._id,
         route_name: route.route_name,
-        total_delay_count: routePerformance?.total_delay_count ?? 0,
+        total_skipped_stop_count: routePerformance?.total_skipped_stop_count ?? 0,
         total_full_count: routePerformance?.total_full_count ?? 0,
       };
     });

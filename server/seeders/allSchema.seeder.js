@@ -24,6 +24,8 @@ import seedDevAdminUsers, {
 } from "./devAdminUsers.seeder.js";
 import seedJohnAdminUsers from "./johnAdminUsers.seeder.js";
 import seedAssignedOperators from "./assignedOperators.seeder.js";
+import seedUnassignedBusDriverOperator from "./unassignedBusDriverOperator.seeder.js";
+import seedAdminAccess from "./adminAccess.seeder.js";
 import {
   getOccupancyStatus,
   insertBusStatusesForSeedBuses,
@@ -620,7 +622,217 @@ export async function seedOperationalSummaryDemo() {
   console.log("   Expected ≈ scheduled: 11, present: 3, departed_today: 3, pending: 4 (2+2)\n");
 }
 
+/**
+ * TerminalLog rows at Ayala Center Terminal (routes 01A / 07G end here).
+ * Runs after seedOperationalSummaryDemo so SM-only TerminalLog.deleteMany does not wipe these.
+ */
+export async function seedAyalaTerminalLogs() {
+  const ayalaTerminal = await Terminal.findOne({
+    terminal_name: "Ayala Center Terminal",
+  });
+  if (!ayalaTerminal) {
+    throw new Error(
+      'Terminal "Ayala Center Terminal" not found. Run `npm run seed` first.',
+    );
+  }
 
+  const [route01A, route07G, operator1, ayalaAdmin, superAdmin] = await Promise.all([
+    Route.findOne({ route_code: "01A" }),
+    Route.findOne({ route_code: "07G" }),
+    User.findOne({ email: "maria.santos@email.com" }),
+    User.findOne({ email: "jenny.lim@email.com" }),
+    User.findOne({ role: "super admin" }),
+  ]);
+
+  if (!route01A || !route07G) {
+    throw new Error("Routes 01A / 07G not found. Run `npm run seed` first.");
+  }
+  if (!operator1) {
+    throw new Error("Operator maria.santos@email.com not found. Run `npm run seed` first.");
+  }
+
+  const [bus1, bus12, bus13, bus22] = await Promise.all([
+    Bus.findOne({ bus_number: "CEB-001" }),
+    Bus.findOne({ bus_number: "CEB-012" }),
+    Bus.findOne({ bus_number: "CEB-013" }),
+    Bus.findOne({ bus_number: "CEB-022" }),
+  ]);
+
+  if (!bus1 || !bus12 || !bus13 || !bus22) {
+    throw new Error(
+      "Expected seed buses CEB-001, CEB-012, CEB-013, CEB-022 not found. Run `npm run seed` first.",
+    );
+  }
+
+  const [
+    assign01APending,
+    assign01ACompletedBus1,
+    assign01ACompletedBus13,
+    assign07GBus12,
+    assign07GBus22,
+  ] = await Promise.all([
+    BusAssignment.findOne({
+      bus_id: bus1._id,
+      route_id: route01A._id,
+      assignment_status: "active",
+      assignment_result: "pending",
+    }),
+    BusAssignment.findOne({
+      bus_id: bus1._id,
+      route_id: route01A._id,
+      assignment_result: "completed",
+    }),
+    BusAssignment.findOne({
+      bus_id: bus13._id,
+      route_id: route01A._id,
+      assignment_result: "completed",
+    }),
+    BusAssignment.findOne({
+      bus_id: bus12._id,
+      route_id: route07G._id,
+      assignment_result: "pending",
+    }),
+    BusAssignment.findOne({
+      bus_id: bus22._id,
+      route_id: route07G._id,
+      assignment_result: "pending",
+    }),
+  ]);
+
+  const required = [
+    ["CEB-001 active 01A", assign01APending],
+    ["CEB-001 completed 01A", assign01ACompletedBus1],
+    ["CEB-013 completed 01A", assign01ACompletedBus13],
+    ["CEB-012 pending 07G", assign07GBus12],
+    ["CEB-022 pending 07G", assign07GBus22],
+  ];
+  for (const [label, doc] of required) {
+    if (!doc) {
+      throw new Error(`Missing assignment: ${label}. Run \`npm run seed\` first.`);
+    }
+  }
+
+  const confirmer = ayalaAdmin?._id ?? superAdmin?._id ?? null;
+  const reporter = operator1._id;
+
+  const logsPayload = [
+    {
+      bus_assignment_id: assign01ACompletedBus1._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus1._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utcTodayAt(5, 30),
+      confirmation_time: utcTodayAt(5, 33),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01ACompletedBus1._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus1._id,
+      event_type: "departure",
+      status: "confirmed",
+      event_time: utcTodayAt(6, 5),
+      confirmation_time: utcTodayAt(6, 8),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01ACompletedBus13._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus13._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utcTodayAt(6, 40),
+      confirmation_time: utcTodayAt(6, 43),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01ACompletedBus13._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus13._id,
+      event_type: "departure",
+      status: "rejected",
+      event_time: utcTodayAt(7, 10),
+      confirmation_time: utcTodayAt(7, 12),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01APending._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus1._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utcTodayAt(13, 5),
+      confirmation_time: utcTodayAt(13, 9),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01APending._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus1._id,
+      event_type: "departure",
+      status: "pending",
+      event_time: utcTodayAt(13, 50),
+      confirmation_time: null,
+      reported_by: reporter,
+      confirmed_by: null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign07GBus12._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus12._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utcTodayAt(8, 20),
+      confirmation_time: utcTodayAt(8, 24),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign07GBus12._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus12._id,
+      event_type: "departure",
+      status: "pending",
+      event_time: utcTodayAt(8, 55),
+      confirmation_time: null,
+      reported_by: reporter,
+      confirmed_by: null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign07GBus22._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus22._id,
+      event_type: "arrival",
+      status: "pending",
+      event_time: utcTodayAt(15, 25),
+      confirmation_time: null,
+      reported_by: reporter,
+      confirmed_by: null,
+      auto_detected: false,
+    },
+  ];
+
+  const inserted = await TerminalLog.insertMany(logsPayload);
+  await syncLatestTerminalLogIdsFromSeedLogs();
+
+  console.log(
+    `✅ Ayala Center Terminal: seeded ${inserted.length} terminal logs (${String(ayalaTerminal._id)})`,
+  );
+}
 
 export async function seedTerminalNotificationTimeline() {
   const [superAdmin, operator1, operator2, terminalAdmin1] = await Promise.all([
@@ -746,7 +958,7 @@ export async function seedTerminalNotificationTimeline() {
       title: "CEB-003 Dispatch Delay at SM City Cebu",
       message:
         "Departure of CEB-003 pushed back by 6 minutes pending boarding marshal clearance.",
-      type: "delay",
+      type: "info",
       minutes: 444,
       priority: "medium",
     }),
@@ -868,7 +1080,7 @@ export async function seedTerminalNotificationTimeline() {
       title: "CEB-002 Departure Hold for Crew Change",
       message:
         "CEB-002 outbound trip held about 4 minutes for relief driver swap at Bay 4.",
-      type: "delay",
+      type: "info",
       minutes: 344,
       priority: "medium",
     }),
@@ -970,7 +1182,7 @@ export async function seedTerminalNotificationTimeline() {
       title: "CEB-011 Inbound Delay (Second Trip)",
       message:
         "CEB-011 second-trip arrival delayed about 8 minutes due to corridor backup along Route 06F.",
-      type: "delay",
+      type: "info",
       minutes: 166,
       priority: "medium",
     }),
@@ -1043,7 +1255,7 @@ export async function seedTerminalNotificationTimeline() {
       title: "Route 03C Traffic Delay Advisory",
       message:
         "Route 03C is experiencing corridor congestion near JY Square with an estimated 7-minute delay.",
-      type: "delay",
+      type: "info",
       minutes: 66,
       priority: "medium",
     }),
@@ -1065,7 +1277,7 @@ export async function seedTerminalNotificationTimeline() {
       title: "Route 02B Dispatch Delay",
       message:
         "Dispatch on Route 02B is delayed by about 5 minutes due to temporary loading congestion.",
-      type: "delay",
+      type: "info",
       minutes: 60,
       priority: "medium",
     }),
@@ -1087,7 +1299,7 @@ export async function seedTerminalNotificationTimeline() {
       title: "Route 01A Delay Near Fuente",
       message:
         "Route 01A is moving slowly near Fuente Osmena due to lane restrictions with an estimated 4-minute delay.",
-      type: "delay",
+      type: "info",
       minutes: 49,
       priority: "medium",
     }),
@@ -1109,7 +1321,7 @@ export async function seedTerminalNotificationTimeline() {
       title: "Route 02B Minor Delay Update",
       message:
         "Route 02B outbound service is delayed around 3 minutes because of curbside congestion.",
-      type: "delay",
+      type: "info",
       minutes: 45,
       priority: "low",
     }),
@@ -1124,6 +1336,32 @@ export async function seedTerminalNotificationTimeline() {
       minutes: 43,
       priority: "medium",
     }),
+    {
+      sender_id: String(operator1._id),
+      bus_id: String(bus1._id),
+      route_id: String(route01A._id),
+      terminal_id: String(smTerminal._id),
+      title: "CEB-001 — few seats",
+      message:
+        "Operator updated occupancy for CEB-001 on Route 01A (SM to Ayala): 24/50 passengers (few seats).",
+      notification_type: "occupancy_update",
+      priority: "medium",
+      scope: "route",
+      createdAt: minutesAgo(42),
+    },
+    {
+      sender_id: String(operator2._id),
+      bus_id: String(bus3._id),
+      route_id: String(route03C._id),
+      terminal_id: String(smTerminal._id),
+      title: "CEB-003 — standing room",
+      message:
+        "Operator updated occupancy for CEB-003 on Route 03C (IT Park to SM): 38/45 passengers (standing room).",
+      notification_type: "occupancy_update",
+      priority: "medium",
+      scope: "route",
+      createdAt: minutesAgo(38),
+    },
     {
       sender_id: String(superAdmin._id),
       terminal_id: String(smTerminal._id),
@@ -2668,7 +2906,7 @@ const seedData = async () => {
         createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1000), // 2 hours ago
       },
 
-      // 2. Bus delay notification (for bus CEB-001)
+      // 2. Bus schedule advisory (for bus CEB-001)
       {
         sender_id: operator1._id,
         bus_id: bus1._id,
@@ -2677,7 +2915,7 @@ const seedData = async () => {
         title: "Bus CEB-001 Delayed",
         message:
           "Bus CEB-001 on Route 01A (SM to Ayala) is running 6 minutes behind schedule due to heavy traffic on Mango Avenue.",
-        notification_type: "delay",
+        notification_type: "info",
         priority: "medium",
         scope: "bus",
         createdAt: new Date(now.getTime() - 30 * 60 * 1000), // 30 minutes ago
@@ -2743,7 +2981,7 @@ const seedData = async () => {
         createdAt: new Date(now.getTime() - 3 * 60 * 60 * 1000), // 3 hours ago
       },
 
-      // 7. Another bus delay (for subscribed users)
+      // 7. Another bus trip advisory (for subscribed users)
       {
         sender_id: operator2._id,
         bus_id: bus3._id,
@@ -2752,7 +2990,7 @@ const seedData = async () => {
         title: "Bus CEB-003 Minor Delay",
         message:
           "Bus CEB-003 on Route 03C (IT Park to SM) experienced a 2-minute delay but has now completed its trip.",
-        notification_type: "delay",
+        notification_type: "info",
         priority: "low",
         scope: "bus",
         createdAt: new Date(now.getTime() - 4 * 60 * 60 * 1000), // 4 hours ago
@@ -2844,6 +3082,33 @@ const seedData = async () => {
         scope: "bus",
         createdAt: new Date(now.getTime() - 10 * 60 * 1000),
       },
+
+      {
+        sender_id: operator1._id,
+        bus_id: bus1._id,
+        route_id: route01A._id,
+        terminal_id: smTerminal._id,
+        title: "Bus CEB-001 — standing room",
+        message:
+          "Operator updated occupancy for Bus CEB-001 on Route 01A (SM to Ayala): 40/50 passengers (standing room).",
+        notification_type: "occupancy_update",
+        priority: "medium",
+        scope: "route",
+        createdAt: new Date(now.getTime() - 8 * 60 * 1000),
+      },
+      {
+        sender_id: operator2._id,
+        bus_id: bus3._id,
+        route_id: route03C._id,
+        terminal_id: smTerminal._id,
+        title: "Bus CEB-003 — few seats",
+        message:
+          "Operator updated occupancy for Bus CEB-003 on Route 03C (IT Park to SM): 18/45 passengers (few seats).",
+        notification_type: "occupancy_update",
+        priority: "medium",
+        scope: "route",
+        createdAt: new Date(now.getTime() - 6 * 60 * 1000),
+      },
     ]);
 
     console.log(`✅ Created ${notifications.length} notifications`);
@@ -2862,6 +3127,8 @@ const seedData = async () => {
       notif11,
       notif12,
       notif13,
+      notif14,
+      notif15,
     ] = notifications;
 
     // ==========================================
@@ -2875,7 +3142,7 @@ const seedData = async () => {
         is_read: true,
         read_at: new Date(now.getTime() - 1.5 * 60 * 60 * 1000),
       },
-      { user_id: user1._id, notification_id: notif2._id, is_read: false }, // Bus CEB-001 delay
+      { user_id: user1._id, notification_id: notif2._id, is_read: false }, // Bus CEB-001 schedule advisory
       { user_id: user1._id, notification_id: notif3._id, is_read: false }, // Bus CEB-001 full
       {
         user_id: user1._id,
@@ -2884,6 +3151,8 @@ const seedData = async () => {
         read_at: new Date(now.getTime() - 40 * 60 * 1000),
       }, // Bus CEB-001 skip
       { user_id: user1._id, notification_id: notif7._id, is_read: false }, // Route 03C (also subscribed)
+      { user_id: user1._id, notification_id: notif14._id, is_read: false },
+      { user_id: user1._id, notification_id: notif15._id, is_read: false },
 
       // User2 (Carlos) - subscribed to Route 02B and Route 03C
       { user_id: user2._id, notification_id: notif1._id, is_read: false },
@@ -2894,6 +3163,7 @@ const seedData = async () => {
         read_at: new Date(now.getTime() - 50 * 60 * 1000),
       }, // Route 02B
       { user_id: user2._id, notification_id: notif7._id, is_read: false }, // Route 03C
+      { user_id: user2._id, notification_id: notif15._id, is_read: false },
 
       // User3 (Lisa) - subscribed to Route 04D and Bus CEB-002
       {
@@ -2905,6 +3175,7 @@ const seedData = async () => {
       { user_id: user3._id, notification_id: notif2._id, is_read: false }, // Also subscribed to Route 01A
       { user_id: user3._id, notification_id: notif3._id, is_read: false },
       { user_id: user3._id, notification_id: notif5._id, is_read: false },
+      { user_id: user3._id, notification_id: notif14._id, is_read: false },
 
       // User4 (Mark) - subscribed to Route 01A and Bus CEB-003
       { user_id: user4._id, notification_id: notif1._id, is_read: false },
@@ -2916,6 +3187,7 @@ const seedData = async () => {
       },
       { user_id: user4._id, notification_id: notif3._id, is_read: false },
       { user_id: user4._id, notification_id: notif5._id, is_read: false },
+      { user_id: user4._id, notification_id: notif14._id, is_read: false },
       {
         user_id: user4._id,
         notification_id: notif7._id,
@@ -2933,6 +3205,7 @@ const seedData = async () => {
       { user_id: user5._id, notification_id: notif2._id, is_read: false }, // Bus CEB-001
       { user_id: user5._id, notification_id: notif3._id, is_read: false }, // Bus CEB-001
       { user_id: user5._id, notification_id: notif5._id, is_read: false }, // Bus CEB-001
+      { user_id: user5._id, notification_id: notif14._id, is_read: false },
       {
         user_id: user5._id,
         notification_id: notif8._id,
@@ -3094,8 +3367,16 @@ const seedData = async () => {
     await seedOperationalSummaryDemo();
     console.log("✅ Ran terminal operational summary seeder");
 
+    await seedAyalaTerminalLogs();
+    console.log("✅ Ran Ayala Center Terminal logs seeder");
+
     await seedUserNotifications();
     console.log("✅ Ran user notifications seeder");
+
+    const unassignedSeed = await seedUnassignedBusDriverOperator();
+    if (unassignedSeed) {
+      console.log("✅ Ran unassigned bus / driver / operator seeder");
+    }
 
     console.log("\n✅ Seed data created successfully!");
   } catch (error) {
@@ -3126,7 +3407,8 @@ if (isDirectRun) {
       console.log("📦 Connected to MongoDB");
       return seedData();
     })
-    .then(() => {
+    .then(async () => {
+      await seedAdminAccess();
       console.log("🎉 Seeding complete!");
       process.exit(0);
     })

@@ -80,8 +80,11 @@ function getRecipientsForNotification(notification, ctx) {
 
 async function seedUserNotifications() {
   const mongoUri = requireMongoUri();
-  await mongoose.connect(mongoUri);
-  console.log("📦 Connected to MongoDB");
+  const needOwnConnection = mongoose.connection.readyState !== 1;
+  if (needOwnConnection) {
+    await mongoose.connect(mongoUri);
+    console.log("📦 Connected to MongoDB");
+  }
 
   try {
     if (shouldResetExisting()) {
@@ -151,8 +154,10 @@ async function seedUserNotifications() {
     const inserted = await UserNotification.insertMany(rowsToInsert);
     console.log(`✅ Created ${inserted.length} user notification rows.`);
   } finally {
-    await mongoose.disconnect();
-    console.log("🔌 Disconnected from MongoDB");
+    if (needOwnConnection && mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+      console.log("🔌 Disconnected from MongoDB");
+    }
   }
 }
 

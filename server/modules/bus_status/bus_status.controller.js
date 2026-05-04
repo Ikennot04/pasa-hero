@@ -43,7 +43,9 @@ export const updateBusStatusById = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-    const status = await BusStatusService.updateBusStatusById(id, updateData);
+    const status = await BusStatusService.updateBusStatusById(id, updateData, {
+      senderUserId: req.user?._id ?? null,
+    });
     res.status(200).json({ success: true, data: status });
   } catch (error) {
     const statusCode = error.statusCode || 400;

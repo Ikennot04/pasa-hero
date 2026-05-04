@@ -22,7 +22,6 @@ function formatDateTime(iso: string) {
 }
 
 const TYPE_LABEL: Record<NotificationFields["notification_type"], string> = {
-  delay: "Delay",
   full: "Full",
   skipped_stop: "Skipped stop",
   info: "Info",
@@ -30,6 +29,8 @@ const TYPE_LABEL: Record<NotificationFields["notification_type"], string> = {
   arrival_rejected: "Arrival rejected",
   departure_reported: "Departure reported",
   departure_rejected: "Departure rejected",
+  route_free: "Route free",
+  occupancy_update: "Occupancy update",
   other: "Other",
   custom: "Custom",
 };

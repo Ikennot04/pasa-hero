@@ -63,8 +63,9 @@ export function buildSystemLogDocuments({
     },
     {
       user_id: String(superAdmin._id),
-      action: "Delete Route",
-      description: "Archived legacy test route (code TMP-99).",
+      action: "Suspend Route",
+      description:
+        "Suspended legacy test route (code TMP-99) pending archival.",
       createdAt: hoursAgo(168),
     },
     {
@@ -81,8 +82,9 @@ export function buildSystemLogDocuments({
     },
     {
       user_id: String(superAdmin._id),
-      action: "Delete Terminal",
-      description: "Removed deprecated pop-up terminal record.",
+      action: "Update Terminal",
+      description:
+        "Marked deprecated pop-up terminal inactive and cleared operational flags.",
       createdAt: hoursAgo(240),
     },
     {
@@ -111,8 +113,8 @@ export function buildSystemLogDocuments({
     },
     {
       user_id: String(operator1._id),
-      action: "Delete Operator",
-      description: "Removed duplicate staging operator account.",
+      action: "Suspend Operator",
+      description: "Suspended duplicate staging operator account.",
       createdAt: hoursAgo(18),
     },
   ];
