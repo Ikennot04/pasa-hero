@@ -622,7 +622,217 @@ export async function seedOperationalSummaryDemo() {
   console.log("   Expected ≈ scheduled: 11, present: 3, departed_today: 3, pending: 4 (2+2)\n");
 }
 
+/**
+ * TerminalLog rows at Ayala Center Terminal (routes 01A / 07G end here).
+ * Runs after seedOperationalSummaryDemo so SM-only TerminalLog.deleteMany does not wipe these.
+ */
+export async function seedAyalaTerminalLogs() {
+  const ayalaTerminal = await Terminal.findOne({
+    terminal_name: "Ayala Center Terminal",
+  });
+  if (!ayalaTerminal) {
+    throw new Error(
+      'Terminal "Ayala Center Terminal" not found. Run `npm run seed` first.',
+    );
+  }
 
+  const [route01A, route07G, operator1, ayalaAdmin, superAdmin] = await Promise.all([
+    Route.findOne({ route_code: "01A" }),
+    Route.findOne({ route_code: "07G" }),
+    User.findOne({ email: "maria.santos@email.com" }),
+    User.findOne({ email: "jenny.lim@email.com" }),
+    User.findOne({ role: "super admin" }),
+  ]);
+
+  if (!route01A || !route07G) {
+    throw new Error("Routes 01A / 07G not found. Run `npm run seed` first.");
+  }
+  if (!operator1) {
+    throw new Error("Operator maria.santos@email.com not found. Run `npm run seed` first.");
+  }
+
+  const [bus1, bus12, bus13, bus22] = await Promise.all([
+    Bus.findOne({ bus_number: "CEB-001" }),
+    Bus.findOne({ bus_number: "CEB-012" }),
+    Bus.findOne({ bus_number: "CEB-013" }),
+    Bus.findOne({ bus_number: "CEB-022" }),
+  ]);
+
+  if (!bus1 || !bus12 || !bus13 || !bus22) {
+    throw new Error(
+      "Expected seed buses CEB-001, CEB-012, CEB-013, CEB-022 not found. Run `npm run seed` first.",
+    );
+  }
+
+  const [
+    assign01APending,
+    assign01ACompletedBus1,
+    assign01ACompletedBus13,
+    assign07GBus12,
+    assign07GBus22,
+  ] = await Promise.all([
+    BusAssignment.findOne({
+      bus_id: bus1._id,
+      route_id: route01A._id,
+      assignment_status: "active",
+      assignment_result: "pending",
+    }),
+    BusAssignment.findOne({
+      bus_id: bus1._id,
+      route_id: route01A._id,
+      assignment_result: "completed",
+    }),
+    BusAssignment.findOne({
+      bus_id: bus13._id,
+      route_id: route01A._id,
+      assignment_result: "completed",
+    }),
+    BusAssignment.findOne({
+      bus_id: bus12._id,
+      route_id: route07G._id,
+      assignment_result: "pending",
+    }),
+    BusAssignment.findOne({
+      bus_id: bus22._id,
+      route_id: route07G._id,
+      assignment_result: "pending",
+    }),
+  ]);
+
+  const required = [
+    ["CEB-001 active 01A", assign01APending],
+    ["CEB-001 completed 01A", assign01ACompletedBus1],
+    ["CEB-013 completed 01A", assign01ACompletedBus13],
+    ["CEB-012 pending 07G", assign07GBus12],
+    ["CEB-022 pending 07G", assign07GBus22],
+  ];
+  for (const [label, doc] of required) {
+    if (!doc) {
+      throw new Error(`Missing assignment: ${label}. Run \`npm run seed\` first.`);
+    }
+  }
+
+  const confirmer = ayalaAdmin?._id ?? superAdmin?._id ?? null;
+  const reporter = operator1._id;
+
+  const logsPayload = [
+    {
+      bus_assignment_id: assign01ACompletedBus1._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus1._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utcTodayAt(5, 30),
+      confirmation_time: utcTodayAt(5, 33),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01ACompletedBus1._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus1._id,
+      event_type: "departure",
+      status: "confirmed",
+      event_time: utcTodayAt(6, 5),
+      confirmation_time: utcTodayAt(6, 8),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01ACompletedBus13._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus13._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utcTodayAt(6, 40),
+      confirmation_time: utcTodayAt(6, 43),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01ACompletedBus13._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus13._id,
+      event_type: "departure",
+      status: "rejected",
+      event_time: utcTodayAt(7, 10),
+      confirmation_time: utcTodayAt(7, 12),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01APending._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus1._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utcTodayAt(13, 5),
+      confirmation_time: utcTodayAt(13, 9),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign01APending._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus1._id,
+      event_type: "departure",
+      status: "pending",
+      event_time: utcTodayAt(13, 50),
+      confirmation_time: null,
+      reported_by: reporter,
+      confirmed_by: null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign07GBus12._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus12._id,
+      event_type: "arrival",
+      status: "confirmed",
+      event_time: utcTodayAt(8, 20),
+      confirmation_time: utcTodayAt(8, 24),
+      reported_by: reporter,
+      confirmed_by: confirmer,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign07GBus12._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus12._id,
+      event_type: "departure",
+      status: "pending",
+      event_time: utcTodayAt(8, 55),
+      confirmation_time: null,
+      reported_by: reporter,
+      confirmed_by: null,
+      auto_detected: false,
+    },
+    {
+      bus_assignment_id: assign07GBus22._id,
+      terminal_id: ayalaTerminal._id,
+      bus_id: bus22._id,
+      event_type: "arrival",
+      status: "pending",
+      event_time: utcTodayAt(15, 25),
+      confirmation_time: null,
+      reported_by: reporter,
+      confirmed_by: null,
+      auto_detected: false,
+    },
+  ];
+
+  const inserted = await TerminalLog.insertMany(logsPayload);
+  await syncLatestTerminalLogIdsFromSeedLogs();
+
+  console.log(
+    `✅ Ayala Center Terminal: seeded ${inserted.length} terminal logs (${String(ayalaTerminal._id)})`,
+  );
+}
 
 export async function seedTerminalNotificationTimeline() {
   const [superAdmin, operator1, operator2, terminalAdmin1] = await Promise.all([
@@ -3156,6 +3366,9 @@ const seedData = async () => {
 
     await seedOperationalSummaryDemo();
     console.log("✅ Ran terminal operational summary seeder");
+
+    await seedAyalaTerminalLogs();
+    console.log("✅ Ran Ayala Center Terminal logs seeder");
 
     await seedUserNotifications();
     console.log("✅ Ran user notifications seeder");
