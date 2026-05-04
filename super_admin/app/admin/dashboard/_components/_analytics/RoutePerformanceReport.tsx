@@ -10,7 +10,7 @@ import { useGetRoutesPerformance } from "../../_hooks/useGetRoutesPerformance";
 export type RoutePerformanceRecord = {
   route_id: string;
   route_name: string;
-  total_delay_count: number;
+  total_skipped_stop_count: number;
   total_full_count: number;
 };
 
@@ -50,8 +50,8 @@ export function RoutePerformanceReport() {
     labels: data.map((d) => d.route_name),
     datasets: [
       {
-        label: "Total delay count",
-        data: data.map((d) => d.total_delay_count),
+        label: "Total skipped stop count",
+        data: data.map((d) => d.total_skipped_stop_count),
         backgroundColor: "rgb(108, 173, 223, 0.7)",
         borderColor: "rgb(108, 173, 223)",
         borderWidth: 1.5,
@@ -71,7 +71,7 @@ export function RoutePerformanceReport() {
   return (
     <ReportSection
       title="Route performance report"
-      description="Total delay count and total full count per route"
+      description="Total skipped stop count and total full count per route"
     >
       {isLoading ? (
         <p className="text-sm text-base-content/70">Loading route performance...</p>
@@ -89,7 +89,7 @@ export function RoutePerformanceReport() {
               <thead className="sticky top-0 z-1 bg-base-100">
                 <tr>
                   <th>Route</th>
-                  <th>Total delay count</th>
+                  <th>Total skipped stop count</th>
                   <th>Total full count</th>
                 </tr>
               </thead>
@@ -97,7 +97,7 @@ export function RoutePerformanceReport() {
                 {data.map((d) => (
                   <tr key={d.route_id}>
                     <td>{d.route_name}</td>
-                    <td>{d.total_delay_count}</td>
+                    <td>{d.total_skipped_stop_count}</td>
                     <td>{d.total_full_count}</td>
                   </tr>
                 ))}
