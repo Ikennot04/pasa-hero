@@ -15,6 +15,7 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/location_cache_service.dart';
 import '../../../core/services/map/map_service.dart';
 import '../../../core/services/nearby_operators_service.dart';
+import '../../../core/services/driver_status_read_service.dart';
 import '../../../core/services/route_path_coordinates_service.dart';
 import '../../../shared/bottom_navBar.dart';
 import '../../map/map.dart';
@@ -64,6 +65,15 @@ class _NearMeContentState extends State<_NearMeContent> {
   bool _showFreeRide = true;
   bool _hasActiveFreeRide = false;
   Set<String> _activeFreeRideOperatorIds = <String>{};
+  /// Route tokens with active free ride (`driver_status`); all operators on that route get the free-ride map icon.
+  Set<String> _activeFreeRideRouteCodes = <String>{};
+  /// Raw route ids from active `driver_status` docs — used with [NearbyOperatorsService.routeMatchesNearMeFilter]
+  /// so map icons match the same loose rules as the operator list (substring / numeric keys).
+  Set<String> _activeFreeRideRouteHints = <String>{};
+  /// Mongo/API [is_free_ride] routes — map marker uses free-ride art for buses on these lines
+  /// even when Firestore `driver_status` has no time-window campaign.
+  Set<String> _mongoFreeRideRouteCodes = <String>{};
+  Set<String> _mongoFreeRideRouteHints = <String>{};
   /// From `driver_status` when an operator has free ride on (see `_subscribeFreeRideStatus`).
   String? _freeRideRouteCode;
   DateTime? _freeRideUntil;
@@ -92,6 +102,8 @@ class _NearMeContentState extends State<_NearMeContent> {
   StreamSubscription<List<NearbyOperator>>? _nearbyOperatorsSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _freeRideSub;
   Timer? _nearbyServerPoll;
+  /// Refreshes Mongo/API route catalog (free-ride flags) alongside Firebase [driver_status].
+  Timer? _mongoRouteCatalogPoll;
   String? _operatorsFirestoreError;
 
   List<OperatorRouteOption> _routeOptions = [];
@@ -129,15 +141,7 @@ class _NearMeContentState extends State<_NearMeContent> {
   }
 
   bool _isFreeRideActiveDoc(Map<String, dynamic> data) {
-    final freeRideValue = data['free_ride'];
-    final isFreeRideFlag = data['is_free_ride'];
-    final isEnabled = (freeRideValue is num && freeRideValue == 1) ||
-        (isFreeRideFlag is bool && isFreeRideFlag);
-    if (!isEnabled) return false;
-
-    final untilTs = data['free_ride_until'];
-    if (untilTs is! Timestamp) return true;
-    return untilTs.toDate().isAfter(DateTime.now());
+    return DriverStatusReadService.isFreeRideActiveData(data);
   }
 
   /// Route code on `driver_status` (operator writes `route_id` = route code doc id).
@@ -150,6 +154,32 @@ class _NearMeContentState extends State<_NearMeContent> {
     return null;
   }
 
+  /// Same token set as [MapScreen._addRouteCodeTokens] so operator [routeCode] matches [driver_status] keys.
+  void _addFreeRideRouteTokens(Set<String> out, String? raw) {
+    if (raw == null) return;
+    final t = raw.trim();
+    if (t.isEmpty) return;
+    out.add(t.toUpperCase());
+    final alnum = t.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (alnum.isNotEmpty) {
+      out.add(alnum);
+      if (alnum.startsWith('ROUTE') && alnum.length > 5) {
+        out.add(alnum.substring(5));
+      }
+    }
+  }
+
+  /// True when the Near Me route dropdown selection is a Mongo free-ride route (see [OperatorRouteOption.isFreeRideRoute]).
+  bool get _selectedCatalogRouteIsFreeRide {
+    final s = _selectedRouteCode?.trim();
+    if (s == null || s.isEmpty) return false;
+    final key = s.toUpperCase();
+    for (final o in _routeOptions) {
+      if (o.code.trim().toUpperCase() == key) return o.isFreeRideRoute;
+    }
+    return false;
+  }
+
   String _routeDisplayNameForCode(String? code) {
     if (code == null || code.trim().isEmpty) return '';
     final key = code.trim().toUpperCase();
@@ -159,44 +189,120 @@ class _NearMeContentState extends State<_NearMeContent> {
     return code.trim();
   }
 
+  /// True when a visible nearby bus uses the Mongo free-ride marker (same as [MapWidget]).
+  bool get _hasNearbyMongoFreeRideBus {
+    for (final op in _nearbyOperators) {
+      if (NearbyOperatorsService.operatorOnMongoFreeRideLine(
+            op,
+            mongoFreeRideRouteCodes: _mongoFreeRideRouteCodes,
+            mongoFreeRideRouteHints: _mongoFreeRideRouteHints,
+          )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Route label for the floating banner when a Mongo free bus is visible (no Firestore promo / no filter).
+  String? _mongoFreeRideBannerRouteCodeFromOperators() {
+    for (final op in _nearbyOperators) {
+      if (!NearbyOperatorsService.operatorOnMongoFreeRideLine(
+            op,
+            mongoFreeRideRouteCodes: _mongoFreeRideRouteCodes,
+            mongoFreeRideRouteHints: _mongoFreeRideRouteHints,
+          )) {
+        continue;
+      }
+      final rc = op.routeCode?.trim();
+      if (rc != null && rc.isNotEmpty) return rc;
+    }
+    return null;
+  }
+
   void _subscribeFreeRideStatus() {
     _freeRideSub?.cancel();
-    Query<Map<String, dynamic>> query =
-        FirebaseFirestore.instance.collection('driver_status');
+    // Listen to the full collection: a Firestore `where route_id == selected` is brittle
+    // (case/format vs dropdown) and would yield zero docs so map icons never flip.
+    _freeRideSub = FirebaseFirestore.instance
+        .collection('driver_status')
+        .snapshots()
+        .listen((snapshot) {
+      final selected = _selectedRouteCode?.trim();
+      final hasRouteFilter = selected != null && selected.isNotEmpty;
 
-    final selected = _selectedRouteCode?.trim();
-    if (selected != null && selected.isNotEmpty) {
-      query = query.where('route_id', isEqualTo: selected);
-    }
-
-    _freeRideSub = query.snapshots().listen((snapshot) {
-      QueryDocumentSnapshot<Map<String, dynamic>>? firstActive;
+      QueryDocumentSnapshot<Map<String, dynamic>>? bannerDoc;
+      QueryDocumentSnapshot<Map<String, dynamic>>? firstActiveDoc;
       final activeIds = <String>{};
+      final routeKeys = <String>{};
+      final routeHints = <String>{};
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        if (_isFreeRideActiveDoc(data)) {
-          final operatorIdRaw = data['operator_id'] ?? data['operatorId'] ?? doc.id;
-          final operatorId = operatorIdRaw.toString().trim().toLowerCase();
-          if (operatorId.isNotEmpty) {
-            activeIds.add(operatorId);
+        if (!_isFreeRideActiveDoc(data)) continue;
+
+        firstActiveDoc ??= doc;
+
+        final docRoute =
+            _routeCodeFromDriverStatus(data) ?? doc.id.trim();
+
+        for (final key in <String>[
+          'operator_id',
+          'operatorId',
+          'uid',
+          'firebase_uid',
+          'firebaseUid',
+        ]) {
+          final raw = data[key];
+          if (raw == null) continue;
+          final id = raw.toString().trim().toLowerCase();
+          if (id.isNotEmpty) activeIds.add(id);
+        }
+
+        _addFreeRideRouteTokens(routeKeys, docRoute);
+        _addFreeRideRouteTokens(routeKeys, doc.id);
+        if (docRoute.isNotEmpty) routeHints.add(docRoute);
+        final idTrim = doc.id.trim();
+        if (idTrim.isNotEmpty && idTrim != docRoute) routeHints.add(idTrim);
+
+        if (bannerDoc == null) {
+          if (!hasRouteFilter) {
+            bannerDoc = doc;
+          } else if (NearbyOperatorsService.routeMatchesNearMeFilter(
+                docRoute,
+                selected,
+              )) {
+            bannerDoc = doc;
           }
-          firstActive = doc;
         }
       }
-      final hasActive = firstActive != null;
+      // Map icons use any active promo; banner text should still show if only a
+      // non-selected route has a promo (e.g. Mongo bus + Firestore mismatch).
+      final docForBanner = bannerDoc ?? firstActiveDoc;
+      final hasActive = docForBanner != null;
       String? routeCode;
       DateTime? until;
-      if (firstActive != null) {
-        final data = firstActive.data();
-        routeCode =
-            _routeCodeFromDriverStatus(data) ?? firstActive.id.trim();
-        final untilTs = data['free_ride_until'];
-        if (untilTs is Timestamp) until = untilTs.toDate();
+      if (docForBanner != null) {
+        final data = docForBanner.data();
+        routeCode = _routeCodeFromDriverStatus(data) ?? docForBanner.id.trim();
+        until = DriverStatusReadService.readFreeRideUntilFromData(data);
+        // Firebase + Mongo: merge API free-ride line tokens for the same route line
+        // so bus markers match when GPS route_code and driver_status differ slightly.
+        final br = routeCode.trim();
+        if (br.isNotEmpty) {
+          for (final o in _routeOptions) {
+            if (!o.isFreeRideRoute) continue;
+            if (!NearbyOperatorsService.routesLooselySameLine(o.code, br)) continue;
+            _addFreeRideRouteTokens(routeKeys, o.code);
+            final t = o.code.trim();
+            if (t.isNotEmpty) routeHints.add(t);
+          }
+        }
       }
       if (!mounted) return;
       setState(() {
         _hasActiveFreeRide = hasActive;
         _activeFreeRideOperatorIds = activeIds;
+        _activeFreeRideRouteCodes = routeKeys;
+        _activeFreeRideRouteHints = routeHints;
         _freeRideRouteCode = hasActive ? routeCode : null;
         _freeRideUntil = hasActive ? until : null;
         if (!hasActive) {
@@ -208,6 +314,8 @@ class _NearMeContentState extends State<_NearMeContent> {
       setState(() {
         _hasActiveFreeRide = false;
         _activeFreeRideOperatorIds = <String>{};
+        _activeFreeRideRouteCodes = <String>{};
+        _activeFreeRideRouteHints = <String>{};
         _freeRideRouteCode = null;
         _freeRideUntil = null;
         _showFreeRideDetails = false;
@@ -326,9 +434,19 @@ class _NearMeContentState extends State<_NearMeContent> {
     setState(() => _routeOptionsLoading = true);
     final list = await _routeOptionsService.fetchAvailableRoutes();
     if (!mounted) return;
+    final mongoCodes = <String>{};
+    final mongoHints = <String>{};
+    for (final o in list) {
+      if (!o.isFreeRideRoute) continue;
+      _addFreeRideRouteTokens(mongoCodes, o.code);
+      final t = o.code.trim();
+      if (t.isNotEmpty) mongoHints.add(t);
+    }
     setState(() {
       _routeOptions = list;
       _routeOptionsLoading = false;
+      _mongoFreeRideRouteCodes = mongoCodes;
+      _mongoFreeRideRouteHints = mongoHints;
       if (_selectedRouteCode != null) {
         final stillThere = list.any(
           (o) => o.code.toUpperCase() == _selectedRouteCode!.toUpperCase(),
@@ -337,6 +455,36 @@ class _NearMeContentState extends State<_NearMeContent> {
       }
     });
     _subscribeNearbyOperators();
+    _startMongoRouteCatalogPoll();
+  }
+
+  void _startMongoRouteCatalogPoll() {
+    _mongoRouteCatalogPoll?.cancel();
+    _mongoRouteCatalogPoll =
+        Timer.periodic(const Duration(seconds: 90), (_) async {
+      await _refreshMongoFreeRideCatalogQuietly();
+    });
+  }
+
+  /// Keeps Mongo [is_free_ride] metadata fresh without touching Firebase listeners.
+  Future<void> _refreshMongoFreeRideCatalogQuietly() async {
+    try {
+      final list = await _routeOptionsService.fetchAvailableRoutes();
+      if (!mounted) return;
+      final mongoCodes = <String>{};
+      final mongoHints = <String>{};
+      for (final o in list) {
+        if (!o.isFreeRideRoute) continue;
+        _addFreeRideRouteTokens(mongoCodes, o.code);
+        final t = o.code.trim();
+        if (t.isNotEmpty) mongoHints.add(t);
+      }
+      setState(() {
+        _routeOptions = list;
+        _mongoFreeRideRouteCodes = mongoCodes;
+        _mongoFreeRideRouteHints = mongoHints;
+      });
+    } catch (_) {}
   }
 
   String _labelForSelectedRoute() {
@@ -645,6 +793,7 @@ class _NearMeContentState extends State<_NearMeContent> {
   @override
   void dispose() {
     _nearbyServerPoll?.cancel();
+    _mongoRouteCatalogPoll?.cancel();
     _nearbyOperatorsSub?.cancel();
     _freeRideSub?.cancel();
     _sheetController.removeListener(_onSheetExtentChanged);
@@ -695,6 +844,20 @@ class _NearMeContentState extends State<_NearMeContent> {
 
   @override
   Widget build(BuildContext context) {
+    final hasNearbyMongoFree = _hasNearbyMongoFreeRideBus;
+    final showFreeRideFloatingBanner = _hasActiveFreeRide ||
+        _selectedCatalogRouteIsFreeRide ||
+        hasNearbyMongoFree;
+    final catalogOnlyFreeRideBanner = !_hasActiveFreeRide &&
+        (_selectedCatalogRouteIsFreeRide || hasNearbyMongoFree);
+    final String? bannerRouteCode = _hasActiveFreeRide
+        ? _freeRideRouteCode
+        : (_selectedCatalogRouteIsFreeRide
+            ? _selectedRouteCode
+            : (hasNearbyMongoFree
+                ? _mongoFreeRideBannerRouteCodeFromOperators()
+                : null));
+
     return Scaffold(
       body: Stack(
         children: [
@@ -705,6 +868,11 @@ class _NearMeContentState extends State<_NearMeContent> {
               routeDestination: _routeDestination,
               nearbyOperators: _nearbyOperators,
               activeFreeRideOperatorIds: _activeFreeRideOperatorIds,
+              activeFreeRideRouteCodes: _activeFreeRideRouteCodes,
+              activeFreeRideRouteHints: _activeFreeRideRouteHints,
+              mongoFreeRideRouteCodes: _mongoFreeRideRouteCodes,
+              mongoFreeRideRouteHints: _mongoFreeRideRouteHints,
+              selectedCatalogRouteIsFreeRide: _selectedCatalogRouteIsFreeRide,
               onMapControllerReady: _onMapControllerReady,
               routeCatalogHighlightPoints: _routeCatalogHighlightPoints,
               selectedRouteCodeForStopsStream: _selectedRouteCode,
@@ -731,9 +899,10 @@ class _NearMeContentState extends State<_NearMeContent> {
           ),
 
            // 🔹 Free Ride banner (floating above bottom sheet, follows sheet movement with fade animation)
+          // Firestore promo and/or catalog free-ride line (same cases as free-ride map icons).
           // Only show when sheet is visible (not at 0)
           // Use IgnorePointer to ensure it doesn't block sheet dragging
-          if (_sheetExtent > 0.0 && _hasActiveFreeRide)
+          if (_sheetExtent > 0.0 && showFreeRideFloatingBanner)
             Positioned(
               left: 16,
               right: 16,
@@ -748,10 +917,11 @@ class _NearMeContentState extends State<_NearMeContent> {
                     ignoring: !_showFreeRide,
                     child: FreeRideBanner(
                       showDetails: _showFreeRideDetails,
-                      routeCode: _freeRideRouteCode,
+                      routeCode: bannerRouteCode,
                       routeDisplayName:
-                          _routeDisplayNameForCode(_freeRideRouteCode),
+                          _routeDisplayNameForCode(bannerRouteCode),
                       freeRideUntil: _freeRideUntil,
+                      isCatalogFreeRideLine: catalogOnlyFreeRideBanner,
                       onViewTap: () {
                         setState(() {
                           _showFreeRideDetails = !_showFreeRideDetails;

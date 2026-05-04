@@ -14,6 +14,11 @@ class MapWidget extends StatelessWidget {
     this.routeDestination,
     this.nearbyOperators = const [],
     this.activeFreeRideOperatorIds = const <String>{},
+    this.activeFreeRideRouteCodes = const <String>{},
+    this.activeFreeRideRouteHints = const <String>{},
+    this.mongoFreeRideRouteCodes = const <String>{},
+    this.mongoFreeRideRouteHints = const <String>{},
+    this.selectedCatalogRouteIsFreeRide = false,
     this.onMapControllerReady,
     this.routeCatalogHighlightPoints,
     this.selectedRouteCodeForStopsStream,
@@ -28,6 +33,11 @@ class MapWidget extends StatelessWidget {
   /// Operators with live location (same list as Near Me / route filter; bus icon on map).
   final List<NearbyOperator> nearbyOperators;
   final Set<String> activeFreeRideOperatorIds;
+  final Set<String> activeFreeRideRouteCodes;
+  final Set<String> activeFreeRideRouteHints;
+  final Set<String> mongoFreeRideRouteCodes;
+  final Set<String> mongoFreeRideRouteHints;
+  final bool selectedCatalogRouteIsFreeRide;
 
   final ValueChanged<GoogleMapController>? onMapControllerReady;
 
@@ -44,6 +54,11 @@ class MapWidget extends StatelessWidget {
       routeDestination: routeDestination,
       nearbyOperators: nearbyOperators,
       activeFreeRideOperatorIds: activeFreeRideOperatorIds,
+      activeFreeRideRouteCodes: activeFreeRideRouteCodes,
+      activeFreeRideRouteHints: activeFreeRideRouteHints,
+      mongoFreeRideRouteCodes: mongoFreeRideRouteCodes,
+      mongoFreeRideRouteHints: mongoFreeRideRouteHints,
+      selectedCatalogRouteIsFreeRide: selectedCatalogRouteIsFreeRide,
       onMapControllerReady: onMapControllerReady,
       routeCatalogHighlightPoints: routeCatalogHighlightPoints,
       selectedRouteCodeForStopsStream: selectedRouteCodeForStopsStream,

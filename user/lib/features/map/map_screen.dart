@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/models/nearby_operator.dart';
+import '../../core/services/nearby_operators_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/map/map_service.dart';
 import 'services/bus_stop_icon_service.dart';
@@ -26,6 +27,11 @@ class MapScreen extends StatefulWidget {
     this.routeDestination,
     this.nearbyOperators = const [],
     this.activeFreeRideOperatorIds = const <String>{},
+    this.activeFreeRideRouteCodes = const <String>{},
+    this.activeFreeRideRouteHints = const <String>{},
+    this.mongoFreeRideRouteCodes = const <String>{},
+    this.mongoFreeRideRouteHints = const <String>{},
+    this.selectedCatalogRouteIsFreeRide = false,
     this.onMapControllerReady,
     this.routeCatalogHighlightPoints,
     this.selectedRouteCodeForStopsStream,
@@ -40,6 +46,15 @@ class MapScreen extends StatefulWidget {
   /// Live operator positions for the current Near Me route filter (bus image marker).
   final List<NearbyOperator> nearbyOperators;
   final Set<String> activeFreeRideOperatorIds;
+  /// Route tokens with an active free ride ([driver_status]); operators on that route get the free-ride icon.
+  final Set<String> activeFreeRideRouteCodes;
+  /// Raw `driver_status` route ids / doc ids — matched with [NearbyOperatorsService.routeMatchesNearMeFilter].
+  final Set<String> activeFreeRideRouteHints;
+  /// Routes flagged [is_free_ride] in Mongo (from `/api/routes`).
+  final Set<String> mongoFreeRideRouteCodes;
+  final Set<String> mongoFreeRideRouteHints;
+  /// Near Me: selected dropdown route is a free-ride line in the catalog.
+  final bool selectedCatalogRouteIsFreeRide;
 
   /// Called when the [GoogleMap] is ready; use for [GoogleMapController.animateCamera] from parent.
   final ValueChanged<GoogleMapController>? onMapControllerReady;
@@ -194,7 +209,25 @@ class _MapScreenState extends State<MapScreen> {
         !setEquals(
           oldWidget.activeFreeRideOperatorIds,
           widget.activeFreeRideOperatorIds,
-        )) {
+        ) ||
+        !setEquals(
+          oldWidget.activeFreeRideRouteCodes,
+          widget.activeFreeRideRouteCodes,
+        ) ||
+        !setEquals(
+          oldWidget.activeFreeRideRouteHints,
+          widget.activeFreeRideRouteHints,
+        ) ||
+        !setEquals(
+          oldWidget.mongoFreeRideRouteCodes,
+          widget.mongoFreeRideRouteCodes,
+        ) ||
+        !setEquals(
+          oldWidget.mongoFreeRideRouteHints,
+          widget.mongoFreeRideRouteHints,
+        ) ||
+        oldWidget.selectedCatalogRouteIsFreeRide !=
+            widget.selectedCatalogRouteIsFreeRide) {
       setState(_rebuildOverlayMarkers);
     }
     if (oldWidget.selectedRouteCodeForStopsStream !=
@@ -701,17 +734,96 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  /// Tokens derived from [NearbyOperator.routeCode] for matching [activeFreeRideRouteCodes].
+  static void _addRouteCodeTokens(Set<String> out, String? raw) {
+    if (raw == null) return;
+    final t = raw.trim();
+    if (t.isEmpty) return;
+    out.add(t.toUpperCase());
+    final alnum = t.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (alnum.isNotEmpty) {
+      out.add(alnum);
+      if (alnum.startsWith('ROUTE') && alnum.length > 5) {
+        out.add(alnum.substring(5));
+      }
+    }
+  }
+
+  bool _operatorMatchesFirestoreFreeRideRoute(NearbyOperator op) {
+    for (final hint in widget.activeFreeRideRouteHints) {
+      if (NearbyOperatorsService.routesLooselySameLine(op.routeCode, hint)) {
+        return true;
+      }
+    }
+    final keys = widget.activeFreeRideRouteCodes;
+    if (keys.isEmpty) return false;
+    final variants = <String>{};
+    _addRouteCodeTokens(variants, op.routeCode);
+    for (final v in variants) {
+      if (keys.contains(v)) return true;
+    }
+    return false;
+  }
+
+  bool _operatorMatchesMongoFreeRideRoute(NearbyOperator op) {
+    for (final hint in widget.mongoFreeRideRouteHints) {
+      if (NearbyOperatorsService.routesLooselySameLine(op.routeCode, hint)) {
+        return true;
+      }
+    }
+    final keys = widget.mongoFreeRideRouteCodes;
+    if (keys.isEmpty) return false;
+    final variants = <String>{};
+    _addRouteCodeTokens(variants, op.routeCode);
+    for (final v in variants) {
+      if (keys.contains(v)) return true;
+    }
+    return false;
+  }
+
+  bool _operatorMatchesFirestoreFreeRideOperatorId(
+    NearbyOperator op,
+    Set<String> activeIdsLower,
+  ) {
+    if (activeIdsLower.contains(op.operatorId.trim().toLowerCase())) {
+      return true;
+    }
+    final u = op.locationAuthUid?.trim().toLowerCase();
+    if (u != null && u.isNotEmpty && activeIdsLower.contains(u)) {
+      return true;
+    }
+    return false;
+  }
+
   /// User location, operators, and circles (bus stops from Firestore stream).
   void _rebuildOverlayMarkers() {
     final Set<Marker> next = {};
     final Set<Circle> nextCircles = {};
     final activeFreeRideIds =
         widget.activeFreeRideOperatorIds.map((id) => id.trim().toLowerCase()).toSet();
+    final selectedCode = widget.selectedRouteCodeForStopsStream?.trim();
+
     for (final op in widget.nearbyOperators) {
-      final isFreeRide = activeFreeRideIds.contains(op.operatorId.trim().toLowerCase());
+      final byId = _operatorMatchesFirestoreFreeRideOperatorId(
+        op,
+        activeFreeRideIds,
+      );
+      final byFirestoreRoute = _operatorMatchesFirestoreFreeRideRoute(op);
+      final byMongoRoute = _operatorMatchesMongoFreeRideRoute(op);
+      final bySelectedCatalog = widget.selectedCatalogRouteIsFreeRide &&
+          selectedCode != null &&
+          selectedCode.isNotEmpty &&
+          NearbyOperatorsService.routeMatchesNearMeFilter(
+            op.routeCode,
+            selectedCode,
+          );
+      final isFreeRide =
+          byId || byFirestoreRoute || byMongoRoute || bySelectedCatalog;
       next.add(
         Marker(
-          markerId: MarkerId('operator_${op.operatorId}'),
+          // Include free-ride state in id so the platform view replaces the bitmap
+          // when switching between standard vs free-ride (same id can stick visually).
+          markerId: MarkerId('operator_${op.operatorId}_${isFreeRide ? 'fr' : 'std'}'),
           position: LatLng(op.latitude, op.longitude),
           icon: _operatorBusIcon.iconForOperator(isFreeRide: isFreeRide),
           anchor: const Offset(0.5, 0.92),

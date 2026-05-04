@@ -52,6 +52,8 @@ class RouteScreenState extends State<RouteScreen> {
   Set<Polyline> _routePolylines = {};
   bool _isLocationRequestInProgress = false;
   String? _routeId;
+  /// From route catalog (Mongo `is_free_ride` via API / Firestore).
+  bool _catalogFreeRideRoute = false;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _userLocationsSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userProfileSub;
   StreamSubscription<Position>? _positionStreamSub;
@@ -59,10 +61,8 @@ class RouteScreenState extends State<RouteScreen> {
   static const String _busStopRoutePolylineId = 'bus_stop_route';
 
   /// When using a shell with [IndexedStack], call this after changing the route in Profile
-  /// so the map reloads without guessing from the route catalog.
-  void reloadOperatorRouteFromProfile() {
-    unawaited(_loadRouteId());
-  }
+  /// or when opening the Routes tab so the map reloads.
+  Future<void> reloadOperatorRouteFromProfile() => _loadRouteId();
 
   @override
   void initState() {
@@ -303,16 +303,52 @@ class RouteScreenState extends State<RouteScreen> {
     });
   }
 
+  Future<void> _syncCatalogFreeRideFlag() async {
+    final id = _routeId?.trim().toUpperCase();
+    if (id == null || id.isEmpty) {
+      if (mounted) setState(() => _catalogFreeRideRoute = false);
+      return;
+    }
+    try {
+      var eligible =
+          await RouteCatalogService.fetchIsFreeRideByRouteCodeFromApi(id);
+      if (!eligible) {
+        final routes = await RouteCatalogService.fetchAvailableRoutes();
+        if (!mounted) return;
+        for (final r in routes) {
+          if (r.code.trim().toUpperCase() == id) {
+            eligible = r.isFreeRideRoute;
+            break;
+          }
+        }
+      }
+      if (mounted) setState(() => _catalogFreeRideRoute = eligible);
+    } catch (_) {
+      if (mounted) setState(() => _catalogFreeRideRoute = false);
+    }
+  }
+
   Future<void> _loadRouteId() async {
-    final published = await ProfileDataService.resolveRouteCodeForLocationPublish();
-    final t = published.trim().isEmpty ? null : published.trim();
-    ProfileDataService.setLocationSyncRouteFallback(t);
-    if (mounted) {
-      setState(() => _routeId = t);
+    try {
+      final published = await ProfileDataService.resolveRouteCodeForLocationPublish();
+      if (!mounted) return;
+      final t = published.trim().isEmpty ? null : published.trim();
+      ProfileDataService.setLocationSyncRouteFallback(t);
+      setState(() {
+        _routeId = t;
+        if (t == null || t.isEmpty) {
+          _catalogFreeRideRoute = false;
+        }
+      });
       if (t != null && t.isNotEmpty) {
         unawaited(RouteCodeService.syncRouteCodeWithGpsAndRoutes(t));
       }
       await _loadBusStopSignAndUpdateMarkers(routeCode: t);
+      if (t != null && t.isNotEmpty) {
+        await _syncCatalogFreeRideFlag();
+      }
+    } catch (e, st) {
+      print('⚠️ [RouteScreen] _loadRouteId: $e\n$st');
     }
   }
 
@@ -373,16 +409,16 @@ class RouteScreenState extends State<RouteScreen> {
       if (!mounted) return;
       final code = routeCode?.trim();
       if (code == null || code.isEmpty) {
-        setState(() => _isLoading = false);
         return;
       }
       final stops = await RouteDataService.getRouteStops(code);
       if (!mounted) return;
       if (stops.isNotEmpty) {
-        _addBusStopMarkersAndRoute(stops, _busStopIconService.defaultIcon);
+        await _addBusStopMarkersAndRoute(stops, _busStopIconService.defaultIcon);
       }
-      setState(() => _isLoading = false);
-    } catch (_) {}
+    } catch (e, st) {
+      print('⚠️ [RouteScreen] _loadBusStopSignAndUpdateMarkers: $e\n$st');
+    }
   }
 
   Future<void> _loadMapStyle() async {
@@ -655,8 +691,31 @@ class RouteScreenState extends State<RouteScreen> {
             trafficEnabled: true,
           ),
           if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(),
+            Material(
+              color: Colors.black26,
+              child: Center(
+                child: Card(
+                  elevation: 8,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 22),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: CircularProgressIndicator(strokeWidth: 3),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Loading…',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           Positioned(
             bottom: _routeId != null && _routeId!.isNotEmpty ? 72 : 16,
@@ -714,13 +773,36 @@ class RouteScreenState extends State<RouteScreen> {
                     color: Colors.blue.shade700,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    'Route: ${_routeId!}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Route: ${_routeId!}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                      if (_catalogFreeRideRoute) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade400,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'Free ride',
+                            style: TextStyle(
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),

@@ -12,9 +12,9 @@ class NearbyOperatorsService {
   final FirebaseFirestore _db;
 
   static const String collectionName = 'operator_locations';
-  /// Staleness window (server [updatedAt] when present). Shorter window avoids
-  /// counting stale Firestore docs as "live" active drivers.
-  static const Duration maxAge = Duration(minutes: 45);
+  /// Staleness window for **live map** presence. Operator GPS ticks about every 30s;
+  /// if [updatedAt] is older than this, the doc is treated as offline (app killed, sync stopped).
+  static const Duration maxAge = Duration(minutes: 5);
   /// Only used when both rider GPS and a **route filter** apply (optional cap for future use).
   static const double defaultMaxDistanceMeters = 300000;
   static const int _maxOperatorsWithoutUserGps = 50;
@@ -96,6 +96,50 @@ class NearbyOperatorsService {
     return null;
   }
 
+  /// Same matching rules as the Near Me route dropdown vs [operator_locations.routeCode].
+  /// Exposed for [driver_status] / free-ride banner logic (must stay in sync with list filter).
+  static bool routeMatchesNearMeFilter(String? operatorRoute, String filterRaw) {
+    return _routeMatchesFilter(operatorRoute, filterRaw);
+  }
+
+  /// Same route line regardless of argument order (e.g. `driver_status` hint vs GPS `routeCode`).
+  static bool routesLooselySameLine(String? a, String? b) {
+    final x = a?.trim() ?? '';
+    final y = b?.trim() ?? '';
+    if (x.isEmpty || y.isEmpty) return false;
+    return _routeMatchesFilter(a, y) || _routeMatchesFilter(b, x);
+  }
+
+  /// Same rules as the passenger map: Mongo/API free-ride line + operator [routeCode] tokens.
+  static bool operatorOnMongoFreeRideLine(
+    NearbyOperator op, {
+    required Set<String> mongoFreeRideRouteCodes,
+    required Set<String> mongoFreeRideRouteHints,
+  }) {
+    for (final hint in mongoFreeRideRouteHints) {
+      if (routesLooselySameLine(op.routeCode, hint)) return true;
+    }
+    if (mongoFreeRideRouteCodes.isEmpty) return false;
+    final raw = op.routeCode;
+    if (raw == null) return false;
+    final t = raw.trim();
+    if (t.isEmpty) return false;
+    final variants = <String>{
+      t.toUpperCase(),
+    };
+    final alnum = t.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (alnum.isNotEmpty) {
+      variants.add(alnum);
+      if (alnum.startsWith('ROUTE') && alnum.length > 5) {
+        variants.add(alnum.substring(5));
+      }
+    }
+    for (final v in variants) {
+      if (mongoFreeRideRouteCodes.contains(v)) return true;
+    }
+    return false;
+  }
+
   /// When the passenger picks a **specific** route, the operator must have that route set.
   /// (Otherwise every doc with an empty [routeCode] incorrectly matches every route and
   /// inflates "active driver" counts.)
@@ -112,10 +156,27 @@ class NearbyOperatorsService {
     return false;
   }
 
-  /// True if the location doc was explicitly marked offline (e.g. after sign-out merge).
-  static bool _isExplicitlyOffline(Map<String, dynamic> data) {
-    final online = data['online'];
-    if (online == 0 || online == false || online == '0') return true;
+  /// True when a field is explicitly "off" (matches operator RouteScreen user-loc rules).
+  static bool _valueIsExplicitlyFalse(Object? value) {
+    if (value == null) return false;
+    if (value is bool) return !value;
+    if (value is num) return value == 0;
+    final s = value.toString().trim().toLowerCase();
+    return s == '0' ||
+        s == 'false' ||
+        s == 'no' ||
+        s == 'off' ||
+        s == 'inactive' ||
+        s == 'offline' ||
+        s == 'disconnected';
+  }
+
+  /// Any explicit offline / inactive signal on the location doc.
+  static bool _hasExplicitOfflinePresence(Map<String, dynamic> data) {
+    if (_valueIsExplicitlyFalse(data['online'])) return true;
+    if (_valueIsExplicitlyFalse(data['isOnline'])) return true;
+    if (_valueIsExplicitlyFalse(data['active'])) return true;
+    if (_valueIsExplicitlyFalse(data['is_active'])) return true;
     final status = data['status'];
     if (status == 0 || status == false) return true;
     if (status is String) {
@@ -128,7 +189,79 @@ class NearbyOperatorsService {
         return true;
       }
     }
+    for (final key in const ['state', 'presence']) {
+      final v = data[key];
+      if (v == null) continue;
+      final s = v.toString().trim().toLowerCase();
+      if (s == 'offline' || s == 'inactive' || s == 'disconnected') return true;
+    }
     return false;
+  }
+
+  static bool _truthyPresenceField(Object? value) {
+    if (value == null) return false;
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final s = value.toString().trim().toLowerCase();
+    return s == '1' || s == 'true' || s == 'yes' || s == 'on' || s == 'active';
+  }
+
+  /// Operator app sets [online]/[status] when publishing; docs without a positive
+  /// signal are treated as inactive so the passenger map does not show stale buses.
+  static bool _isExplicitlyOnline(Map<String, dynamic> data) {
+    if (_truthyPresenceField(data['online'])) return true;
+    if (_truthyPresenceField(data['isOnline'])) return true;
+    if (_truthyPresenceField(data['active'])) return true;
+    if (_truthyPresenceField(data['is_active'])) return true;
+    final status = data['status'];
+    if (status is num && status != 0) return true;
+    if (status is String) {
+      final s = status.trim().toLowerCase();
+      if (s == '1' || s == 'active' || s == 'online' || s == 'on') return true;
+    }
+    return false;
+  }
+
+  /// Followed route codes that have at least one online [operator_locations] doc with
+  /// GPS and a route assignment matching the followed code (Near Me–style matching).
+  Future<Set<String>> followedRoutesWithLiveOnlineBus(
+    Set<String> followedUpper, {
+    Duration maxStale = maxAge,
+  }) async {
+    if (followedUpper.isEmpty) return {};
+    try {
+      final snap = await _db.collection(collectionName).get();
+      final matched = <String>{};
+      final now = DateTime.now();
+
+      for (final followed in followedUpper) {
+        final f = followed.trim().toUpperCase();
+        if (f.isEmpty) continue;
+        for (final doc in snap.docs) {
+          try {
+            final data = doc.data();
+            if (_hasExplicitOfflinePresence(data)) continue;
+            if (!_isExplicitlyOnline(data)) continue;
+            final coords = _coordsFromData(data);
+            if (coords == null) continue;
+
+            final updated = _readUpdatedAt(data);
+            if (updated == null || now.difference(updated) > maxStale) {
+              continue;
+            }
+
+            final routeStr = _routeCodeFromData(data);
+            if (!_routeMatchesFilter(routeStr, f)) continue;
+            matched.add(f);
+            break;
+          } catch (_) {}
+        }
+      }
+      return matched;
+    } catch (e, st) {
+      debugPrint('NearbyOperatorsService.followedRoutesWithLiveOnlineBus: $e\n$st');
+      return {};
+    }
   }
 
   List<NearbyOperator> _parseSnapshot(
@@ -148,7 +281,8 @@ class NearbyOperatorsService {
     for (final doc in snap.docs) {
       try {
         final data = doc.data();
-        if (_isExplicitlyOffline(data)) continue;
+        if (_hasExplicitOfflinePresence(data)) continue;
+        if (!_isExplicitlyOnline(data)) continue;
 
         final coords = _coordsFromData(data);
         if (coords == null) continue;
@@ -156,10 +290,11 @@ class NearbyOperatorsService {
         final lng = coords.$2;
 
         final updated = _readUpdatedAt(data);
-        // Enforce staleness only when a parseable timestamp exists.
-        if (updated != null && now.difference(updated) > maxAge) continue;
+        // No timestamp or stale write ⇒ not a live bus (avoids ghosts after app kill / bad merges).
+        if (updated == null || now.difference(updated) > maxAge) continue;
 
         final routeStr = _routeCodeFromData(data);
+        final locUid = data['uid']?.toString().trim();
 
         if (hasRouteFilter) {
           if (!_routeMatchesFilter(routeStr, filterTrim)) continue;
@@ -174,6 +309,8 @@ class NearbyOperatorsService {
               longitude: lng,
               routeCode: routeStr,
               distanceMeters: meters,
+              locationAuthUid:
+                  (locUid != null && locUid.isNotEmpty) ? locUid : null,
             ),
           );
         } else {
@@ -188,6 +325,8 @@ class NearbyOperatorsService {
                 longitude: lng,
                 routeCode: routeStr,
                 distanceMeters: null,
+                locationAuthUid:
+                    (locUid != null && locUid.isNotEmpty) ? locUid : null,
               ),
             );
           } else {
@@ -199,6 +338,8 @@ class NearbyOperatorsService {
                 longitude: lng,
                 routeCode: routeStr,
                 distanceMeters: meters,
+                locationAuthUid:
+                    (locUid != null && locUid.isNotEmpty) ? locUid : null,
               ),
             );
           }

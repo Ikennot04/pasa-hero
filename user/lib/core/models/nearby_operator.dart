@@ -6,12 +6,15 @@ class NearbyOperator {
     required this.longitude,
     this.routeCode,
     this.distanceMeters,
+    /// [operator_locations.uid] when present (usually same as doc id / Firebase Auth uid).
+    this.locationAuthUid,
   });
 
   final String operatorId;
   final double latitude;
   final double longitude;
   final String? routeCode;
+  final String? locationAuthUid;
 
   /// Distance from rider when GPS is known; null when only filtering by route code.
   final double? distanceMeters;

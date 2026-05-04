@@ -21,6 +21,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   List<RouteInfo> _routeOptions = const [];
   bool _isLoading = true;
   bool _isUpdatingRoute = false;
+  /// True while loading route catalog / free-ride flags before the picker opens.
+  bool _routePickerLoading = false;
 
   @override
   void initState() {
@@ -30,7 +32,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadRouteCode() async {
     final routeCode = await ProfileDataService.getOperatorRouteCode();
-    final routeOptions = await RouteCatalogService.fetchAvailableRoutes();
+    var routeOptions = await RouteCatalogService.fetchAvailableRoutes();
+    routeOptions =
+        await RouteCatalogService.enrichRoutesWithMongoFreeRideFlags(routeOptions);
+    if (!mounted) return;
     setState(() {
       _currentRouteCode = routeCode;
       _routeOptions = routeOptions;
@@ -45,6 +50,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (r.code.trim().toUpperCase() == key) return r.name;
     }
     return code;
+  }
+
+  bool _currentRouteIsFreeRideEligible() {
+    final c = _currentRouteCode?.trim().toUpperCase();
+    if (c == null || c.isEmpty) return false;
+    for (final r in _routeOptions) {
+      if (r.code.trim().toUpperCase() == c) return r.isFreeRideRoute;
+    }
+    return false;
   }
 
   Future<void> _showProfileInformation() async {
@@ -88,7 +102,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildFreeRideCard() {
-    return FreeRideCard(currentRouteCode: _currentRouteCode);
+    return FreeRideCard(
+      currentRouteCode: _currentRouteCode,
+      isDesignatedFreeRideRoute: _currentRouteIsFreeRideEligible(),
+    );
   }
 
   Widget _buildInfoRow(String label, String value) {
@@ -116,15 +133,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _showRouteSelection() async {
-    if (_isUpdatingRoute) return;
-    final catalog = await RouteCatalogService.fetchRouteCatalog();
+    if (_isUpdatingRoute || _routePickerLoading) return;
+    setState(() => _routePickerLoading = true);
+    late RouteCatalogFetchResult catalog;
+    late List<RouteInfo> options;
+    try {
+      catalog = await RouteCatalogService.fetchRouteCatalog();
+      if (!mounted) return;
+      options =
+          catalog.routes.isNotEmpty ? catalog.routes : _routeOptions;
+      options =
+          await RouteCatalogService.enrichRoutesWithMongoFreeRideFlags(options);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not load routes: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _routePickerLoading = false);
+    }
+
     if (!mounted) return;
+
     String? selectedRouteCode = _currentRouteCode;
-    final options =
-        catalog.routes.isNotEmpty ? catalog.routes : _routeOptions;
-
-    if (!mounted) return;
-
     final result = await showDialog<String>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -135,11 +171,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? Text(catalog.emptySelectionMessage)
                 : Column(
                     mainAxisSize: MainAxisSize.min,
-                    children: options.map((route) {
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'Free ride routes are labeled below (from the server).',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                      ...options.map((route) {
                       final isSelected = selectedRouteCode == route.code;
                       return RadioListTile<String>(
-                        title: Text(route.name),
-                        subtitle: Text('Code: ${route.code}'),
+                        title: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                route.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            if (route.isFreeRideRoute) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.amber.shade700,
+                                  ),
+                                ),
+                                child: Text(
+                                  'FREE RIDE',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.amber.shade900,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('Code: ${route.code}'),
+                        ),
+                        isThreeLine: route.isFreeRideRoute,
                         value: route.code,
                         groupValue: selectedRouteCode,
                         onChanged: (value) {
@@ -149,7 +238,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         },
                         selected: isSelected,
                       );
-                    }).toList(),
+                    }),
+                    ],
                   ),
           ),
           actions: [
@@ -203,22 +293,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final email = user?.email ?? '';
+    final routeOverlayBusy = _routePickerLoading || _isUpdatingRoute;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Profile'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-      ),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            title: const Text('Profile'),
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+          ),
+          body: SafeArea(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                     const SizedBox(height: 24),
                     CircleAvatar(
                       radius: 48,
@@ -250,25 +344,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Route Selection Card
                     Card(
                       elevation: 2,
                       child: ListTile(
                         leading: const Icon(Icons.route, color: Colors.blue),
                         title: const Text('Route'),
-                        subtitle: Text(
-                          _currentRouteCode != null
-                              ? '${_routeNameForCode(_currentRouteCode)} (Code: $_currentRouteCode)'
-                              : 'Not set - Tap to select',
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _currentRouteCode != null
+                                  ? '${_routeNameForCode(_currentRouteCode)} (Code: $_currentRouteCode)'
+                                  : 'Not set - Tap to select',
+                            ),
+                            if (_currentRouteCode != null &&
+                                _currentRouteIsFreeRideEligible()) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.shade100,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: Colors.amber.shade700,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Free ride route',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.amber.shade900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        trailing: _isUpdatingRoute
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.chevron_right),
-                        onTap: _isUpdatingRoute ? null : _showRouteSelection,
+                        isThreeLine: _currentRouteCode != null &&
+                            _currentRouteIsFreeRideEligible(),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: routeOverlayBusy ? null : _showRouteSelection,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -283,10 +403,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
-                  ],
+                      ],
+                    ),
+                  ),
+          ),
+        ),
+        if (routeOverlayBusy)
+          Positioned.fill(
+            child: AbsorbPointer(
+              child: Material(
+                color: Colors.black54,
+                child: Center(
+                  child: Card(
+                    elevation: 10,
+                    margin: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 28,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: CircularProgressIndicator(strokeWidth: 3),
+                          ),
+                          const SizedBox(height: 18),
+                          Text(
+                            _routePickerLoading
+                                ? 'Loading route list…'
+                                : 'Saving route…',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-      ),
+            ),
+          ),
+      ],
     );
   }
 

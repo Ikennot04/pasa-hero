@@ -16,29 +16,21 @@ class OperatorBusIconService {
   bool _loaded = false;
 
   Future<void> load(BuildContext context) async {
-    if (_loaded && _defaultDescriptor != null && _freeRideDescriptor != null) {
-      return;
-    }
     try {
-      _defaultDescriptor = await BitmapDescriptor.asset(
+      _defaultDescriptor ??= await BitmapDescriptor.asset(
         createLocalImageConfiguration(context),
         _assetPath,
         width: _widthLogicalPx,
       );
-    } catch (_) {
-      _defaultDescriptor = null;
-    }
+    } catch (_) {}
     try {
-      _freeRideDescriptor = await BitmapDescriptor.asset(
+      _freeRideDescriptor ??= await BitmapDescriptor.asset(
         createLocalImageConfiguration(context),
         _freeRideAssetPath,
         width: _widthLogicalPx,
       );
-    } catch (_) {
-      _freeRideDescriptor = null;
-    } finally {
-      _loaded = true;
-    }
+    } catch (_) {}
+    _loaded = true;
   }
 
   /// Custom bus bitmap when [load] succeeded; otherwise default orange pin.
@@ -46,8 +38,11 @@ class OperatorBusIconService {
       _defaultDescriptor ??
       BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
 
-  /// Free-ride bus bitmap when available; otherwise falls back to [icon].
-  BitmapDescriptor get freeRideIcon => _freeRideDescriptor ?? icon;
+  /// Free-ride bus bitmap when available; otherwise a distinct default marker hue so
+  /// free ride is still visible if the asset fails to decode on a device.
+  BitmapDescriptor get freeRideIcon =>
+      _freeRideDescriptor ??
+      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
 
   BitmapDescriptor iconForOperator({required bool isFreeRide}) =>
       isFreeRide ? freeRideIcon : icon;
