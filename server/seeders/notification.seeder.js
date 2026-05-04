@@ -402,6 +402,32 @@ async function seedNotifications() {
       minutes: 91,
       priority: "high",
     }),
+    {
+      sender_id: String(operator1._id),
+      bus_id: String(bus1._id),
+      route_id: String(route01A._id),
+      terminal_id: String(smTerminal._id),
+      title: "CEB-001 — few seats",
+      message:
+        "Operator updated occupancy for CEB-001 on Route 01A (SM to Ayala): 24/50 passengers (few seats).",
+      notification_type: "occupancy_update",
+      priority: "medium",
+      scope: "route",
+      createdAt: minutesAgo(59),
+    },
+    {
+      sender_id: String(operator2._id),
+      bus_id: String(bus3._id),
+      route_id: String(route03C._id),
+      terminal_id: String(smTerminal._id),
+      title: "CEB-003 — standing room",
+      message:
+        "Operator updated occupancy for CEB-003 on Route 03C (IT Park to SM): 38/45 passengers (standing room).",
+      notification_type: "occupancy_update",
+      priority: "medium",
+      scope: "route",
+      createdAt: minutesAgo(57),
+    },
     makeTerminalEvent({
       sender: operator2,
       bus: bus1,
@@ -428,7 +454,7 @@ async function seedNotifications() {
       title: "SM Terminal — platform safety hold",
       message:
         "Hold departures on affected bays for equipment inspection; follow marshal instructions.",
-      type: "delay",
+      type: "info",
       minutes: 72,
       priority: "high",
     }),
@@ -439,7 +465,7 @@ async function seedNotifications() {
       title: "Route 03C Traffic Delay Advisory",
       message:
         "Route 03C is experiencing corridor congestion near JY Square with an estimated 7-minute delay.",
-      type: "delay",
+      type: "info",
       minutes: 66,
       priority: "medium",
     }),
@@ -461,7 +487,7 @@ async function seedNotifications() {
       title: "Route 02B Dispatch Delay",
       message:
         "Dispatch on Route 02B is delayed by about 5 minutes due to temporary loading congestion.",
-      type: "delay",
+      type: "info",
       minutes: 60,
       priority: "medium",
     }),
@@ -483,7 +509,7 @@ async function seedNotifications() {
       title: "Route 01A Delay Near Fuente",
       message:
         "Route 01A is moving slowly near Fuente Osmena due to lane restrictions with an estimated 4-minute delay.",
-      type: "delay",
+      type: "info",
       minutes: 49,
       priority: "medium",
     }),
@@ -505,7 +531,7 @@ async function seedNotifications() {
       title: "Route 02B Minor Delay Update",
       message:
         "Route 02B outbound service is delayed around 3 minutes because of curbside congestion.",
-      type: "delay",
+      type: "info",
       minutes: 45,
       priority: "low",
     }),
