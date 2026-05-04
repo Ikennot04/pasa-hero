@@ -24,6 +24,8 @@ import seedDevAdminUsers, {
 } from "./devAdminUsers.seeder.js";
 import seedJohnAdminUsers from "./johnAdminUsers.seeder.js";
 import seedAssignedOperators from "./assignedOperators.seeder.js";
+import seedUnassignedBusDriverOperator from "./unassignedBusDriverOperator.seeder.js";
+import seedAdminAccess from "./adminAccess.seeder.js";
 import {
   getOccupancyStatus,
   insertBusStatusesForSeedBuses,
@@ -3097,6 +3099,11 @@ const seedData = async () => {
     await seedUserNotifications();
     console.log("✅ Ran user notifications seeder");
 
+    const unassignedSeed = await seedUnassignedBusDriverOperator();
+    if (unassignedSeed) {
+      console.log("✅ Ran unassigned bus / driver / operator seeder");
+    }
+
     console.log("\n✅ Seed data created successfully!");
   } catch (error) {
     console.error("❌ Error seeding data:", error);
@@ -3126,7 +3133,8 @@ if (isDirectRun) {
       console.log("📦 Connected to MongoDB");
       return seedData();
     })
-    .then(() => {
+    .then(async () => {
+      await seedAdminAccess();
       console.log("🎉 Seeding complete!");
       process.exit(0);
     })
