@@ -1,4 +1,4 @@
-export type NotificationType = "delay" | "full" | "skipped_stop" | "info";
+export type NotificationType = "full" | "skipped_stop" | "info";
 export type NotificationPriority = "high" | "medium" | "low";
 export type NotificationScope = "bus" | "route" | "terminal" | "system";
 

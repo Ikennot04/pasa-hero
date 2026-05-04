@@ -4,7 +4,6 @@
  */
 export type NotificationScope = "bus" | "route" | "terminal" | "system";
 export type NotificationType =
-  | "delay"
   | "full"
   | "skipped_stop"
   | "info"
@@ -12,6 +11,8 @@ export type NotificationType =
   | "arrival_rejected"
   | "departure_reported"
   | "departure_rejected"
+  | "route_free"
+  | "occupancy_update"
   | "other"
   | "custom";
 export type NotificationPriority = "high" | "medium" | "low";
