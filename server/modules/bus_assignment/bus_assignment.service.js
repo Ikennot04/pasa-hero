@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import BusAssignment from "./bus_assignment.model.js";
 import Bus from "../bus/bus.model.js";
 import Driver from "../driver/driver.model.js";
@@ -233,6 +234,32 @@ export const BusAssignmentService = {
     return { buses, drivers, operators, routes };
   },
 
+  // GET PENDING ASSIGNMENTS BY OPERATOR USER ID ===============================================
+  async getPendingBusAssignmentsByOperatorUserId(operatorUserId) {
+    if (!operatorUserId) {
+      const error = new Error("Operator user ID is required.");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!mongoose.Types.ObjectId.isValid(String(operatorUserId))) {
+      const error = new Error("Invalid operator user ID.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const assignments = await populateBusAssignmentListRefs(
+      BusAssignment.find({
+        operator_user_id: operatorUserId,
+        assignment_result: "pending",
+      }).select(
+        "bus_id driver_id operator_user_id route_id assignment_status assignment_result latest_terminal_log_id createdAt updatedAt",
+      ),
+    )
+      .sort({ createdAt: -1 })
+      .lean();
+    return assignments.map(toBusAssignmentListRow);
+  },
+
   // GET ALL BUS ASSIGNMENTS ===================================================================
   async getAllBusAssignments() {
     const assignments = await populateBusAssignmentListRefs(
@@ -256,6 +283,19 @@ export const BusAssignmentService = {
       throw error;
     }
     return assignment;
+  },
+
+  // GET CURRENT ASSIGNMENT FOR OPERATOR (JWT user) =============================================
+  async getCurrentBusAssignmentForOperatorUserId(operatorUserId) {
+    if (!operatorUserId) return null;
+    const assignment = await populateBusAssignmentRefs(
+      BusAssignment.findOne({
+        operator_user_id: operatorUserId,
+        assignment_status: "active",
+        assignment_result: "pending",
+      }),
+    );
+    return assignment ?? null;
   },
 
   // CREATE BUS ASSIGNMENT ===================================================================
