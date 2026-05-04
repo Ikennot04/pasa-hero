@@ -8,6 +8,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/services/driver_status_service.dart';
+
 /// Firestore often returns [Map<Object?, Object?>]; normalize for parsing.
 Map<String, dynamic>? firestoreMap(dynamic value) {
   if (value == null) return null;
@@ -23,11 +25,15 @@ class RouteInfo {
   final String code;
   final String name;
   final String description;
+  /// From Mongo/backend `is_free_ride` when the route catalog is loaded from the API
+  /// (or Firestore if that field exists on `route_code` / `routes` docs).
+  final bool isFreeRideRoute;
 
   const RouteInfo({
     required this.code,
     required this.name,
     required this.description,
+    this.isFreeRideRoute = false,
   });
 }
 
@@ -105,11 +111,107 @@ class RouteCatalogService {
     return const [];
   }
 
+  static bool _readIsFreeRideFromMap(Map<String, dynamic>? sm) {
+    if (sm == null) return false;
+    final v = sm['is_free_ride'] ?? sm['isFreeRide'] ?? sm['free_ride'];
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'yes';
+    }
+    return false;
+  }
+
+  static Map<String, bool>? _freeRideByCodeCache;
+  static DateTime? _freeRideByCodeCacheAt;
+  static const Duration _freeRideCacheTtl = Duration(seconds: 45);
+
+  /// Builds `route_code (uppercase) → is_free_ride` from `GET /api/routes` (same payload as catalog).
+  /// Cached briefly — there is no `/by-code/` route on the server; the old URL never matched a route.
+  static Future<Map<String, bool>?> _loadFreeRideByCodeFromRoutesApi() async {
+    final now = DateTime.now();
+    final cache = _freeRideByCodeCache;
+    final cacheAt = _freeRideByCodeCacheAt;
+    if (cache != null &&
+        cacheAt != null &&
+        now.difference(cacheAt) < _freeRideCacheTtl) {
+      return cache;
+    }
+    try {
+      final response = await http
+          .get(
+            Uri.parse(_routesApiUrl),
+            headers: const {'Accept': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      Map<String, dynamic>? decoded;
+      try {
+        decoded = _jsonObject(jsonDecode(response.body));
+      } catch (_) {
+        return null;
+      }
+      if (decoded == null || decoded['success'] == false) return null;
+      final rows = _routeRowListFromDecoded(decoded);
+      final out = <String, bool>{};
+      for (final row in rows) {
+        final sm = _jsonObject(row);
+        if (sm == null) continue;
+        final code = _firstNonEmptyField(sm, const [
+          'route_code',
+          'routeCode',
+          'code',
+        ]);
+        if (code == null || code.isEmpty) continue;
+        out[code.toUpperCase()] = _readIsFreeRideFromMap(sm);
+      }
+      _freeRideByCodeCache = out;
+      _freeRideByCodeCacheAt = now;
+      return out;
+    } catch (e) {
+      debugPrint('⚠️ [RouteCatalog] _loadFreeRideByCodeFromRoutesApi: $e');
+      return null;
+    }
+  }
+
+  /// Reads Mongo `is_free_ride` for a route code via the published routes list.
+  static Future<bool> fetchIsFreeRideByRouteCodeFromApi(String code) async {
+    final t = code.trim().toUpperCase();
+    if (t.isEmpty) return false;
+    final map = await _loadFreeRideByCodeFromRoutesApi();
+    if (map == null) return false;
+    return map[t] == true;
+  }
+
+  /// Fills [RouteInfo.isFreeRideRoute] when the catalog row missed the flag (e.g. Firestore-only merge).
+  static Future<List<RouteInfo>> enrichRoutesWithMongoFreeRideFlags(
+    List<RouteInfo> routes,
+  ) async {
+    if (routes.isEmpty) return routes;
+    final fromApi = await _loadFreeRideByCodeFromRoutesApi();
+    if (fromApi == null) return routes;
+    return routes.map((r) {
+      if (r.isFreeRideRoute) return r;
+      final key = r.code.trim().toUpperCase();
+      if (fromApi[key] != true) return r;
+      return RouteInfo(
+        code: r.code,
+        name: r.name,
+        description: r.description,
+        isFreeRideRoute: true,
+      );
+    }).toList();
+  }
+
   static void _put(
     Map<String, RouteInfo> out, {
     required String codeRaw,
     String? nameRaw,
     String? descriptionRaw,
+    bool isFreeRideRoute = false,
   }) {
     final code = codeRaw.trim();
     if (code.isEmpty) return;
@@ -118,7 +220,15 @@ class RouteCatalogService {
     final description = (descriptionRaw ?? '').trim().isEmpty
         ? 'Dynamic route from Firestore'
         : descriptionRaw!.trim();
-    out[key] = RouteInfo(code: code, name: name, description: description);
+    final existing = out[key];
+    final mergedFreeRide =
+        isFreeRideRoute || (existing?.isFreeRideRoute ?? false);
+    out[key] = RouteInfo(
+      code: code,
+      name: name,
+      description: description,
+      isFreeRideRoute: mergedFreeRide,
+    );
   }
 
   /// If `route_code` is empty, seed it from `routes` so both apps can stay dynamic.
@@ -199,6 +309,7 @@ class RouteCatalogService {
         descriptionRaw: (status == null || status.isEmpty)
             ? (sourceLabel == 'api' ? 'Live route from API' : 'Route from Firestore')
             : 'Status: $status',
+        isFreeRideRoute: _readIsFreeRideFromMap(sm),
       );
     }
   }
@@ -217,6 +328,7 @@ class RouteCatalogService {
           codeRaw: doc.id,
           nameRaw: name ?? doc.id,
           descriptionRaw: desc,
+          isFreeRideRoute: _readIsFreeRideFromMap(m),
         );
       }
     } catch (e) {
@@ -240,6 +352,7 @@ class RouteCatalogService {
           codeRaw: code,
           nameRaw: name ?? code,
           descriptionRaw: desc,
+          isFreeRideRoute: _readIsFreeRideFromMap(m),
         );
       }
     } catch (e) {
@@ -369,6 +482,51 @@ class ProfileDataService {
     return '';
   }
 
+  /// Syncs `driver_status/{routeCode}` free ride with Mongo: free-ride routes turn on
+  /// Firebase free ride (default 1h window); others turn it off. Clears the previous
+  /// route's free ride when the operator switches routes.
+  static Future<void> syncDriverStatusFreeRideWithMongoRoute({
+    required String operatorUid,
+    required String? previousRouteCodeUpper,
+    required String newRouteCodeUpper,
+  }) async {
+    try {
+      final next = newRouteCodeUpper.trim().toUpperCase();
+      if (next.isEmpty) return;
+
+      final prev = previousRouteCodeUpper?.trim().toUpperCase();
+      if (prev != null && prev.isNotEmpty && prev != next) {
+        await DriverStatusService.instance.setFreeRideStatus(
+          prev,
+          isFreeRide: false,
+          operatorId: operatorUid,
+        );
+      }
+
+      final eligible = await RouteCatalogService.fetchIsFreeRideByRouteCodeFromApi(next);
+      if (eligible) {
+        final now = DateTime.now();
+        await DriverStatusService.instance.setFreeRideStatus(
+          next,
+          isFreeRide: true,
+          operatorId: operatorUid,
+          freeRideUntil: now.add(const Duration(hours: 1)),
+          freeRideFrom: now,
+        );
+      } else {
+        await DriverStatusService.instance.setFreeRideStatus(
+          next,
+          isFreeRide: false,
+          operatorId: operatorUid,
+        );
+      }
+    } catch (e, st) {
+      debugPrint(
+        '⚠️ [ProfileDataService] syncDriverStatusFreeRideWithMongoRoute: $e\n$st',
+      );
+    }
+  }
+
   /// Update operator's route code in Firestore.
   static Future<bool> updateOperatorRouteCode(String routeCode) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -376,18 +534,30 @@ class ProfileDataService {
 
     try {
       final trimmed = routeCode.trim();
-      await FirebaseFirestore.instance
-          .collection(_usersCollection)
-          .doc(user.uid)
-          .update({
-        'routeCode': trimmed.toUpperCase(),
-        'route_code': trimmed.toUpperCase(), // Also store as snake_case
+      final upper = trimmed.toUpperCase();
+      final docRef =
+          FirebaseFirestore.instance.collection(_usersCollection).doc(user.uid);
+
+      final previousSnap = await docRef.get();
+      final previousRaw = previousSnap.exists
+          ? _routeFieldFromMap(previousSnap.data())
+          : null;
+      final previousUpper = (previousRaw == null || previousRaw.trim().isEmpty)
+          ? null
+          : previousRaw.trim().toUpperCase();
+
+      await docRef.update({
+        'routeCode': upper,
+        'route_code': upper,
         'updatedAt': FieldValue.serverTimestamp(),
       });
       setLocationSyncRouteFallback(trimmed);
       print('✅ [ProfileDataService] Route code updated: $routeCode');
-      unawaited(
-        RouteCodeService.syncRouteCodeWithGpsAndRoutes(trimmed.toUpperCase()),
+      unawaited(RouteCodeService.syncRouteCodeWithGpsAndRoutes(upper));
+      await syncDriverStatusFreeRideWithMongoRoute(
+        operatorUid: user.uid,
+        previousRouteCodeUpper: previousUpper,
+        newRouteCodeUpper: upper,
       );
       return true;
     } catch (e) {

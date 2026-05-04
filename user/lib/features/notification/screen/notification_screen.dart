@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show HttpException, SocketException;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/services/driver_status_read_service.dart';
 import '../../../core/services/notification_badge_service.dart';
+import '../../../core/services/nearby_operators_service.dart';
+import '../../../core/services/operator_route_options_service.dart';
 import '../../../core/services/subscription_ids_service.dart';
 import '../../../core/themes/validation_theme.dart';
 
@@ -23,6 +27,8 @@ class _MergedNotificationRow {
     this.inboxItem,
     this.followedRouteCode,
     this.freeRide,
+    this.followedCatalogFreeRouteCode,
+    this.liveBusFollowedRouteCode,
   });
 
   factory _MergedNotificationRow.fromInbox(
@@ -46,15 +52,47 @@ class _MergedNotificationRow {
     );
   }
 
+  factory _MergedNotificationRow.fromFollowedCatalogFreeLine({
+    required String routeCode,
+    required DateTime sortTime,
+  }) {
+    return _MergedNotificationRow._(
+      sortTime: sortTime,
+      followedCatalogFreeRouteCode: routeCode,
+    );
+  }
+
+  factory _MergedNotificationRow.fromLiveBusOnFollowedRoute({
+    required String routeCode,
+    required DateTime sortTime,
+  }) {
+    return _MergedNotificationRow._(
+      sortTime: sortTime,
+      liveBusFollowedRouteCode: routeCode,
+    );
+  }
+
   final DateTime sortTime;
   final Map<String, dynamic>? inboxItem;
   final String? followedRouteCode;
   final FreeRideStatusSnapshot? freeRide;
+  /// Mongo free-ride line the user follows (no live Firestore promo yet).
+  final String? followedCatalogFreeRouteCode;
+  /// Followed route with a live bus in [operator_locations].
+  final String? liveBusFollowedRouteCode;
 
   bool get isFollowedFreeRide =>
       freeRide != null &&
       freeRide!.isActive &&
       followedRouteCode != null;
+
+  bool get isFollowedCatalogFreeLine =>
+      followedCatalogFreeRouteCode != null &&
+      followedCatalogFreeRouteCode!.isNotEmpty;
+
+  bool get isLiveBusOnFollowedRoute =>
+      liveBusFollowedRouteCode != null &&
+      liveBusFollowedRouteCode!.isNotEmpty;
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
@@ -68,7 +106,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
   /// Followed route code (uppercase) → latest free ride snapshot from Firestore.
   final Map<String, FreeRideStatusSnapshot?> _freeRideByRouteCode = {};
 
-  final List<StreamSubscription<FreeRideStatusSnapshot?>> _freeRideSubscriptions = [];
+  /// Full [driver_status] listener (doc id may differ from subscription route code).
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _driverStatusSub;
+
+  Set<String> _followedRouteCodesUpper = {};
+  Set<String> _catalogFreeRouteCodesUpper = {};
+  Set<String> _followedRoutesWithLiveBus = {};
+
+  final OperatorRouteOptionsService _routeOptionsService =
+      OperatorRouteOptionsService();
+  final NearbyOperatorsService _nearbyOperatorsService =
+      NearbyOperatorsService();
 
   int _lastInboxUnread = 0;
   String? _activeInboxUserId;
@@ -83,14 +131,48 @@ class _NotificationScreenState extends State<NotificationScreen> {
   @override
   void dispose() {
     NotificationBadgeService.instance.setOnTabOpenedHandler(null);
-    for (final s in _freeRideSubscriptions) {
-      s.cancel();
-    }
+    _driverStatusSub?.cancel();
     super.dispose();
   }
 
   void _onNotificationTabOpened() {
     unawaited(_applyViewedNotifications());
+  }
+
+  /// Parses API read flag from [is_read] / [isRead] / numeric / string.
+  static bool? _parseReadFlag(dynamic v) {
+    if (v == null) return null;
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    final s = v.toString().trim().toLowerCase();
+    if (s == 'true' || s == '1') return true;
+    if (s == 'false' || s == '0' || s.isEmpty) return false;
+    return null;
+  }
+
+  static bool _inboxItemIsRead(Map<String, dynamic> item) {
+    final flag =
+        _parseReadFlag(item['is_read']) ?? _parseReadFlag(item['isRead']);
+    return flag == true;
+  }
+
+  static String? _inboxRowId(Map<String, dynamic> item) {
+    final raw = item['_id'];
+    if (raw != null) {
+      if (raw is Map) {
+        final oid = raw[r'$oid'];
+        if (oid != null) {
+          final s = oid.toString().trim();
+          if (s.isNotEmpty) return s;
+        }
+      } else {
+        final s = raw.toString().trim();
+        if (s.isNotEmpty && s != 'null') return s;
+      }
+    }
+    final id = item['id']?.toString().trim();
+    if (id != null && id.isNotEmpty) return id;
+    return null;
   }
 
   Future<void> _applyViewedNotifications() async {
@@ -102,8 +184,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     final ids = <String>[];
     for (final item in _inboxItems) {
-      if (item['is_read'] == true) continue;
-      final id = item['_id']?.toString().trim();
+      if (_inboxItemIsRead(item)) continue;
+      final id = _inboxRowId(item);
       if (id != null && id.isNotEmpty) ids.add(id);
     }
     if (ids.isEmpty) return;
@@ -130,7 +212,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           mounted) {
         setState(() {
           _inboxItems = _inboxItems.map((item) {
-            if (item['is_read'] == true) return item;
+            if (_inboxItemIsRead(item)) return item;
             final copy = Map<String, dynamic>.from(item);
             copy['is_read'] = true;
             return copy;
@@ -146,30 +228,44 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   void _cancelFreeRideSubscriptions() {
-    for (final s in _freeRideSubscriptions) {
-      s.cancel();
-    }
-    _freeRideSubscriptions.clear();
+    _driverStatusSub?.cancel();
+    _driverStatusSub = null;
     _freeRideByRouteCode.clear();
   }
 
   void _attachFreeRideListeners(Set<String> routeCodesUpper) {
     _cancelFreeRideSubscriptions();
-    if (routeCodesUpper.isEmpty) return;
+    final upper = routeCodesUpper
+        .map((c) => c.trim().toUpperCase())
+        .where((c) => c.isNotEmpty)
+        .toSet();
+    if (upper.isEmpty) return;
 
-    for (final routeCode in routeCodesUpper) {
+    for (final routeCode in upper) {
       _freeRideByRouteCode[routeCode] = null;
-      final sub = DriverStatusReadService.instance
-          .freeRideStream(routeCode)
-          .listen((snapshot) {
+    }
+
+    _driverStatusSub = FirebaseFirestore.instance
+        .collection(driverStatusCollection)
+        .snapshots()
+        .listen(
+      (snapshot) {
         if (!mounted) return;
+        final map = DriverStatusReadService.instance
+            .mapActiveFreeRidesForFollowedRoutes(snapshot, upper);
         setState(() {
-          _freeRideByRouteCode[routeCode] = snapshot;
+          for (final e in map.entries) {
+            _freeRideByRouteCode[e.key] = e.value;
+          }
         });
         _syncNavBadge();
-      });
-      _freeRideSubscriptions.add(sub);
-    }
+      },
+      onError: (_) {
+        if (!mounted) return;
+        setState(() {});
+        _syncNavBadge();
+      },
+    );
   }
 
   Future<void> _loadInbox() async {
@@ -187,6 +283,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
           _error = 'Please sign in first.';
         });
         _cancelFreeRideSubscriptions();
+        _followedRouteCodesUpper = {};
+        _catalogFreeRouteCodesUpper = {};
+        _followedRoutesWithLiveBus = {};
         _lastInboxUnread = 0;
         _activeInboxUserId = null;
         NotificationBadgeService.instance.setServerUnreadCount(0);
@@ -194,11 +293,14 @@ class _NotificationScreenState extends State<NotificationScreen> {
         return;
       }
 
-      final backendUserId =
-          await SubscriptionIdsService.backendUserIdForFirebaseUid(
+      final routeFuture = SubscriptionIdsService.fetchRouteIdByCodeMap();
+      final backendFuture = SubscriptionIdsService.backendUserIdForFirebaseUid(
         firebaseUser.uid,
         email: firebaseUser.email,
       );
+      final catalogFuture = _routeOptionsService.fetchAvailableRoutes();
+      final routeIdByCode = await routeFuture;
+      final backendUserId = await backendFuture;
       final effectiveUserId =
           (backendUserId != null && backendUserId.isNotEmpty)
               ? backendUserId
@@ -215,17 +317,49 @@ class _NotificationScreenState extends State<NotificationScreen> {
         idsToTry.add(effectiveUserId);
       }
 
-      final routeIdByCode = await SubscriptionIdsService.fetchRouteIdByCodeMap();
       final followedRouteCodes =
-          await SubscriptionIdsService.fetchSubscribedRouteCodes(
-        effectiveUserId: effectiveUserId,
+          await SubscriptionIdsService.fetchSubscribedRouteCodesMerged(
+        backendMongoUserId: backendUserId,
+        firebaseUid: firebaseUser.uid,
         routeIdByCode: routeIdByCode,
       );
+      final catalog = await catalogFuture;
+      final catalogFree = <String>{};
+      for (final o in catalog) {
+        if (!o.isFreeRideRoute) continue;
+        final raw = o.code.trim();
+        if (raw.isEmpty) continue;
+        catalogFree.add(raw.toUpperCase());
+        final alnum = raw.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+        if (alnum.isNotEmpty) {
+          catalogFree.add(alnum);
+          if (alnum.startsWith('ROUTE') && alnum.length > 5) {
+            catalogFree.add(alnum.substring(5));
+          }
+        }
+      }
+      final followedUpper = followedRouteCodes;
+
+      final liveOnFollowed =
+          await _nearbyOperatorsService.followedRoutesWithLiveOnlineBus(
+        followedUpper,
+      );
+
+      if (!mounted) return;
+      _attachFreeRideListeners(followedUpper);
+      setState(() {
+        _followedRouteCodesUpper = followedUpper;
+        _catalogFreeRouteCodesUpper = catalogFree;
+        _followedRoutesWithLiveBus = liveOnFollowed;
+      });
+      _syncNavBadge();
 
       List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
       String? lastError;
       var serverUnread = 0;
       String? successInboxUserId;
+      // Sequential inbox requests avoid burst connections that trigger
+      // "Software caused connection abort" on some mobile networks.
       for (final id in idsToTry) {
         final result = await _fetchInboxByUserId(id);
         if (result.error != null) {
@@ -237,9 +371,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
         successInboxUserId = id;
         break;
       }
-      if (items.isEmpty && lastError != null) {
-        throw Exception(lastError);
-      }
 
       if (!mounted) return;
       _lastInboxUnread = serverUnread;
@@ -247,9 +378,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
       setState(() {
         _inboxItems = items;
         _loading = false;
+        if (lastError != null &&
+            items.isEmpty &&
+            followedUpper.isEmpty) {
+          _error = lastError;
+        } else {
+          _error = null;
+        }
       });
 
-      _attachFreeRideListeners(followedRouteCodes);
       _syncNavBadge();
     } catch (e) {
       if (!mounted) return;
@@ -260,51 +397,121 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
+  bool _isRetryableInboxNetworkError(Object e) {
+    if (e is TimeoutException) return true;
+    if (e is SocketException) return true;
+    if (e is HttpException) return true;
+    if (e is http.ClientException) return true;
+    final m = e.toString().toLowerCase();
+    return m.contains('connection abort') ||
+        m.contains('connection closed') ||
+        m.contains('connection reset') ||
+        m.contains('broken pipe') ||
+        m.contains('socketexception') ||
+        m.contains('failed host lookup') ||
+        m.contains('network is unreachable');
+  }
+
+  String _userVisibleInboxError(Object e) {
+    if (e is TimeoutException) {
+      return 'Request timed out. Check your network and tap Retry.';
+    }
+    final m = e.toString().toLowerCase();
+    if (m.contains('connection abort') ||
+        m.contains('connection closed') ||
+        m.contains('clientexception') ||
+        m.contains('socketexception') ||
+        m.contains('broken pipe')) {
+      return 'Connection interrupted. Check your network and tap Retry.';
+    }
+    return e.toString().replaceFirst('Exception: ', '');
+  }
+
   Future<_InboxFetchResult> _fetchInboxByUserId(String userId) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_notificationsInboxApiBase/$userId'),
-        headers: const {'Accept': 'application/json'},
+    if (userId.trim().isEmpty) {
+      return const _InboxFetchResult(
+        items: [],
+        error: 'Missing user id for inbox',
       );
+    }
+    final uri = Uri.parse(
+      '$_notificationsInboxApiBase/${Uri.encodeComponent(userId.trim())}',
+    );
+    const timeout = Duration(seconds: 22);
+    Object? lastError;
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return _InboxFetchResult(
-          items: const [],
-          error: 'Failed to load notifications (${response.statusCode})',
-        );
-      }
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (attempt > 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 600));
+        }
+        final response = await http
+            .get(
+              uri,
+              headers: const {'Accept': 'application/json'},
+            )
+            .timeout(timeout);
 
-      final decoded = jsonDecode(response.body);
-      final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
-      final inbox = data is Map<String, dynamic> ? data['inbox'] : null;
-      final items = <Map<String, dynamic>>[];
-      if (inbox is List) {
-        for (final item in inbox) {
-          if (item is Map<String, dynamic>) {
-            items.add(item);
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          return _InboxFetchResult(
+            items: const [],
+            error: 'Failed to load notifications (${response.statusCode})',
+          );
+        }
+
+        final decoded = jsonDecode(response.body);
+        final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
+        final inbox = data is Map<String, dynamic> ? data['inbox'] : null;
+        final items = <Map<String, dynamic>>[];
+        if (inbox is List) {
+          for (final item in inbox) {
+            if (item is Map<String, dynamic>) {
+              items.add(item);
+            }
           }
         }
+        var unreadCount = 0;
+        final counts = data is Map<String, dynamic> ? data['counts'] : null;
+        if (counts is Map<String, dynamic>) {
+          final u = counts['unread'];
+          if (u is num) unreadCount = u.toInt();
+        }
+        return _InboxFetchResult(items: items, unreadCount: unreadCount);
+      } catch (e) {
+        lastError = e;
+        if (attempt == 0 && _isRetryableInboxNetworkError(e)) {
+          continue;
+        }
+        break;
       }
-      var unreadCount = 0;
-      final counts = data is Map<String, dynamic> ? data['counts'] : null;
-      if (counts is Map<String, dynamic>) {
-        final u = counts['unread'];
-        if (u is num) unreadCount = u.toInt();
-      }
-      return _InboxFetchResult(items: items, unreadCount: unreadCount);
-    } catch (e) {
-      return _InboxFetchResult(items: const [], error: e.toString());
     }
+
+    return _InboxFetchResult(
+      items: const [],
+      error: _userVisibleInboxError(lastError ?? 'Unknown error'),
+    );
+  }
+
+  bool _catalogFreeMatchesFollowed(String followedCode) {
+    for (final free in _catalogFreeRouteCodesUpper) {
+      if (NearbyOperatorsService.routesLooselySameLine(followedCode, free)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool _isInboxUnread(Map<String, dynamic> item) {
-    final v = item['is_read'];
-    if (v == null) return true;
-    if (v is bool) return !v;
-    return v.toString().toLowerCase() != 'true';
+    final flag =
+        _parseReadFlag(item['is_read']) ?? _parseReadFlag(item['isRead']);
+    if (flag == true) return false;
+    if (flag == false) return true;
+    // Unknown / missing flag: do not assume unread (avoids stale rows stuck in "New").
+    return false;
   }
 
-  /// New = unread inbox + active free ride on followed routes. Older = read inbox (kept on screen).
+  /// New = unread inbox + active timed free ride on followed routes.
+  /// Older = read inbox + route context cards (catalog free line, live bus) that are not discrete events.
   ({List<_MergedNotificationRow> fresh, List<_MergedNotificationRow> older})
       _partitionNewAndOlder() {
     final fresh = <_MergedNotificationRow>[];
@@ -331,6 +538,31 @@ class _NotificationScreenState extends State<NotificationScreen> {
           freeRide: snap,
         ),
       );
+    }
+
+    for (final code in _followedRouteCodesUpper) {
+      if (code.isEmpty) continue;
+      final promo = _freeRideByRouteCode[code];
+      if (promo != null && promo.isActive) continue;
+
+      if (_followedRoutesWithLiveBus.contains(code)) {
+        older.add(
+          _MergedNotificationRow.fromLiveBusOnFollowedRoute(
+            routeCode: code,
+            sortTime: DateTime.now(),
+          ),
+        );
+        continue;
+      }
+
+      if (_catalogFreeMatchesFollowed(code)) {
+        older.add(
+          _MergedNotificationRow.fromFollowedCatalogFreeLine(
+            routeCode: code,
+            sortTime: DateTime.now().subtract(const Duration(minutes: 1)),
+          ),
+        );
+      }
     }
 
     fresh.sort((a, b) => b.sortTime.compareTo(a.sortTime));
@@ -562,14 +794,39 @@ class _NotificationScreenState extends State<NotificationScreen> {
         emphasizeNew: emphasizeNew,
       );
     }
-    final item = row.inboxItem!;
-    return _buildNotificationCard(
-      title: _resolveTitle(item),
-      description: _resolveDescription(item),
-      timestamp: _formatTimestamp(_resolveCreatedAt(item)),
-      statusColor: _statusColorForInbox(item),
-      emphasizeNew: emphasizeNew,
-    );
+    if (row.isLiveBusOnFollowedRoute) {
+      final code = row.liveBusFollowedRouteCode!;
+      return _buildNotificationCard(
+        title: 'Bus live on route you follow — $code',
+        description:
+            'A driver on route $code is online with a recent location. Open Near Me to see them on the map.',
+        timestamp: 'Live',
+        statusColor: ValidationTheme.successGreen,
+        emphasizeNew: emphasizeNew,
+      );
+    }
+    if (row.isFollowedCatalogFreeLine) {
+      final code = row.followedCatalogFreeRouteCode!;
+      return _buildNotificationCard(
+        title: 'Free-ride route you follow — $code',
+        description:
+            'Route $code is a free-ride line. When an operator starts a promo, timing will show in a green card above. Open Near Me for live buses.',
+        timestamp: '',
+        statusColor: ValidationTheme.primaryBlue,
+        emphasizeNew: emphasizeNew,
+      );
+    }
+    final item = row.inboxItem;
+    if (item != null) {
+      return _buildNotificationCard(
+        title: _resolveTitle(item),
+        description: _resolveDescription(item),
+        timestamp: _formatTimestamp(_resolveCreatedAt(item)),
+        statusColor: _statusColorForInbox(item),
+        emphasizeNew: emphasizeNew,
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildNotificationCard({

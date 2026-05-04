@@ -88,6 +88,7 @@ flutter:
     - assets/images/logo/bustopSign.png
     - assets/images/pasahero_logo.png
     - assets/images/logo1.png
+    - assets/images/LANDINGPAGE.png
     - assets/map_styles/traffic_only_style.json
 
   # An image asset can refer to one or more resolution-specific "variants", see

@@ -7,46 +7,62 @@ class FreeRideCard extends StatelessWidget {
   const FreeRideCard({
     super.key,
     required this.currentRouteCode,
+    this.isDesignatedFreeRideRoute = false,
   });
 
   final String? currentRouteCode;
+  /// True when this route is a free-ride line in the server catalog (`is_free_ride`).
+  final bool isDesignatedFreeRideRoute;
 
-  static String _formatDateTime(DateTime d) {
-    final y = d.year;
-    final m = d.month.toString().padLeft(2, '0');
-    final day = d.day.toString().padLeft(2, '0');
-    final h = d.hour.toString().padLeft(2, '0');
-    final min = d.minute.toString().padLeft(2, '0');
-    return '$y-$m-$day $h:$min';
+  /// 12-hour clock, UX-friendly (e.g. `May 3, 2026 · 2:05 PM`).
+  static String formatDateTime12h(DateTime d) {
+    final local = d.toLocal();
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    final mon = months[local.month - 1];
+    var hour = local.hour;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final isPm = hour >= 12;
+    final period = isPm ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour == 0) hour = 12;
+    return '$mon ${local.day}, ${local.year} · $hour:$minute $period';
   }
 
   @override
   Widget build(BuildContext context) {
     if (currentRouteCode == null || currentRouteCode!.isEmpty) {
       return Card(
-        elevation: 2,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade300),
+        ),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(Icons.card_giftcard, color: Colors.grey.shade600),
+                  Icon(Icons.card_giftcard_rounded, color: Colors.blue.shade700, size: 26),
                   const SizedBox(width: 12),
-                  const Text(
-                    'Free Ride',
+                  Text(
+                    'Free ride',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade900,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Text(
-                'Select a route to manage Free Ride',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                'Select a route first to manage timed free-ride promos.',
+                style: TextStyle(fontSize: 14, height: 1.35, color: Colors.grey.shade700),
               ),
             ],
           ),
@@ -60,71 +76,85 @@ class FreeRideCard extends StatelessWidget {
       builder: (context, snapshot) {
         final details = snapshot.data;
         final isActive = details?.isActive ?? false;
-        final buttonText = isActive ? 'Stop the free ride' : 'Strat free ride';
+        final hideStartBecauseDesignated =
+            isDesignatedFreeRideRoute && !isActive;
 
         return Card(
-          elevation: 2,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: Colors.grey.shade300),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Free Ride',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
+                Row(
+                  children: [
+                    Icon(Icons.card_giftcard_rounded, color: Colors.blue.shade700, size: 24),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Free ride',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade900,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => _onFreeRideButtonTap(context, routeId, details),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 14,
-                        horizontal: 20,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isActive ? Colors.red.shade400 : Colors.blue.shade500,
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 4,
-                            offset: Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (isActive) ...[
-                            const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 24,
+                const SizedBox(height: 16),
+                if (hideStartBecauseDesignated) ...[
+                  _buildDesignatedRouteCallout(context),
+                  const SizedBox(height: 16),
+                  _buildTimeDetails(details, emphasize: false),
+                ] else ...[
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _onFreeRideButtonTap(context, routeId, details),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Ink(
+                        decoration: BoxDecoration(
+                          color: isActive ? Colors.red.shade500 : Colors.blue.shade600,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isActive ? Colors.red : Colors.blue).withOpacity(0.25),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
                             ),
-                            const SizedBox(width: 10),
                           ],
-                          Text(
-                            buttonText,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (isActive) ...[
+                                const Icon(Icons.stop_circle_outlined, color: Colors.white, size: 22),
+                                const SizedBox(width: 10),
+                              ],
+                              Text(
+                                isActive ? 'Stop free ride' : 'Start free ride',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                _buildTimeDetails(details),
+                  const SizedBox(height: 16),
+                  _buildTimeDetails(details, emphasize: isActive),
+                ],
               ],
             ),
           ),
@@ -133,57 +163,124 @@ class FreeRideCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeDetails(FreeRideDetails? details) {
+  Widget _buildDesignatedRouteCallout(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.amber.shade700.withOpacity(0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, color: Colors.amber.shade900, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'The route is already in a free ride',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.amber.shade900,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This line is a free-ride route in the system. Passengers already see it that way, so you do not need to start a separate promo. If a timed window is active below, you can still end it.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: Colors.brown.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeDetails(FreeRideDetails? details, {required bool emphasize}) {
     if (details == null) {
       return Text(
-        'No free ride scheduled',
+        'No timed promo on this route.',
         style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
       );
     }
     if (!details.isActive && details.endTime == null && details.startTime == null) {
       return Text(
-        'No free ride scheduled',
+        'No timed promo on this route.',
         style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
       );
     }
 
-    final startStr = details.startTime != null ? _formatDateTime(details.startTime!) : '—';
-    final endStr = details.endTime != null ? _formatDateTime(details.endTime!) : '—';
+    final startStr =
+        details.startTime != null ? formatDateTime12h(details.startTime!) : '—';
+    final endStr =
+        details.endTime != null ? formatDateTime12h(details.endTime!) : '—';
     final durationText = details.durationMinutes != null
-        ? '${details.durationMinutes} minute(s)'
+        ? '${details.durationMinutes} min'
         : (details.startTime != null && details.endTime != null)
-            ? '${details.endTime!.difference(details.startTime!).inMinutes} minute(s)'
+            ? '${details.endTime!.difference(details.startTime!).inMinutes} min'
             : '—';
 
-    // Bold + larger only while free ride is on (after operator confirms the start modal).
+    final subtle = TextStyle(fontSize: 13, height: 1.35, color: Colors.grey.shade700);
+    final strong = TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      height: 1.35,
+      color: Colors.grey.shade900,
+    );
+    final labelStyle = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.2,
+      color: Colors.grey.shade600,
+    );
+
+    Widget row(String label, String value, TextStyle valueStyle) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 72,
+              child: Text(label, style: labelStyle),
+            ),
+            Expanded(child: Text(value, style: valueStyle)),
+          ],
+        ),
+      );
+    }
+
     if (!details.isActive) {
-      final subtle = TextStyle(fontSize: 13, color: Colors.grey.shade700);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Starts: $startStr', style: subtle),
-          const SizedBox(height: 4),
-          Text('Ends: $endStr', style: subtle),
-          const SizedBox(height: 4),
-          Text('Duration: $durationText', style: subtle),
+          Text('Last schedule', style: labelStyle.copyWith(fontSize: 11)),
+          const SizedBox(height: 6),
+          row('Starts', startStr, subtle),
+          row('Ends', endStr, subtle),
+          row('Duration', durationText, subtle),
         ],
       );
     }
 
-    const emphasizedStyle = TextStyle(
-      fontSize: 17,
-      fontWeight: FontWeight.bold,
-      color: Colors.black87,
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Starts: $startStr', style: emphasizedStyle),
+        Text('Active promo', style: labelStyle.copyWith(fontSize: 11, color: Colors.green.shade800)),
         const SizedBox(height: 6),
-        Text('Ends: $endStr', style: emphasizedStyle),
-        const SizedBox(height: 6),
-        Text('Duration: $durationText', style: emphasizedStyle),
+        row('Starts', startStr, emphasize ? strong : subtle),
+        row('Ends', endStr, emphasize ? strong : subtle),
+        row('Duration', durationText, emphasize ? strong : subtle),
       ],
     );
   }
@@ -198,16 +295,16 @@ class FreeRideCard extends StatelessWidget {
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Turn off Free Ride?'),
+          title: const Text('Turn off free ride?'),
           content: const Text(
-            'Free ride will be disabled for your route. Passengers will see the change immediately.',
+            'The timed free ride will end. Passengers will see the update shortly.',
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
               child: const Text('Cancel'),
             ),
-            TextButton(
+            FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Turn off'),
             ),
@@ -225,13 +322,18 @@ class FreeRideCard extends StatelessWidget {
         );
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Free ride turned off'),
-              backgroundColor: Colors.orange,
+            SnackBar(
+              content: const Text('Free ride turned off'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.orange.shade800,
             ),
           );
         }
       }
+      return;
+    }
+
+    if (isDesignatedFreeRideRoute) {
       return;
     }
 
@@ -243,27 +345,35 @@ class FreeRideCard extends StatelessWidget {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) {
           return AlertDialog(
-            title: const Text('Turn on Free Ride'),
+            title: const Text('Start free ride'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Set when the free ride should end:',
-                    style: TextStyle(fontSize: 14),
+                  Text(
+                    'Choose when this promo should end (shown in 12-hour time):',
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
                   ),
                   const SizedBox(height: 16),
                   ListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: const Text('End time'),
                     subtitle: Text(
-                      endTime != null ? _formatDateTime(endTime!) : 'Not set',
+                      endTime != null ? formatDateTime12h(endTime!) : 'Not set',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    trailing: const Icon(Icons.access_time),
+                    trailing: Icon(Icons.schedule_rounded, color: Colors.blue.shade700),
                     onTap: () async {
                       final t = await showTimePicker(
                         context: ctx,
                         initialTime: TimeOfDay.fromDateTime(endTime ?? now),
+                        builder: (context, child) {
+                          return MediaQuery(
+                            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+                            child: child ?? const SizedBox.shrink(),
+                          );
+                        },
                       );
                       if (t == null) return;
                       final d = endTime ?? now;
@@ -291,6 +401,7 @@ class FreeRideCard extends StatelessWidget {
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
                       ActionChip(
                         label: const Text('30 min'),
@@ -322,7 +433,7 @@ class FreeRideCard extends StatelessWidget {
               ),
               FilledButton(
                 onPressed: endTime != null ? () => Navigator.of(ctx).pop(endTime) : null,
-                child: const Text('Strat free ride'),
+                child: const Text('Start free ride'),
               ),
             ],
           );
@@ -342,9 +453,10 @@ class FreeRideCard extends StatelessWidget {
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Free ride is now on'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: const Text('Free ride is on'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.green.shade700,
           ),
         );
       }

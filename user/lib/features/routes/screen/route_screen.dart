@@ -91,6 +91,12 @@ class _RouteScreenState extends State<RouteScreen> with WidgetsBindingObserver {
         );
       }
       final mongoRouteIds = await SubscriptionIdsService.fetchRouteIdByCodeMap();
+      for (final r in routes) {
+        final id = r.mongoRouteId?.trim();
+        if (id != null && id.isNotEmpty) {
+          mongoRouteIds[r.code.trim().toUpperCase()] = id;
+        }
+      }
       final followedRouteCodes = await _loadFollowedRouteCodes(
         backendUserId: backendUserId,
         mongoRouteIdByCode: mongoRouteIds,
@@ -359,7 +365,7 @@ class _RouteScreenState extends State<RouteScreen> with WidgetsBindingObserver {
                                     _followingRouteCodes.contains(routeCode),
                                 activeBuses: active,
                                 backendUserId: _backendUserId,
-                                backendRouteId:
+                                backendRouteId: route.mongoRouteId ??
                                     _mongoRouteIdByCode[routeCode],
                                 followRouteCode: routeCode,
                                 onFollowChanged: (code, isFollowing) {

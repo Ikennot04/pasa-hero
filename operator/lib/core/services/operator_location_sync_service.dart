@@ -43,6 +43,30 @@ class OperatorLocationSyncService {
     _timer?.cancel();
     _timer = null;
     _tickInProgress = false;
+    unawaited(_markOperatorLocationOffline());
+  }
+
+  /// Passenger map reads [operator_locations]; mark offline when sync stops (e.g. app backgrounded)
+  /// so riders do not keep seeing a "live" bus until staleness TTL.
+  Future<void> _markOperatorLocationOffline() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection(operatorLocationsCollection)
+          .doc(user.uid)
+          .set(
+        {
+          'uid': user.uid,
+          'online': 0,
+          'status': 0,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (e, st) {
+      debugPrint('[OperatorLocationSync] mark offline failed: $e\n$st');
+    }
   }
 
   Future<bool> _ensureForegroundLocationPermission() async {

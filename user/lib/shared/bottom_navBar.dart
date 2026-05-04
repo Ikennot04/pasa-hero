@@ -33,6 +33,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       const NotificationScreen(),
       const ProfileScreen(),
     ];
+    if (_selectedIndex == 2) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        NotificationBadgeService.instance.notifyNotificationTabOpened();
+      });
+    }
   }
 
   void _onItemTapped(int index) {

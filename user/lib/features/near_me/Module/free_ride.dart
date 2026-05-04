@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Near Me floating banner when Firestore `driver_status` shows an active free ride.
+/// Near Me floating banner: Firestore `driver_status` promo and/or catalog free-ride line.
 class FreeRideBanner extends StatelessWidget {
   final bool showDetails;
   /// Route / jeepney code from Firestore (`route_id`, or `route_code` / `routeCode`).
@@ -9,6 +9,9 @@ class FreeRideBanner extends StatelessWidget {
   final String? routeDisplayName;
   /// `free_ride_until` from Firestore, when set.
   final DateTime? freeRideUntil;
+  /// True when the route is only free in the catalog ([is_free_ride]) — no live Firestore promo.
+  /// Copy explains the line + icon; [freeRideUntil] is ignored.
+  final bool isCatalogFreeRideLine;
   final VoidCallback? onViewTap;
   final VoidCallback? onClose;
 
@@ -18,6 +21,7 @@ class FreeRideBanner extends StatelessWidget {
     this.routeCode,
     this.routeDisplayName,
     this.freeRideUntil,
+    this.isCatalogFreeRideLine = false,
     this.onViewTap,
     this.onClose,
   });
@@ -42,7 +46,21 @@ class FreeRideBanner extends StatelessWidget {
       }
       return 'Route $code';
     }
+    if (isCatalogFreeRideLine) {
+      return 'Free-ride line';
+    }
     return 'Free ride is active';
+  }
+
+  String _headline() =>
+      isCatalogFreeRideLine ? 'Free-ride route' : 'Free Ride Ongoing';
+
+  /// Subtitle under the route line (compact banner, third row).
+  String _contextLine() {
+    if (isCatalogFreeRideLine) {
+      return 'This line is a free-ride route. Buses use the free-ride marker on the map.';
+    }
+    return _untilLine();
   }
 
   String _untilLine() {
@@ -107,9 +125,9 @@ class FreeRideBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Free Ride Ongoing',
-                  style: TextStyle(
+                Text(
+                  _headline(),
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF1F2937),
@@ -126,7 +144,7 @@ class FreeRideBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _untilLine(),
+                  _contextLine(),
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey[600],
@@ -238,9 +256,9 @@ class FreeRideBanner extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Free Ride Ongoing',
-                          style: TextStyle(
+                        Text(
+                          _headline(),
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF1F2937),
@@ -259,7 +277,7 @@ class FreeRideBanner extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          _untilLine(),
+                          _contextLine(),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -287,8 +305,10 @@ class FreeRideBanner extends StatelessWidget {
               Container(
                 width: 8,
                 height: 8,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF10B981),
+                decoration: BoxDecoration(
+                  color: isCatalogFreeRideLine
+                      ? const Color(0xFF2563EB)
+                      : const Color(0xFF10B981),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -306,23 +326,45 @@ class FreeRideBanner extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _buildInfoItem(
-            icon: Icons.access_time,
-            text: _untilLine(),
-            color: const Color(0xFF6B7280),
-          ),
-          const SizedBox(height: 8),
-          _buildInfoItem(
-            icon: Icons.people,
-            text: 'Coverage: All passengers',
-            color: const Color(0xFF6B7280),
-          ),
-          const SizedBox(height: 8),
-          _buildInfoItem(
-            icon: Icons.circle,
-            text: 'Status: Ongoing',
-            color: const Color(0xFF10B981),
-          ),
+          if (isCatalogFreeRideLine) ...[
+            _buildInfoItem(
+              icon: Icons.directions_bus,
+              text:
+                  'Live buses on this line use the free-ride bus icon on the map.',
+              color: const Color(0xFF6B7280),
+            ),
+            const SizedBox(height: 8),
+            _buildInfoItem(
+              icon: Icons.local_offer,
+              text:
+                  'When a driver starts a promo, end time and status will show here like a live free ride.',
+              color: const Color(0xFF6B7280),
+            ),
+            const SizedBox(height: 8),
+            _buildInfoItem(
+              icon: Icons.info_outline,
+              text: 'Line type: Designated free-ride route (from route list).',
+              color: const Color(0xFF2563EB),
+            ),
+          ] else ...[
+            _buildInfoItem(
+              icon: Icons.access_time,
+              text: _untilLine(),
+              color: const Color(0xFF6B7280),
+            ),
+            const SizedBox(height: 8),
+            _buildInfoItem(
+              icon: Icons.people,
+              text: 'Coverage: All passengers',
+              color: const Color(0xFF6B7280),
+            ),
+            const SizedBox(height: 8),
+            _buildInfoItem(
+              icon: Icons.circle,
+              text: 'Status: Ongoing',
+              color: const Color(0xFF10B981),
+            ),
+          ],
         ],
       ),
     );
