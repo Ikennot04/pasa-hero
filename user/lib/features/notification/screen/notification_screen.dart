@@ -9,6 +9,8 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/services/driver_status_read_service.dart';
 import '../../../core/services/notification_badge_service.dart';
+import '../../../core/services/notification_live_sync_service.dart';
+import '../../../core/services/system_inbox_notification_service.dart';
 import '../../../core/services/nearby_operators_service.dart';
 import '../../../core/services/operator_route_options_service.dart';
 import '../../../core/services/subscription_ids_service.dart';
@@ -29,6 +31,7 @@ class _MergedNotificationRow {
     this.freeRide,
     this.followedCatalogFreeRouteCode,
     this.liveBusFollowedRouteCode,
+    this.freeRidePromoIsOnFollowedRoute = true,
   });
 
   factory _MergedNotificationRow.fromInbox(
@@ -44,11 +47,15 @@ class _MergedNotificationRow {
   factory _MergedNotificationRow.fromFollowedFreeRide({
     required String routeCode,
     required FreeRideStatusSnapshot freeRide,
+    bool promoIsOnFollowedRoute = true,
   }) {
     return _MergedNotificationRow._(
-      sortTime: freeRide.startTime ?? DateTime.now(),
+      sortTime: freeRide.startTime ??
+          freeRide.updatedAt ??
+          DateTime.now(),
       followedRouteCode: routeCode,
       freeRide: freeRide,
+      freeRidePromoIsOnFollowedRoute: promoIsOnFollowedRoute,
     );
   }
 
@@ -81,6 +88,9 @@ class _MergedNotificationRow {
   /// Followed route with a live bus in [operator_locations].
   final String? liveBusFollowedRouteCode;
 
+  /// False when this row is an operator promo on a route the user does not follow.
+  final bool freeRidePromoIsOnFollowedRoute;
+
   bool get isFollowedFreeRide =>
       freeRide != null &&
       freeRide!.isActive &&
@@ -108,6 +118,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   /// Full [driver_status] listener (doc id may differ from subscription route code).
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _driverStatusSub;
+  StreamSubscription<void>? _notificationLiveSub;
 
   Set<String> _followedRouteCodesUpper = {};
   Set<String> _catalogFreeRouteCodesUpper = {};
@@ -120,17 +131,30 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   int _lastInboxUnread = 0;
   String? _activeInboxUserId;
+  Timer? _liveInboxDebounce;
 
   @override
   void initState() {
     super.initState();
     NotificationBadgeService.instance.setOnTabOpenedHandler(_onNotificationTabOpened);
+    _notificationLiveSub = NotificationLiveSyncService.instance.refreshes.listen(
+      (_) {
+        if (!mounted) return;
+        _liveInboxDebounce?.cancel();
+        _liveInboxDebounce = Timer(const Duration(milliseconds: 450), () {
+          if (!mounted) return;
+          unawaited(_loadInbox(showLoading: false));
+        });
+      },
+    );
     _loadInbox();
   }
 
   @override
   void dispose() {
     NotificationBadgeService.instance.setOnTabOpenedHandler(null);
+    _liveInboxDebounce?.cancel();
+    _notificationLiveSub?.cancel();
     _driverStatusSub?.cancel();
     super.dispose();
   }
@@ -239,11 +263,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
         .map((c) => c.trim().toUpperCase())
         .where((c) => c.isNotEmpty)
         .toSet();
-    if (upper.isEmpty) return;
-
-    for (final routeCode in upper) {
-      _freeRideByRouteCode[routeCode] = null;
-    }
 
     _driverStatusSub = FirebaseFirestore.instance
         .collection(driverStatusCollection)
@@ -251,12 +270,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
         .listen(
       (snapshot) {
         if (!mounted) return;
-        final map = DriverStatusReadService.instance
-            .mapActiveFreeRidesForFollowedRoutes(snapshot, upper);
+        final global = DriverStatusReadService.instance
+            .mapAllActiveFreeRidePromos(snapshot);
+        final followed = upper.isEmpty
+            ? <String, FreeRideStatusSnapshot?>{}
+            : DriverStatusReadService.instance
+                .mapActiveFreeRidesForFollowedRoutes(snapshot, upper);
+
+        final merged = Map<String, FreeRideStatusSnapshot?>.from(global);
+        for (final e in followed.entries) {
+          merged[e.key] = e.value;
+        }
+
         setState(() {
-          for (final e in map.entries) {
-            _freeRideByRouteCode[e.key] = e.value;
-          }
+          _freeRideByRouteCode
+            ..clear()
+            ..addAll(merged);
         });
         _syncNavBadge();
       },
@@ -268,11 +297,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  Future<void> _loadInbox() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadInbox({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
       final firebaseUser = FirebaseAuth.instance.currentUser;
@@ -280,7 +311,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         if (!mounted) return;
         setState(() {
           _loading = false;
-          _error = 'Please sign in first.';
+          if (showLoading) _error = 'Please sign in first.';
         });
         _cancelFreeRideSubscriptions();
         _followedRouteCodesUpper = {};
@@ -290,6 +321,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         _activeInboxUserId = null;
         NotificationBadgeService.instance.setServerUnreadCount(0);
         NotificationBadgeService.instance.setFreeRideMap({});
+        SystemInboxNotificationService.instance.resetForLogout();
         return;
       }
 
@@ -301,26 +333,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
       final catalogFuture = _routeOptionsService.fetchAvailableRoutes();
       final routeIdByCode = await routeFuture;
       final backendUserId = await backendFuture;
-      final effectiveUserId =
-          (backendUserId != null && backendUserId.isNotEmpty)
-              ? backendUserId
-              : firebaseUser.uid;
 
       final idsToTry = <String>[];
-      if (backendUserId != null && backendUserId.isNotEmpty) {
-        idsToTry.add(backendUserId);
-      }
-      if (!idsToTry.contains(firebaseUser.uid)) {
-        idsToTry.add(firebaseUser.uid);
-      }
-      if (!idsToTry.contains(effectiveUserId)) {
-        idsToTry.add(effectiveUserId);
+      if (backendUserId != null && backendUserId.trim().isNotEmpty) {
+        idsToTry.add(backendUserId.trim());
       }
 
       final followedRouteCodes =
           await SubscriptionIdsService.fetchSubscribedRouteCodesMerged(
         backendMongoUserId: backendUserId,
-        firebaseUid: firebaseUser.uid,
         routeIdByCode: routeIdByCode,
       );
       final catalog = await catalogFuture;
@@ -378,21 +399,28 @@ class _NotificationScreenState extends State<NotificationScreen> {
       setState(() {
         _inboxItems = items;
         _loading = false;
-        if (lastError != null &&
+        if (showLoading &&
+            lastError != null &&
             items.isEmpty &&
             followedUpper.isEmpty) {
           _error = lastError;
-        } else {
+        } else if (showLoading) {
           _error = null;
         }
       });
 
       _syncNavBadge();
+      unawaited(
+        SystemInboxNotificationService.instance
+            .onInboxReloaded(List<Map<String, dynamic>>.from(items)),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        if (showLoading) {
+          _error = e.toString().replaceFirst('Exception: ', '');
+        }
       });
     }
   }
@@ -501,6 +529,23 @@ class _NotificationScreenState extends State<NotificationScreen> {
     return false;
   }
 
+  bool _promoRouteMatchesFollowed(String promoCode) {
+    for (final f in _followedRouteCodesUpper) {
+      if (NearbyOperatorsService.routesLooselySameLine(f, promoCode)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _freeRideSignature(FreeRideStatusSnapshot s) {
+    final e = s.endTime?.millisecondsSinceEpoch ?? 0;
+    final st = s.startTime?.millisecondsSinceEpoch ?? 0;
+    final u = s.updatedAt?.millisecondsSinceEpoch ?? 0;
+    final o = s.operatorId ?? '';
+    return '$o|$e|$st|$u';
+  }
+
   bool _isInboxUnread(Map<String, dynamic> item) {
     final flag =
         _parseReadFlag(item['is_read']) ?? _parseReadFlag(item['isRead']);
@@ -527,15 +572,18 @@ class _NotificationScreenState extends State<NotificationScreen> {
       }
     }
 
+    final seenPromoSignatures = <String>{};
     for (final e in _freeRideByRouteCode.entries) {
       final snap = e.value;
       if (snap == null || !snap.isActive) continue;
       final code = e.key;
       if (code.isEmpty) continue;
+      if (!seenPromoSignatures.add(_freeRideSignature(snap))) continue;
       fresh.add(
         _MergedNotificationRow.fromFollowedFreeRide(
           routeCode: code,
           freeRide: snap,
+          promoIsOnFollowedRoute: _promoRouteMatchesFollowed(code),
         ),
       );
     }
@@ -616,8 +664,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
     return '${dt.month}/${dt.day}/${dt.year}';
   }
 
-  String _freeRideDescription(FreeRideStatusSnapshot snap, String routeCode) {
+  String _freeRideDescription(
+    FreeRideStatusSnapshot snap,
+    String routeCode, {
+    required bool onFollowedRoute,
+  }) {
     final until = snap.endTime;
+    String base;
     if (until != null) {
       final local = until.toLocal();
       final now = DateTime.now();
@@ -628,10 +681,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
           sameDay ? 'today' : '${local.month}/${local.day}/${local.year}';
       final hm =
           '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-      return 'Free ride is active on route $routeCode until $hm on $datePart. '
+      base = 'Free ride is active on route $routeCode until $hm on $datePart. '
           'Board while the promo is on.';
+    } else {
+      base = 'A free ride is active right now on route $routeCode.';
     }
-    return 'A free ride is active right now on route $routeCode.';
+    if (onFollowedRoute) return base;
+    return '$base Follow this route under Routes to pin these updates.';
   }
 
   Color _statusColorForInbox(Map<String, dynamic> item) {
@@ -787,9 +843,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
       final snap = row.freeRide!;
       final code = row.followedRouteCode!;
       return _buildNotificationCard(
-        title: 'Free ride — Route $code',
-        description: _freeRideDescription(snap, code),
-        timestamp: _formatTimestamp(snap.startTime ?? snap.endTime),
+        title: row.freeRidePromoIsOnFollowedRoute
+            ? 'Free ride — Route $code'
+            : 'Free ride promo — Route $code',
+        description: _freeRideDescription(
+          snap,
+          code,
+          onFollowedRoute: row.freeRidePromoIsOnFollowedRoute,
+        ),
+        timestamp: _formatTimestamp(
+          snap.startTime ?? snap.updatedAt ?? snap.endTime,
+        ),
         statusColor: ValidationTheme.successGreen,
         emphasizeNew: emphasizeNew,
       );

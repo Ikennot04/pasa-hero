@@ -4,8 +4,18 @@ import 'package:flutter/material.dart';
 
 /// Legend for color-coded waiting-user cluster markers (same assets as the map).
 /// Anchored bottom-right; starts expanded; [X] minimizes to a chip (tap chip to restore).
+///
+/// When placed above other widgets in a bottom-right [Column] (e.g. with
+/// [OperatorAssignmentActionPanel]), set [expandAlignToBottomRight] to false so the
+/// legend does not expand vertically and push content off-screen.
 class WaitingDemandLegend extends StatefulWidget {
-  const WaitingDemandLegend({super.key});
+  const WaitingDemandLegend({
+    super.key,
+    this.expandAlignToBottomRight = true,
+  });
+
+  /// If true (default), wraps content in [Align] bottom-right (fills height in a [Column]).
+  final bool expandAlignToBottomRight;
 
   /// Shared with [showWaitingDemandIntroIfNeeded] so the intro matches the corner legend.
   static const List<({String asset, String label})> demandLegendRows = [
@@ -28,13 +38,16 @@ class _WaitingDemandLegendState extends State<WaitingDemandLegend> {
     final content =
         _expanded ? _legendCard(theme) : _collapsedChip(theme);
 
-    return SafeArea(
+    final padded = SafeArea(
       minimum: const EdgeInsets.only(right: 8),
-      child: Align(
-        alignment: Alignment.bottomRight,
-        child: content,
-      ),
+      child: widget.expandAlignToBottomRight
+          ? Align(
+              alignment: Alignment.bottomRight,
+              child: content,
+            )
+          : content,
     );
+    return padded;
   }
 
   Widget _collapsedChip(ThemeData theme) {

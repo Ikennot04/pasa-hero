@@ -1,28 +1,103 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+import '../../../core/models/route_map_label_point.dart';
+import '../../../core/services/backend_route_geometry.dart';
+import '../../../core/services/route_path_coordinates_service.dart';
 import '../../../core/themes/validation_theme.dart';
 import '../route_constants.dart';
 import '../../map/map.dart';
 
-class RouteDetailsScreen extends StatelessWidget {
-  final String routeId;
-  final String estimatedArrival;
-  final String? status;
-  final String routeDescription;
-
+/// Route detail: **map** + **status** on the gradient; **numbered stops** live in the white sheet below.
+class RouteDetailsScreen extends StatefulWidget {
   const RouteDetailsScreen({
     super.key,
+    required this.routeCode,
     required this.routeId,
     required this.estimatedArrival,
     this.status,
     this.routeDescription = '',
   });
 
+  /// Catalog route code (Mongo `route_code`), used to load `/api/routes`.
+  final String routeCode;
+
+  final String routeId;
+  final String estimatedArrival;
+  final String? status;
+  final String routeDescription;
+
+  @override
+  State<RouteDetailsScreen> createState() => _RouteDetailsScreenState();
+}
+
+class _RouteDetailsScreenState extends State<RouteDetailsScreen> {
+  final RoutePathCoordinatesService _pathService = RoutePathCoordinatesService();
+
+  bool _loading = true;
+  List<RouteMapLabelPoint>? _points;
+  List<LatLng>? _highlight;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRouteGeometry();
+  }
+
+  Future<void> _loadRouteGeometry() async {
+    final code = widget.routeCode.trim();
+    if (code.isEmpty) {
+      setState(() {
+        _loading = false;
+        _points = const [];
+      });
+      return;
+    }
+
+    try {
+      final detail = await BackendRouteGeometry.fetchRouteDetailByCode(code);
+      if (!mounted) return;
+
+      if (detail == null) {
+        setState(() {
+          _loading = false;
+          _points = const [];
+          _highlight = null;
+        });
+        return;
+      }
+
+      final labeled = BackendRouteGeometry.labeledAnchorPointsFromDetail(detail);
+      final points = labeled
+          .map(
+            (e) => RouteMapLabelPoint(name: e.name, position: e.position),
+          )
+          .toList();
+
+      final hl = await _pathService.fetchRoutePathLatLng(code);
+      if (!mounted) return;
+
+      setState(() {
+        _points = points;
+        _highlight = hl.length >= 2 ? hl : null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _points = const [];
+        });
+      }
+    }
+  }
+
   Color _getStatusColor() {
-    switch (status) {
+    switch (widget.status) {
       case 'Free-flow':
         return ValidationTheme.successGreen;
       case 'Light traffic':
-        return const Color(0xFFFF9800); // Orange
+        return const Color(0xFFFF9800);
       case 'Heavy traffic':
         return ValidationTheme.errorRed;
       default:
@@ -42,7 +117,6 @@ class RouteDetailsScreen extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              // Header Section
               Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: screenWidth * 0.05,
@@ -50,7 +124,6 @@ class RouteDetailsScreen extends StatelessWidget {
                 ),
                 child: Stack(
                   children: [
-                    // Back button
                     Align(
                       alignment: Alignment.centerLeft,
                       child: IconButton(
@@ -77,13 +150,12 @@ class RouteDetailsScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // Title and subtitle
                     Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            routeId,
+                            widget.routeId,
                             style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w700,
@@ -93,7 +165,7 @@ class RouteDetailsScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Estimated Arrival: $estimatedArrival',
+                            'Estimated Arrival: ${widget.estimatedArrival}',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.normal,
@@ -108,26 +180,6 @@ class RouteDetailsScreen extends StatelessWidget {
                 ),
               ),
 
-              // Status Button
-              if (status != null)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    status!,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: ValidationTheme.textLight,
-                    ),
-                  ),
-                ),
-
-              // Map Section
               Container(
                 height: 300,
                 margin: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
@@ -137,13 +189,57 @@ class RouteDetailsScreen extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: const MapWidget(),
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : MapWidget(
+                          routeDetailPoints: _points,
+                          routeCatalogHighlightPoints: _highlight,
+                          nearbyOperators: const [],
+                          routeOrigin: null,
+                          routeDestination: null,
+                        ),
                 ),
               ),
 
               const SizedBox(height: 16),
 
-              // Route Stops Section
+              if (widget.status != null) ...[
+                Padding(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Status:',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: ValidationTheme.textLight.withOpacity(0.95),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  margin: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    widget.status!,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: ValidationTheme.textLight,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               Expanded(
                 child: Container(
                   width: double.infinity,
@@ -155,22 +251,70 @@ class RouteDetailsScreen extends StatelessWidget {
                     ),
                   ),
                   child: SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 24),
-                        if (routeDescription.trim().isNotEmpty)
-                          _buildRouteStop(
-                            isFirst: true,
-                            isLast: true,
-                            stopName: routeDescription.trim(),
-                            stopAddress: null,
-                            arrivalTime: null,
-                            isActive: false,
-                            icon: Icons.route,
+                        if (!_loading &&
+                            _points != null &&
+                            _points!.isNotEmpty) ...[
+                          const Text(
+                            'Stops on this route',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: ValidationTheme.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          for (var i = 0; i < _points!.length; i++) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    width: 26,
+                                    child: Text(
+                                      '${i + 1}.',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: ValidationTheme.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      _points![i].name,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                        color: ValidationTheme.textPrimary,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                        ],
+                        if (widget.routeDescription.trim().isNotEmpty)
+                          Text(
+                            widget.routeDescription.trim(),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: ValidationTheme.textPrimary,
+                              height: 1.4,
+                            ),
                           )
-                        else
+                        else if (!_loading &&
+                            (_points == null || _points!.isEmpty))
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 16),
                             child: Text(
@@ -192,108 +336,6 @@ class RouteDetailsScreen extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildRouteStop({
-    required bool isFirst,
-    required bool isLast,
-    required String stopName,
-    String? stopAddress,
-    String? arrivalTime,
-    required bool isActive,
-    IconData? icon,
-    bool isDestination = false,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Timeline indicator
-        Column(
-          children: [
-            if (!isFirst)
-              Container(
-                width: 2,
-                height: 40,
-                color: ValidationTheme.primaryBlue,
-              ),
-            Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                color: isActive
-                    ? const Color(0xFFFF9800) // Orange for active
-                    : isDestination
-                        ? ValidationTheme.errorRed // Red for destination
-                        : ValidationTheme.primaryBlue,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: ValidationTheme.backgroundWhite,
-                  width: 3,
-                ),
-              ),
-              child: icon != null
-                  ? Icon(
-                      icon,
-                      size: 10,
-                      color: ValidationTheme.backgroundWhite,
-                    )
-                  : null,
-            ),
-            if (!isLast)
-              Container(
-                width: 2,
-                height: 40,
-                color: ValidationTheme.primaryBlue,
-              ),
-          ],
-        ),
-        const SizedBox(width: 16),
-        // Stop information
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(
-              top: isFirst ? 0 : 8,
-              bottom: isLast ? 0 : 8,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  stopName,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: ValidationTheme.textPrimary,
-                  ),
-                ),
-                if (stopAddress != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    stopAddress,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.normal,
-                      color: ValidationTheme.textSecondary,
-                    ),
-                  ),
-                ],
-                if (arrivalTime != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    arrivalTime,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFFFF9800), // Orange
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

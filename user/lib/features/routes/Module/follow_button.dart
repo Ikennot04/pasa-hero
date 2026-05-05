@@ -68,13 +68,24 @@ class _FollowButtonState extends State<FollowButton> {
         email: user.email,
       );
     }
-    // Fallback to Firebase uid so follow is not blocked by lookup failures.
-    userId = (userId == null || userId.isEmpty) ? user.uid : userId;
+    if (userId == null || userId.isEmpty) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not link your account to the server. Try again after sign-in.',
+          ),
+        ),
+      );
+      return;
+    }
     if (routeId == null || routeId.isEmpty) {
       routeId = await SubscriptionIdsService.routeIdForCode(widget.routeLabel);
     }
     if (routeId == null || routeId.isEmpty) {
       if (!mounted) return;
+      setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Could not find this route on the server.'),

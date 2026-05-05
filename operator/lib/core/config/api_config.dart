@@ -18,6 +18,21 @@ const String kGoogleApiKey = String.fromEnvironment(
   defaultValue: '',
 );
 
+/// Optional WebSocket URL to trigger assignment refresh (e.g. `wss://host/path`).
+/// Requires a **server or relay** that accepts WebSocket connections; the operator
+/// app only listens—**no backend changes** in this repo. If empty, live sync uses
+/// polling ([kOperatorAssignmentPollSeconds]).
+const String kOperatorAssignmentWsUrl = String.fromEnvironment(
+  'OPERATOR_ASSIGNMENT_WS_URL',
+  defaultValue: '',
+);
+
+/// Fallback polling interval (seconds) when [kOperatorAssignmentWsUrl] is empty.
+const int kOperatorAssignmentPollSeconds = int.fromEnvironment(
+  'OPERATOR_ASSIGNMENT_POLL_SECONDS',
+  defaultValue: 12,
+);
+
 /// Returns the backend base URL, with emulator fix on Android when default is localhost.
 String getBackendBaseUrl() {
   String base = kBackendBaseUrl;

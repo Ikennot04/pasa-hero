@@ -131,6 +131,11 @@ class NearMeBottomSheet extends StatelessWidget {
                           )
                         else
                           DropdownButtonFormField<String?>(
+                            // FormField only applies [initialValue] on first mount; keep in sync
+                            // when the parent clears or changes the route (e.g. "All nearby buses").
+                            key: ValueKey<String>(
+                              '${selectedRouteCode ?? 'all'}|${routeOptions.length}|$routeOptionsLoading',
+                            ),
                             initialValue: selectedRouteCode,
                             isExpanded: true,
                             decoration: InputDecoration(

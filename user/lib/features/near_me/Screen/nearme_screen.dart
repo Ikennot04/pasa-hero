@@ -82,6 +82,8 @@ class _NearMeContentState extends State<_NearMeContent> {
   Map<String, dynamic>? _selectedTo;
   List<Map<String, dynamic>> _destinations = [];
   LatLng? _closestStopLatLng;
+  /// Human-readable label for [_closestStopLatLng] (shown as trip “From”).
+  String? _closestStopName;
   Position? _userPosition;
   LatLng? _routeOrigin;
   LatLng? _routeDestination;
@@ -98,7 +100,13 @@ class _NearMeContentState extends State<_NearMeContent> {
   final NearbyOperatorsService _nearbyOperatorsService = NearbyOperatorsService();
   final OperatorRouteOptionsService _routeOptionsService = OperatorRouteOptionsService();
 
-  List<NearbyOperator> _nearbyOperators = [];
+  /// Every live bus from Firestore (route filter applied in [_visibleNearbyOperators]).
+  List<NearbyOperator> _allNearbyOperators = [];
+  /// Operator Firebase uids on the selected route per [driver_status] (authoritative when
+  /// [operator_locations.routeCode] is empty or out of sync).
+  Set<String> _driverStatusOperatorIdsForRoute = {};
+  /// Latest route label from [driver_status] keyed by operator uid (lowercase).
+  Map<String, String> _driverStatusRouteByOperatorId = {};
   StreamSubscription<List<NearbyOperator>>? _nearbyOperatorsSub;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _freeRideSub;
   Timer? _nearbyServerPoll;
@@ -189,9 +197,48 @@ class _NearMeContentState extends State<_NearMeContent> {
     return code.trim();
   }
 
+  List<NearbyOperator> get _visibleNearbyOperators {
+    final routeByOp = _driverStatusRouteByOperatorId;
+    NearbyOperator withRouteHint(NearbyOperator op) {
+      final hasRoute = (op.routeCode?.trim().isNotEmpty ?? false);
+      if (hasRoute) return op;
+      final id = op.operatorId.trim().toLowerCase();
+      String? hint = routeByOp[id];
+      if ((hint == null || hint.trim().isEmpty) &&
+          op.locationAuthUid != null &&
+          op.locationAuthUid!.trim().isNotEmpty) {
+        hint = routeByOp[op.locationAuthUid!.trim().toLowerCase()];
+      }
+      if (hint == null || hint.trim().isEmpty) return op;
+      return NearbyOperator(
+        operatorId: op.operatorId,
+        latitude: op.latitude,
+        longitude: op.longitude,
+        routeCode: hint.trim(),
+        distanceMeters: op.distanceMeters,
+        locationAuthUid: op.locationAuthUid,
+      );
+    }
+
+    final sel = _selectedRouteCode?.trim();
+    if (sel == null || sel.isEmpty) {
+      return _allNearbyOperators.map(withRouteHint).toList();
+    }
+    final trusted = _driverStatusOperatorIdsForRoute;
+    return _allNearbyOperators.where((op) {
+      if (NearbyOperatorsService.routeMatchesNearMeFilter(op.routeCode, sel)) {
+        return true;
+      }
+      final id = op.operatorId.trim().toLowerCase();
+      if (trusted.contains(id)) return true;
+      final u = op.locationAuthUid?.trim().toLowerCase();
+      return u != null && u.isNotEmpty && trusted.contains(u);
+    }).map(withRouteHint).toList();
+  }
+
   /// True when a visible nearby bus uses the Mongo free-ride marker (same as [MapWidget]).
   bool get _hasNearbyMongoFreeRideBus {
-    for (final op in _nearbyOperators) {
+    for (final op in _visibleNearbyOperators) {
       if (NearbyOperatorsService.operatorOnMongoFreeRideLine(
             op,
             mongoFreeRideRouteCodes: _mongoFreeRideRouteCodes,
@@ -205,7 +252,7 @@ class _NearMeContentState extends State<_NearMeContent> {
 
   /// Route label for the floating banner when a Mongo free bus is visible (no Firestore promo / no filter).
   String? _mongoFreeRideBannerRouteCodeFromOperators() {
-    for (final op in _nearbyOperators) {
+    for (final op in _visibleNearbyOperators) {
       if (!NearbyOperatorsService.operatorOnMongoFreeRideLine(
             op,
             mongoFreeRideRouteCodes: _mongoFreeRideRouteCodes,
@@ -235,14 +282,38 @@ class _NearMeContentState extends State<_NearMeContent> {
       final activeIds = <String>{};
       final routeKeys = <String>{};
       final routeHints = <String>{};
+      final trustedForRoute = <String>{};
+      final routeByOp = <String, String>{};
       for (final doc in snapshot.docs) {
         final data = doc.data();
+        final docRoute =
+            _routeCodeFromDriverStatus(data) ?? doc.id.trim();
+
+        if (hasRouteFilter &&
+            NearbyOperatorsService.routeMatchesNearMeFilter(
+              docRoute,
+              selected,
+            )) {
+          for (final key in <String>[
+            'operator_id',
+            'operatorId',
+            'uid',
+            'firebase_uid',
+            'firebaseUid',
+          ]) {
+            final raw = data[key];
+            if (raw == null) continue;
+            final id = raw.toString().trim().toLowerCase();
+            if (id.isNotEmpty) {
+              trustedForRoute.add(id);
+              if (docRoute.isNotEmpty) routeByOp[id] = docRoute;
+            }
+          }
+        }
+
         if (!_isFreeRideActiveDoc(data)) continue;
 
         firstActiveDoc ??= doc;
-
-        final docRoute =
-            _routeCodeFromDriverStatus(data) ?? doc.id.trim();
 
         for (final key in <String>[
           'operator_id',
@@ -254,7 +325,10 @@ class _NearMeContentState extends State<_NearMeContent> {
           final raw = data[key];
           if (raw == null) continue;
           final id = raw.toString().trim().toLowerCase();
-          if (id.isNotEmpty) activeIds.add(id);
+          if (id.isNotEmpty) {
+            activeIds.add(id);
+            if (docRoute.isNotEmpty) routeByOp[id] = docRoute;
+          }
         }
 
         _addFreeRideRouteTokens(routeKeys, docRoute);
@@ -303,6 +377,8 @@ class _NearMeContentState extends State<_NearMeContent> {
         _activeFreeRideOperatorIds = activeIds;
         _activeFreeRideRouteCodes = routeKeys;
         _activeFreeRideRouteHints = routeHints;
+        _driverStatusOperatorIdsForRoute = trustedForRoute;
+        _driverStatusRouteByOperatorId = routeByOp;
         _freeRideRouteCode = hasActive ? routeCode : null;
         _freeRideUntil = hasActive ? until : null;
         if (!hasActive) {
@@ -316,6 +392,8 @@ class _NearMeContentState extends State<_NearMeContent> {
         _activeFreeRideOperatorIds = <String>{};
         _activeFreeRideRouteCodes = <String>{};
         _activeFreeRideRouteHints = <String>{};
+        _driverStatusOperatorIdsForRoute = <String>{};
+        _driverStatusRouteByOperatorId = <String, String>{};
         _freeRideRouteCode = null;
         _freeRideUntil = null;
         _showFreeRideDetails = false;
@@ -401,19 +479,18 @@ class _NearMeContentState extends State<_NearMeContent> {
     // One-shot + periodic server reads so we are not stuck on an empty cache snapshot.
     Future<void> pull() async {
       final p = _userPosition;
-      final q = _selectedRouteCode?.trim();
       try {
         final list = await _nearbyOperatorsService.fetchNearby(
           userLat: p?.latitude,
           userLng: p?.longitude,
-          routeCodeFilter: (q == null || q.isEmpty) ? null : q,
+          routeCodeFilter: null,
           source: Source.server,
         );
         if (!mounted) return;
         setState(() {
           _operatorsFirestoreError = null;
           // Always apply server snapshot so an empty result clears inflated cache/listeners.
-          _nearbyOperators = list;
+          _allNearbyOperators = list;
         });
       } catch (e) {
         if (mounted) {
@@ -616,10 +693,12 @@ class _NearMeContentState extends State<_NearMeContent> {
       };
     }).toList();
     LatLng? closestLatLng;
+    String? closestName;
     if (closestStopId != null) {
       for (final s in stops) {
         if (s.id == closestStopId) {
           closestLatLng = s.position;
+          closestName = s.name.trim().isNotEmpty ? s.name : s.stopCode;
           break;
         }
       }
@@ -627,6 +706,7 @@ class _NearMeContentState extends State<_NearMeContent> {
     setState(() {
       _destinations = list;
       _closestStopLatLng = closestLatLng;
+      _closestStopName = closestName;
       _destinationsLoading = false;
     });
   }
@@ -764,18 +844,19 @@ class _NearMeContentState extends State<_NearMeContent> {
   void _subscribeNearbyOperators() {
     _nearbyOperatorsSub?.cancel();
     final p = _userPosition;
-    final q = _selectedRouteCode?.trim();
+    // Always load all live buses; Near Me narrows by route using GPS route_code plus
+    // [driver_status] operator ids so we still show drivers when Firestore route is stale.
     _nearbyOperatorsSub = _nearbyOperatorsService
         .watchNearby(
           userLat: p?.latitude,
           userLng: p?.longitude,
-          routeCodeFilter: (q == null || q.isEmpty) ? null : q,
+          routeCodeFilter: null,
         )
         .listen(
       (list) {
         if (mounted) {
           setState(() {
-            _nearbyOperators = list;
+            _allNearbyOperators = list;
             _operatorsFirestoreError = null;
           });
         }
@@ -866,7 +947,7 @@ class _NearMeContentState extends State<_NearMeContent> {
             child: MapWidget(
               routeOrigin: _routeOrigin,
               routeDestination: _routeDestination,
-              nearbyOperators: _nearbyOperators,
+              nearbyOperators: _visibleNearbyOperators,
               activeFreeRideOperatorIds: _activeFreeRideOperatorIds,
               activeFreeRideRouteCodes: _activeFreeRideRouteCodes,
               activeFreeRideRouteHints: _activeFreeRideRouteHints,
@@ -892,6 +973,7 @@ class _NearMeContentState extends State<_NearMeContent> {
                   destinations: _destinations,
                   selectedDestination: _selectedTo,
                   isLoading: _destinationsLoading,
+                  startingPointLabel: _closestStopName,
                   onDestinationSelected: _onDestinationSelected,
                 ),
               ),
@@ -949,7 +1031,7 @@ class _NearMeContentState extends State<_NearMeContent> {
             selectedRouteCode: _selectedRouteCode,
             onRouteChanged: _onRouteChanged,
             labelForSelectedRoute: _labelForSelectedRoute,
-            nearbyOperators: _nearbyOperators,
+            nearbyOperators: _visibleNearbyOperators,
             operatorsFirestoreError: _operatorsFirestoreError,
             userPositionAvailable: _userPosition != null,
             terminals: _terminalCards,

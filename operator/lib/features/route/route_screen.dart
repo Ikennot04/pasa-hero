@@ -13,11 +13,12 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/map/map_service.dart';
 import '../profile/screen/profile_screen_data.dart';
 import '../map/services/bus_stop_icon_service.dart';
+import '../map/services/route_endpoint_pin_icon_service.dart';
 import '../map/services/waiting_cluster_icons.dart';
 import '../map/services/waiting_cluster_sheet.dart';
 import '../map/services/waiting_user_clustering.dart';
 import '../map/widgets/waiting_demand_intro.dart';
-import '../map/widgets/waiting_demand_legend.dart';
+import '../map/widgets/waiting_demand_map_overlays.dart';
 
 /// Camera over Route1 bus stops so they are visible on first load.
 const CameraPosition _initialCameraOverBusStops = CameraPosition(
@@ -292,9 +293,8 @@ class RouteScreenState extends State<RouteScreen> {
         .snapshots()
         .listen((snap) {
       if (!mounted) return;
-      final data = snap.data();
-      final raw = data?['routeCode'] ?? data?['route_code'];
-      final code = raw?.toString().trim();
+      final code = ProfileDataService.routeCodeFromUserDocData(snap.data())
+          ?.trim();
       final next = (code == null || code.isEmpty) ? null : code.toUpperCase();
       final cur = _routeId?.trim().toUpperCase();
       if (next != cur) {
@@ -353,12 +353,17 @@ class RouteScreenState extends State<RouteScreen> {
   }
 
   /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
+  /// First and last stops (and a single stop) use the same route-endpoint map pin as start/end.
   Future<void> _addBusStopMarkersAndRoute(
     List<({String name, LatLng position})> stops,
     BitmapDescriptor icon,
   ) async {
     if (!mounted || stops.isEmpty) return;
+    await RouteEndpointPinIconService.instance.load();
+    if (!mounted) return;
+    final endpointPin = RouteEndpointPinIconService.instance.descriptor;
     final points = stops.map((s) => s.position).toList();
+    final n = stops.length;
     setState(() {
       final existingNonBusStop = _markers.where(
         (m) => !m.markerId.value.startsWith('bus_stop_'),
@@ -366,32 +371,53 @@ class RouteScreenState extends State<RouteScreen> {
       final busStopMarkers = <Marker>{};
       for (int i = 0; i < stops.length; i++) {
         final stop = stops[i];
-        busStopMarkers.add(
-          Marker(
-            markerId: MarkerId('bus_stop_$i'),
-            position: stop.position,
-            icon: icon,
-            infoWindow: InfoWindow(
-              title: stop.name,
-              snippet: 'Bus stop · ${_routeId ?? 'Route'}',
+        final isEndpoint = n == 1 || i == 0 || i == n - 1;
+        final markerIcon = isEndpoint ? endpointPin : icon;
+        if (isEndpoint) {
+          busStopMarkers.add(
+            Marker(
+              markerId: MarkerId('bus_stop_$i'),
+              position: stop.position,
+              icon: markerIcon,
+              anchor: const Offset(0.5, 1.0),
+              infoWindow: InfoWindow(
+                title: stop.name,
+                snippet: 'Bus stop · ${_routeId ?? 'Route'}',
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          busStopMarkers.add(
+            Marker(
+              markerId: MarkerId('bus_stop_$i'),
+              position: stop.position,
+              icon: markerIcon,
+              infoWindow: InfoWindow(
+                title: stop.name,
+                snippet: 'Bus stop · ${_routeId ?? 'Route'}',
+              ),
+            ),
+          );
+        }
       }
       _markers = _mergeWithUserMarkers({...existingNonBusStop, ...busStopMarkers});
       _routePolylines = _routePolylines
           .where((p) => p.polylineId.value != _busStopRoutePolylineId)
           .toSet();
     });
-    final routeResult = await _directionsService.getRouteWithWaypoints(points);
+    final road =
+        await _directionsService.getRoadFollowingPolyline(points);
+    final polyPoints = road ??
+        (await _directionsService.getRouteWithWaypoints(points))?.polyline ??
+        points;
     if (!mounted) return;
-    if (routeResult != null && routeResult.polyline.isNotEmpty) {
+    if (polyPoints.isNotEmpty) {
       setState(() {
         _routePolylines = {
           ..._routePolylines,
           Polyline(
             polylineId: const PolylineId(_busStopRoutePolylineId),
-            points: routeResult.polyline,
+            points: polyPoints,
             color: const Color.fromARGB(255, 34, 137, 255),
             width: 6,
             startCap: Cap.roundCap,
@@ -810,7 +836,7 @@ class RouteScreenState extends State<RouteScreen> {
           const Positioned(
             right: 0,
             bottom: 0,
-            child: WaitingDemandLegend(),
+            child: WaitingDemandMapOverlays(),
           ),
             ],
           );

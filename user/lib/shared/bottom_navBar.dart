@@ -1,6 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/services/notification_badge_service.dart';
+import '../core/services/notification_inbox_badge_sync.dart';
+import '../core/services/notification_live_sync_service.dart';
+import '../core/services/notification_os_gate.dart';
+import '../core/services/system_inbox_notification_service.dart';
 import '../features/notification/screen/notification_screen.dart';
 import '../features/profile/screen/profile_screen.dart';
 import '../features/routes/screen/route_screen.dart';
@@ -19,28 +25,66 @@ class MainNavigationScreen extends StatefulWidget {
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainNavigationScreenState extends State<MainNavigationScreen> {
+class _MainNavigationScreenState extends State<MainNavigationScreen>
+    with WidgetsBindingObserver {
   late int _selectedIndex;
 
   late final List<Widget> _screens;
+  StreamSubscription<void>? _notificationLiveSub;
+  Timer? _badgeRefreshDebounce;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedIndex = widget.initialIndex.clamp(0, 3).toInt();
+    NotificationOsGate.bottomNavIndex = _selectedIndex;
     _screens = [
       widget.nearMeContent,
       const RouteScreen(),
       const NotificationScreen(),
       const ProfileScreen(),
     ];
+    NotificationLiveSyncService.instance.acquire();
+    unawaited(NotificationInboxBadgeSync.syncServerUnreadBadgeSilently());
+    _notificationLiveSub =
+        NotificationLiveSyncService.instance.refreshes.listen((_) {
+      _badgeRefreshDebounce?.cancel();
+      _badgeRefreshDebounce = Timer(const Duration(milliseconds: 450), () {
+        unawaited(NotificationInboxBadgeSync.syncServerUnreadBadgeSilently());
+      });
+    });
     if (_selectedIndex == 2) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         NotificationBadgeService.instance.notifyNotificationTabOpened();
       });
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationOsGate.lifecycle =
+          WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+      unawaited(
+        SystemInboxNotificationService.instance.promptPermissionOnceAfterLogin(),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    SystemInboxNotificationService.instance.resetForLogout();
+    _badgeRefreshDebounce?.cancel();
+    _notificationLiveSub?.cancel();
+    NotificationLiveSyncService.instance.release();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    NotificationOsGate.lifecycle = state;
   }
 
   void _onItemTapped(int index) {
+    NotificationOsGate.bottomNavIndex = index;
     setState(() {
       _selectedIndex = index;
     });

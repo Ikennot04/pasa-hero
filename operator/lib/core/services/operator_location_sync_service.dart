@@ -79,23 +79,27 @@ class OperatorLocationSyncService {
   }
 
   Future<void> _publishLocation(User user, Position pos, String codeForFirestore) async {
+    // Never write empty route fields on GPS ticks — that would overwrite a good
+    // [mergeRouteCodeIntoOperatorLocation] / profile route until the next merge.
+    final payload = <String, dynamic>{
+      'uid': user.uid,
+      'latitude': pos.latitude,
+      'longitude': pos.longitude,
+      'accuracyMeters': pos.accuracy,
+      'online': 1,
+      'status': 1,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    final rc = codeForFirestore.trim();
+    if (rc.isNotEmpty) {
+      final upper = rc.toUpperCase();
+      payload['routeCode'] = upper;
+      payload['route_code'] = upper;
+    }
     await FirebaseFirestore.instance
         .collection(operatorLocationsCollection)
         .doc(user.uid)
-        .set(
-      {
-        'uid': user.uid,
-        'latitude': pos.latitude,
-        'longitude': pos.longitude,
-        'accuracyMeters': pos.accuracy,
-        'routeCode': codeForFirestore,
-        'route_code': codeForFirestore,
-        'online': 1,
-        'status': 1,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+        .set(payload, SetOptions(merge: true));
   }
 
   /// Merges the new route into [operator_locations] right away so riders are not stuck

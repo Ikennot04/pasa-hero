@@ -18,7 +18,8 @@ class BusStopIconService {
   /// Same path as user app.
   static const String _iconAssetPath = 'assets/images/logo/bustopSign.png';
   static const String _iconAssetPathFallback = 'assets/images/bustopSign.png';
-  static const int _iconTargetWidth = 65;
+  /// Decode width for bus stop and route start/end pin bitmaps (px); keep in sync.
+  static const int mapMarkerDecodeWidth = 104;
 
   /// Load the bus stop icon (same as user's loadIcons). Tries user path first, then operator path.
   Future<void> loadIcons() async {
@@ -31,7 +32,7 @@ class BusStopIconService {
 
         final ui.Codec codec = await ui.instantiateImageCodec(
           bytes,
-          targetWidth: _iconTargetWidth,
+          targetWidth: mapMarkerDecodeWidth,
         );
         final ui.FrameInfo frameInfo = await codec.getNextFrame();
         final ui.Image image = frameInfo.image;

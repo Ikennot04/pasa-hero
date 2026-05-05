@@ -9,11 +9,12 @@ import '../../core/services/map/map_service.dart';
 import '../../core/services/directions_service.dart';
 import '../profile/screen/profile_screen_data.dart';
 import 'services/bus_stop_icon_service.dart';
+import 'services/route_endpoint_pin_icon_service.dart';
 import 'services/waiting_cluster_icons.dart';
 import 'services/waiting_cluster_sheet.dart';
 import 'services/waiting_user_clustering.dart';
 import 'widgets/waiting_demand_intro.dart';
-import 'widgets/waiting_demand_legend.dart';
+import 'widgets/waiting_demand_map_overlays.dart';
 
 /// Initial map center so bus stops are visible on first load.
 const CameraPosition _initialCameraOverBusStops = CameraPosition(
@@ -223,7 +224,7 @@ class _MapScreenState extends State<MapScreen> {
     return t.isEmpty ? null : t;
   }
 
-  /// Load bus stop sign icon and route geometry from Firestore.
+  /// Load bus stop icons and route stops (Mongo/Vercel API first, then Firestore fallback).
   Future<void> _loadBusStopsFromDatabaseAndShow() async {
     try {
       await _busStopIconService.loadIcons();
@@ -332,7 +333,7 @@ class _MapScreenState extends State<MapScreen> {
       _lastWaitingRiders = riders;
       _rebuildWaitingClusterMarkers();
       print(
-        '✅ [MapScreen] Waiting riders: ${riders.length}, '
+        '✅ [MapScreen] Waiting passengers: ${riders.length}, '
         'clusters: ${_userMarkers.length}',
       );
     }, onError: (e) {
@@ -394,13 +395,18 @@ class _MapScreenState extends State<MapScreen> {
 
   /// Adds bus stop markers (names without numbers) and route polyline along streets via Directions API.
   /// When [markRouteTerminals] is true (operator has a route code and ordered stops), the first and last
-  /// stops use green/red pins labeled Start/End; otherwise every stop uses the bus-stop icon.
+  /// stops (and a single terminal) use the same red map-pin asset as start/end; other stops use the bus-stop icon.
   Future<void> _addBusStopMarkers(
     List<({String name, LatLng position})> stops,
     BitmapDescriptor icon, {
     bool markRouteTerminals = false,
   }) async {
     if (!mounted || stops.isEmpty) return;
+    if (markRouteTerminals) {
+      await RouteEndpointPinIconService.instance.load();
+    }
+    if (!mounted) return;
+    final endpointPin = RouteEndpointPinIconService.instance.descriptor;
     final points = stops.map((s) => s.position).toList();
     setState(() {
       final existingNonBusStop = _markers.where(
@@ -419,56 +425,77 @@ class _MapScreenState extends State<MapScreen> {
         String title = stop.name;
         String snippet = 'Bus stop · $routeLabel';
         int z = _zBusStopMarker;
+        var useEndpointAnchor = false;
         if (markRouteTerminals) {
           if (stops.length >= 2) {
             if (isFirst) {
-              stopIcon =
-                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+              stopIcon = endpointPin;
               title = 'Start · ${stop.name}';
               snippet = 'Route start · $routeLabel';
               z = _zRouteEndpointMarker;
+              useEndpointAnchor = true;
             } else if (isLast) {
-              stopIcon =
-                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+              stopIcon = endpointPin;
               title = 'End · ${stop.name}';
               snippet = 'Route end · $routeLabel';
               z = _zRouteEndpointMarker;
+              useEndpointAnchor = true;
             }
           } else if (stops.length == 1) {
-            stopIcon =
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+            stopIcon = endpointPin;
             title = 'Start / end · ${stop.name}';
             snippet = 'Single terminal · $routeLabel';
             z = _zRouteEndpointMarker;
+            useEndpointAnchor = true;
           }
         }
-        busStopMarkers.add(
-          Marker(
-            markerId: MarkerId('bus_stop_$i'),
-            position: stop.position,
-            zIndexInt: z,
-            icon: stopIcon,
-            infoWindow: InfoWindow(
-              title: title,
-              snippet: snippet,
+        if (useEndpointAnchor) {
+          busStopMarkers.add(
+            Marker(
+              markerId: MarkerId('bus_stop_$i'),
+              position: stop.position,
+              zIndexInt: z,
+              icon: stopIcon,
+              anchor: const Offset(0.5, 1.0),
+              infoWindow: InfoWindow(
+                title: title,
+                snippet: snippet,
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          busStopMarkers.add(
+            Marker(
+              markerId: MarkerId('bus_stop_$i'),
+              position: stop.position,
+              zIndexInt: z,
+              icon: stopIcon,
+              infoWindow: InfoWindow(
+                title: title,
+                snippet: snippet,
+              ),
+            ),
+          );
+        }
       }
       _markers = _mergeWithUserMarkers({...existingNonBusStop, ...busStopMarkers});
       _routePolylines = _routePolylines
           .where((p) => p.polylineId.value != _busStopRoutePolylineId)
           .toSet();
     });
-    final routeResult = await _directionsService.getRouteWithWaypoints(points);
+    final road =
+        await _directionsService.getRoadFollowingPolyline(points);
+    final polyPoints = road ??
+        (await _directionsService.getRouteWithWaypoints(points))?.polyline ??
+        points;
     if (!mounted) return;
-    if (routeResult != null && routeResult.polyline.isNotEmpty) {
+    if (polyPoints.isNotEmpty) {
       setState(() {
         _routePolylines = {
           ..._routePolylines,
           Polyline(
             polylineId: const PolylineId(_busStopRoutePolylineId),
-            points: routeResult.polyline,
+            points: polyPoints,
             color: Colors.deepOrange,
             width: 6,
             startCap: Cap.roundCap,
@@ -566,13 +593,19 @@ class _MapScreenState extends State<MapScreen> {
         final List<LatLng> waypointCoords = coordinates.stops.length >= 2
             ? coordinates.stops
             : [coordinates.startPoint, coordinates.endPoint];
-        final routeResult = waypointCoords.length >= 2
-            ? await _directionsService.getRouteWithWaypoints(waypointCoords)
-            : await _directionsService.getRouteWithDistance(
-                coordinates.startPoint,
-                coordinates.endPoint,
-              );
-        highlightPoints = routeResult?.polyline ?? const <LatLng>[];
+        if (waypointCoords.length >= 2) {
+          highlightPoints =
+              await _directionsService.getRoadFollowingPolyline(waypointCoords) ??
+                  (await _directionsService.getRouteWithWaypoints(waypointCoords))
+                      ?.polyline ??
+                  waypointCoords;
+        } else {
+          final routeResult = await _directionsService.getRouteWithDistance(
+            coordinates.startPoint,
+            coordinates.endPoint,
+          );
+          highlightPoints = routeResult?.polyline ?? const <LatLng>[];
+        }
       }
 
       // Get route info + stop names for display
@@ -600,7 +633,7 @@ class _MapScreenState extends State<MapScreen> {
           }
           // else keep existing _routePolylines (bus stop route stays)
 
-          // Start/end of route: first & last stops use green/red pins in [_addBusStopMarkers].
+          // Start/end of route: first & last stops use the route endpoint map pin in [_addBusStopMarkers].
           // Drop legacy route_start / route_end so we do not stack duplicate pins.
           _markers = _mergeWithUserMarkers(
             _markers
@@ -1042,7 +1075,7 @@ class _MapScreenState extends State<MapScreen> {
           const Positioned(
             right: 0,
             bottom: 0,
-            child: WaitingDemandLegend(),
+            child: WaitingDemandMapOverlays(),
           ),
         ],
       ),

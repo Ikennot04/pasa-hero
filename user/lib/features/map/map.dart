@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/models/nearby_operator.dart';
+import '../../core/models/route_map_label_point.dart';
 import 'map_screen.dart';
 
 /// Widget wrapper for the map screen.
@@ -22,6 +23,7 @@ class MapWidget extends StatelessWidget {
     this.onMapControllerReady,
     this.routeCatalogHighlightPoints,
     this.selectedRouteCodeForStopsStream,
+    this.routeDetailPoints,
   });
 
   /// Start of the route (e.g. closest bus stop to user).
@@ -47,6 +49,9 @@ class MapWidget extends StatelessWidget {
   /// Near Me: when set, bus stop [Marker]s come from [routes]/[route_code] doc; when null, from [bus_stops].
   final String? selectedRouteCodeForStopsStream;
 
+  /// Routes tab detail: show only these pins (Mongo start / stops / end), not all `bus_stops`.
+  final List<RouteMapLabelPoint>? routeDetailPoints;
+
   @override
   Widget build(BuildContext context) {
     return MapScreen(
@@ -62,6 +67,7 @@ class MapWidget extends StatelessWidget {
       onMapControllerReady: onMapControllerReady,
       routeCatalogHighlightPoints: routeCatalogHighlightPoints,
       selectedRouteCodeForStopsStream: selectedRouteCodeForStopsStream,
+      routeDetailPoints: routeDetailPoints,
     );
   }
 }

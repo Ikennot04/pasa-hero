@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/services/backend_api_service.dart';
+import '../../../core/services/operator_bus_assignment_service.dart';
 import '../../../core/services/operator_location_sync_service.dart';
+import '../../../core/services/operator_assignment_live_sync_service.dart';
 import '../../../core/services/operator_session_service.dart';
 import 'modal/free_ride.dart';
 import 'screen/profile_screen_data.dart';
@@ -17,48 +22,132 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String? _currentRouteCode;
-  List<RouteInfo> _routeOptions = const [];
   bool _isLoading = true;
-  bool _isUpdatingRoute = false;
-  /// True while loading route catalog / free-ride flags before the picker opens.
-  bool _routePickerLoading = false;
+  bool _refreshingAssignment = false;
+
+  /// From terminal bus assignment (`GET .../pending/operator/...` + route detail).
+  String? _terminalRouteName;
+  String? _terminalRouteCode;
+  String? _terminalBusLabel;
+  bool _terminalRouteFreeRide = false;
+  String? _terminalAssignmentError;
+
+  final BackendApiService _backendApi = BackendApiService();
+  StreamSubscription<void>? _assignmentLiveSub;
+
+  /// Avoid overlapping the first [initial] load with [silent] polls (out-of-order completion could drop good data).
+  bool _assignmentInitialFetchFinished = false;
+
+  /// Latest silent refresh wins; older completions are ignored.
+  int _silentAssignmentRefreshGen = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadRouteCode();
-  }
-
-  Future<void> _loadRouteCode() async {
-    final routeCode = await ProfileDataService.getOperatorRouteCode();
-    var routeOptions = await RouteCatalogService.fetchAvailableRoutes();
-    routeOptions =
-        await RouteCatalogService.enrichRoutesWithMongoFreeRideFlags(routeOptions);
-    if (!mounted) return;
-    setState(() {
-      _currentRouteCode = routeCode;
-      _routeOptions = routeOptions;
-      _isLoading = false;
+    OperatorAssignmentLiveSyncService.instance.acquire();
+    _assignmentLiveSub =
+        OperatorAssignmentLiveSyncService.instance.refreshes.listen((_) {
+      if (!mounted || !_assignmentInitialFetchFinished) return;
+      _loadTerminalAssignment(silent: true);
+    });
+    _loadTerminalAssignment(initial: true).whenComplete(() {
+      _assignmentInitialFetchFinished = true;
     });
   }
 
-  String _routeNameForCode(String? code) {
-    if (code == null || code.trim().isEmpty) return 'Unknown';
-    final key = code.trim().toUpperCase();
-    for (final r in _routeOptions) {
-      if (r.code.trim().toUpperCase() == key) return r.name;
-    }
-    return code;
+  @override
+  void dispose() {
+    _assignmentLiveSub?.cancel();
+    OperatorAssignmentLiveSyncService.instance.release();
+    super.dispose();
   }
 
-  bool _currentRouteIsFreeRideEligible() {
-    final c = _currentRouteCode?.trim().toUpperCase();
-    if (c == null || c.isEmpty) return false;
-    for (final r in _routeOptions) {
-      if (r.code.trim().toUpperCase() == c) return r.isFreeRideRoute;
+  Future<({String? routeCode, bool isFreeRide})?> _fetchRouteMeta(
+    String routeId,
+  ) async {
+    final res = await _backendApi.get(
+      '/api/routes/${Uri.encodeComponent(routeId)}',
+    );
+    if (!res.success || res.data == null) return null;
+    final data = res.data!['data'];
+    if (data is! Map) return null;
+    final m = Map<String, dynamic>.from(data);
+    final code = m['route_code']?.toString() ??
+        m['routeCode']?.toString() ??
+        m['code']?.toString();
+    final free = m['is_free_ride'] == true;
+    return (routeCode: code, isFreeRide: free);
+  }
+
+  Future<void> _loadTerminalAssignment({
+    bool initial = false,
+    bool silent = false,
+  }) async {
+    final int? silentGen;
+    if (silent) {
+      silentGen = ++_silentAssignmentRefreshGen;
+    } else {
+      _silentAssignmentRefreshGen++; // drop in-flight silent completions
+      silentGen = null;
     }
-    return false;
+
+    if (silent) {
+      // Background live-sync: update route card without spinners.
+    } else if (initial) {
+      setState(() {
+        _isLoading = true;
+        _terminalAssignmentError = null;
+      });
+    } else {
+      setState(() => _refreshingAssignment = true);
+    }
+
+    await OperatorSessionService.instance.loadFromPrefs();
+    final result =
+        await OperatorBusAssignmentService.instance.fetchMyAssignments();
+
+    String? routeName;
+    String? routeCode;
+    String? busLabel;
+    var freeRide = false;
+    String? err = result.errorHint;
+
+    if (result.items.isNotEmpty) {
+      final a = result.items.first;
+      routeName = a.routeName;
+      busLabel = a.busLabel;
+      final rid = a.routeId;
+      if (rid != null && rid.isNotEmpty) {
+        final meta = await _fetchRouteMeta(rid);
+        routeCode = meta?.routeCode;
+        freeRide = meta?.isFreeRide ?? false;
+      }
+    }
+
+    if (!mounted) return;
+
+    if (silent) {
+      if (silentGen != _silentAssignmentRefreshGen) return;
+      if (err != null) {
+        // Transient failures on poll/WS must not replace a good assignment with an error.
+        return;
+      }
+    }
+
+    setState(() {
+      if (!silent) {
+        _isLoading = false;
+        _refreshingAssignment = false;
+      }
+      _terminalAssignmentError = err;
+      _terminalRouteName = routeName;
+      _terminalRouteCode = routeCode;
+      _terminalBusLabel = busLabel;
+      _terminalRouteFreeRide = freeRide;
+    });
+    if (routeCode != null && routeCode.trim().isNotEmpty) {
+      unawaited(ProfileDataService.syncAssignedRouteFromTerminal(routeCode));
+    }
   }
 
   Future<void> _showProfileInformation() async {
@@ -80,13 +169,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 12),
               _buildInfoRow('Role', profile?['role'] ?? 'operator'),
               const SizedBox(height: 12),
-              _buildInfoRow('Route Code', _currentRouteCode ?? 'Not set'),
-              if (_currentRouteCode != null) ...[
+              _buildInfoRow(
+                'Assigned route (terminal)',
+                _terminalRouteCode ?? '—',
+              ),
+              if (_terminalRouteName != null) ...[
                 const SizedBox(height: 12),
-                _buildInfoRow(
-                  'Route Name',
-                  _routeNameForCode(_currentRouteCode),
-                ),
+                _buildInfoRow('Route name', _terminalRouteName!),
+              ],
+              if (_terminalBusLabel != null) ...[
+                const SizedBox(height: 12),
+                _buildInfoRow('Bus', _terminalBusLabel!),
               ],
             ],
           ),
@@ -103,8 +196,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildFreeRideCard() {
     return FreeRideCard(
-      currentRouteCode: _currentRouteCode,
-      isDesignatedFreeRideRoute: _currentRouteIsFreeRideEligible(),
+      currentRouteCode: _terminalRouteCode,
+      isDesignatedFreeRideRoute: _terminalRouteFreeRide,
     );
   }
 
@@ -132,168 +225,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _showRouteSelection() async {
-    if (_isUpdatingRoute || _routePickerLoading) return;
-    setState(() => _routePickerLoading = true);
-    late RouteCatalogFetchResult catalog;
-    late List<RouteInfo> options;
-    try {
-      catalog = await RouteCatalogService.fetchRouteCatalog();
-      if (!mounted) return;
-      options =
-          catalog.routes.isNotEmpty ? catalog.routes : _routeOptions;
-      options =
-          await RouteCatalogService.enrichRoutesWithMongoFreeRideFlags(options);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not load routes: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    } finally {
-      if (mounted) setState(() => _routePickerLoading = false);
-    }
-
-    if (!mounted) return;
-
-    String? selectedRouteCode = _currentRouteCode;
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Select Route'),
-          content: SingleChildScrollView(
-            child: options.isEmpty
-                ? Text(catalog.emptySelectionMessage)
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          'Free ride routes are labeled below (from the server).',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                      ...options.map((route) {
-                      final isSelected = selectedRouteCode == route.code;
-                      return RadioListTile<String>(
-                        title: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                route.name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            if (route.isFreeRideRoute) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.shade100,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Colors.amber.shade700,
-                                  ),
-                                ),
-                                child: Text(
-                                  'FREE RIDE',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.amber.shade900,
-                                    letterSpacing: 0.3,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text('Code: ${route.code}'),
-                        ),
-                        isThreeLine: route.isFreeRideRoute,
-                        value: route.code,
-                        groupValue: selectedRouteCode,
-                        onChanged: (value) {
-                          setDialogState(() {
-                            selectedRouteCode = value;
-                          });
-                        },
-                        selected: isSelected,
-                      );
-                    }),
-                    ],
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            if (selectedRouteCode != null)
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(selectedRouteCode),
-                child: const Text('Save'),
-              ),
-          ],
-        ),
-      ),
-    );
-
-    if (result != null && result != _currentRouteCode) {
-      setState(() => _isUpdatingRoute = true);
-      final success = await ProfileDataService.updateOperatorRouteCode(result);
-      if (success) {
-        await OperatorLocationSyncService.instance
-            .mergeRouteCodeIntoOperatorLocation(result);
-      }
-      if (mounted) {
-        setState(() {
-          _isUpdatingRoute = false;
-          if (success) {
-            _currentRouteCode = result;
-            _routeOptions = options;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Route updated to: ${_routeNameForCode(result)}'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Failed to update route. Please try again.'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     final email = user?.email ?? '';
-    final routeOverlayBusy = _routePickerLoading || _isUpdatingRoute;
 
     return Stack(
       fit: StackFit.expand,
@@ -304,6 +239,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: const Text('Profile'),
             backgroundColor: Colors.blue,
             foregroundColor: Colors.white,
+            actions: [
+              if (_refreshingAssignment)
+                const Padding(
+                  padding: EdgeInsets.only(right: 12),
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                IconButton(
+                  tooltip: 'Refresh assignment',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _isLoading ? null : () => _loadTerminalAssignment(),
+                ),
+            ],
           ),
           body: SafeArea(
             child: _isLoading
@@ -348,18 +305,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       elevation: 2,
                       child: ListTile(
                         leading: const Icon(Icons.route, color: Colors.blue),
-                        title: const Text('Route'),
+                        title: const Text('Assigned route'),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              _currentRouteCode != null
-                                  ? '${_routeNameForCode(_currentRouteCode)} (Code: $_currentRouteCode)'
-                                  : 'Not set - Tap to select',
+                              _terminalAssignmentError != null
+                                  ? 'Could not load assignment: $_terminalAssignmentError'
+                                  : _terminalRouteName != null ||
+                                          _terminalRouteCode != null
+                                      ? [
+                                          if (_terminalRouteName != null)
+                                            _terminalRouteName!,
+                                          if (_terminalRouteCode != null)
+                                            'Code: $_terminalRouteCode',
+                                          if (_terminalBusLabel != null)
+                                            'Bus: $_terminalBusLabel',
+                                        ].join('\n')
+                                      : 'No active assignment yet. Your terminal admin assigns your route; pull refresh (↻) to update.',
+                              style: TextStyle(
+                                color: _terminalAssignmentError != null
+                                    ? Colors.red.shade800
+                                    : null,
+                              ),
                             ),
-                            if (_currentRouteCode != null &&
-                                _currentRouteIsFreeRideEligible()) ...[
+                            if (_terminalRouteFreeRide &&
+                                _terminalRouteCode != null) ...[
                               const SizedBox(height: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -385,10 +357,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ],
                           ],
                         ),
-                        isThreeLine: _currentRouteCode != null &&
-                            _currentRouteIsFreeRideEligible(),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: routeOverlayBusy ? null : _showRouteSelection,
+                        isThreeLine: _terminalRouteFreeRide &&
+                            _terminalRouteCode != null,
+                        trailing: Icon(
+                          Icons.lock_outline,
+                          color: Colors.grey.shade600,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -408,45 +382,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
           ),
         ),
-        if (routeOverlayBusy)
-          Positioned.fill(
-            child: AbsorbPointer(
-              child: Material(
-                color: Colors.black54,
-                child: Center(
-                  child: Card(
-                    elevation: 10,
-                    margin: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 32,
-                        vertical: 28,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: CircularProgressIndicator(strokeWidth: 3),
-                          ),
-                          const SizedBox(height: 18),
-                          Text(
-                            _routePickerLoading
-                                ? 'Loading route list…'
-                                : 'Saving route…',
-                            textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -472,6 +407,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await db.collection(operatorLocationsCollection).doc(user.uid).delete();
     }
     OperatorLocationSyncService.instance.stop();
+    ProfileDataService.resetTerminalAssignmentFirebaseSyncDedupe();
     await OperatorSessionService.instance.clear();
     await FirebaseAuth.instance.signOut();
     if (context.mounted) {

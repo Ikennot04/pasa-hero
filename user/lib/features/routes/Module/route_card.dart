@@ -53,6 +53,7 @@ class RouteCard extends StatelessWidget {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => RouteDetailsScreen(
+            routeCode: followRouteCode.trim(),
             routeId: routeId,
             estimatedArrival: estimatedTime.replaceAll('Estimated: ', ''),
             status: status,
