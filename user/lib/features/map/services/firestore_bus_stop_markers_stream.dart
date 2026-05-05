@@ -1,10 +1,17 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../core/services/backend_route_geometry.dart';
 import '../../../core/services/bus_stops_service.dart';
-import '../../../core/services/route_path_coordinates_service.dart';
+import '../../../core/services/route_stop_display_utils.dart';
 
-/// Live [Marker]s from Firestore: either [bus_stops] or route-scoped stops on [routes]/[route_code].
+/// Same ordering rules as [BackendRouteGeometry.orderedStopPointsFromDetail] so first/last
+/// markers match route direction.
+/// - No route filter: live [Marker]s from Firestore [bus_stops].
+/// - With [routeCode]: **Mongo route detail** (`GET /api/routes` + `/api/routes/:id`), not Firestore.
 class FirestoreBusStopMarkersStream {
   FirestoreBusStopMarkersStream._();
 
@@ -19,18 +26,176 @@ class FirestoreBusStopMarkersStream {
   }
 
   /// When [routeCode] is null/empty, listens to the [bus_stops] collection.
-  /// Otherwise resolves [routes] or [route_code] and listens to that document's stop list.
+  /// Otherwise polls Vercel/Mongo for that route's stops and terminals (aligned with [route_code] in DB).
   static Stream<List<Marker>> watchStopMarkers({
     FirebaseFirestore? firestore,
     String? routeCode,
     required BitmapDescriptor icon,
+    /// Same asset for first & last stop / Point A & B when route order exists.
+    BitmapDescriptor? routeEndpointIcon,
   }) {
     final db = firestore ?? FirebaseFirestore.instance;
     final rc = routeCode?.trim();
     if (rc == null || rc.isEmpty) {
       return _watchBusStopsCollection(db, icon);
     }
-    return _watchResolvedRouteDocument(db, rc, icon);
+    return _watchMongoRouteDetailMarkers(rc, icon, routeEndpointIcon);
+  }
+
+  /// Periodically refreshes markers from `GET /api/routes` → `GET /api/routes/:id` (Mongo).
+  static Stream<List<Marker>> _watchMongoRouteDetailMarkers(
+    String routeCode,
+    BitmapDescriptor icon,
+    BitmapDescriptor? routeEndpointIcon,
+  ) {
+    Future<List<Marker>> load() async {
+      final detail = await BackendRouteGeometry.fetchRouteDetailByCode(routeCode);
+      if (detail == null) return const [];
+      return markersFromMongoRouteDetail(
+        detail,
+        icon,
+        routeEndpointIcon: routeEndpointIcon,
+      );
+    }
+
+    return Stream<List<Marker>>.multi((controller) {
+      Timer? timer;
+      Future<void> emit() async {
+        if (controller.isClosed) return;
+        try {
+          final markers = await load();
+          if (!controller.isClosed) controller.add(markers);
+        } catch (_) {
+          if (!controller.isClosed) controller.add(const []);
+        }
+      }
+
+      controller.onCancel = () => timer?.cancel();
+
+      emit();
+      timer = Timer.periodic(const Duration(minutes: 2), (_) => emit());
+    });
+  }
+
+  /// [route_stops] + terminals from Mongo route detail (same source as admin).
+  static List<Marker> markersFromMongoRouteDetail(
+    Map<String, dynamic> detail,
+    BitmapDescriptor icon, {
+    BitmapDescriptor? routeEndpointIcon,
+  }) {
+    final se = BackendRouteGeometry.startEndFromRouteDetail(detail);
+    final syntheticParent = <String, dynamic>{
+      if (se.start != null)
+        'start_location': {
+          'latitude': se.start!.latitude,
+          'longitude': se.start!.longitude,
+        },
+      if (se.end != null)
+        'end_location': {
+          'latitude': se.end!.latitude,
+          'longitude': se.end!.longitude,
+        },
+      if (se.start != null)
+        'pointA': {
+          'latitude': se.start!.latitude,
+          'longitude': se.start!.longitude,
+        },
+      if (se.end != null)
+        'pointB': {
+          'latitude': se.end!.latitude,
+          'longitude': se.end!.longitude,
+        },
+    };
+    final raw = detail['route_stops'] ?? detail['routeStops'];
+    final normalized =
+        _mongoStopsWithDisplayNames(raw is List ? List<dynamic>.from(raw) : const []);
+    var fromStops = markersFromStopsArray(
+      normalized,
+      icon,
+      routeEndpointIcon: routeEndpointIcon,
+      routeDocument: syntheticParent,
+    );
+    final endpointPin = routeEndpointIcon ?? icon;
+    fromStops = _appendOrphanTerminalMarkersIfNeeded(fromStops, se, endpointPin);
+    if (fromStops.isNotEmpty) return fromStops;
+
+    return markersFromRouteCodeDocument(
+      <String, dynamic>{
+        ...syntheticParent,
+        'busStops': <dynamic>[],
+      },
+      icon,
+      routeEndpointIcon: routeEndpointIcon,
+    );
+  }
+
+  static List<dynamic> _mongoStopsWithDisplayNames(List<dynamic> raw) {
+    final out = <dynamic>[];
+    for (final item in raw) {
+      if (item is GeoPoint) {
+        out.add(item);
+        continue;
+      }
+      final m = asStringKeyedMap(item);
+      if (m == null) {
+        out.add(item);
+        continue;
+      }
+      final copy = Map<String, dynamic>.from(m);
+      if (copy['name'] == null) {
+        final n = copy['stop_name'] ?? copy['stopName'];
+        if (n != null) copy['name'] = n.toString();
+      }
+      out.add(copy);
+    }
+    return out;
+  }
+
+  /// If the physical start/end terminal is not within [RouteStopDisplayUtils.nearTerminal] of
+  /// any [route_stops] pin, add a dedicated endpoint marker. Otherwise the “start” can
+  /// disappear when the first listed stop is past the terminal.
+  static List<Marker> _appendOrphanTerminalMarkersIfNeeded(
+    List<Marker> markers,
+    ({LatLng? start, LatLng? end}) terminals,
+    BitmapDescriptor endpointPin,
+  ) {
+    bool anyNear(LatLng p, List<LatLng> occupied) {
+      for (final q in occupied) {
+        if (RouteStopDisplayUtils.nearTerminal(p, q)) return true;
+      }
+      return false;
+    }
+
+    final occupied = markers.map((m) => m.position).toList();
+    final used = markers.map((m) => m.markerId.value).toSet();
+    final out = List<Marker>.from(markers);
+
+    void addIfOrphan(LatLng p, String title, String idSuffix) {
+      if (anyNear(p, occupied)) return;
+      final idVal = allocateMarkerId(title, idSuffix, used);
+      used.add(idVal);
+      occupied.add(p);
+      out.add(
+        Marker(
+          markerId: MarkerId(idVal),
+          position: p,
+          icon: endpointPin,
+          anchor: const Offset(0.5, 1.0),
+          infoWindow: InfoWindow(
+            title: title,
+            snippet: 'Terminal',
+          ),
+        ),
+      );
+    }
+
+    if (terminals.start != null) {
+      addIfOrphan(terminals.start!, 'Route start', 'orphan_start');
+    }
+    if (terminals.end != null) {
+      addIfOrphan(terminals.end!, 'Route end', 'orphan_end');
+    }
+    return out;
   }
 
   static Stream<List<Marker>> _watchBusStopsCollection(
@@ -50,95 +215,168 @@ class FirestoreBusStopMarkersStream {
     });
   }
 
-  static Stream<List<Marker>> _watchResolvedRouteDocument(
-    FirebaseFirestore db,
-    String code,
-    BitmapDescriptor icon,
-  ) {
-    return Stream.fromFuture(_resolveRouteDocument(db, code)).asyncExpand((target) {
-      if (target == null) {
-        return Stream<List<Marker>>.value(const <Marker>[]);
-      }
-      return db.collection(target.collection).doc(target.docId).snapshots().map((snap) {
-        final data = asStringKeyedMap(snap.data());
-        if (data == null) return const <Marker>[];
-        if (target.collection == RoutePathCoordinatesService.routesCollection) {
-          return markersFromStopsArray(data['stops'] ?? data['bus_stop'], icon);
-        }
-        return markersFromRouteCodeDocument(data, icon);
-      });
-    });
-  }
-
-  static Future<({String collection, String docId})?> _resolveRouteDocument(
-    FirebaseFirestore db,
-    String code,
-  ) async {
-    final variants = _docIdVariants(code);
-    for (final id in variants) {
-      try {
-        final routesSnap = await db
-            .collection(RoutePathCoordinatesService.routesCollection)
-            .doc(id)
-            .get();
-        final rcSnap = await db
-            .collection(RoutePathCoordinatesService.routeCodeCollection)
-            .doc(id)
-            .get();
-
-        final routesData = asStringKeyedMap(routesSnap.data());
-        final stopsField = routesData?['stops'] ?? routesData?['bus_stop'];
-        final hasStopsArray =
-            stopsField is List && stopsField.isNotEmpty;
-
-        if (hasStopsArray) {
-          return (collection: RoutePathCoordinatesService.routesCollection, docId: id);
-        }
-        if (rcSnap.exists) {
-          return (collection: RoutePathCoordinatesService.routeCodeCollection, docId: id);
-        }
-        if (routesSnap.exists) {
-          return (collection: RoutePathCoordinatesService.routesCollection, docId: id);
-        }
-      } catch (_) {}
-    }
-    return null;
-  }
-
-  static Set<String> _docIdVariants(String code) {
-    final t = code.trim();
-    if (t.isEmpty) return const {};
-    return {t, t.toUpperCase(), t.toLowerCase()};
-  }
-
-  /// Stops array inside a [routes] document.
-  static List<Marker> markersFromStopsArray(dynamic raw, BitmapDescriptor icon) {
+  /// Stops array inside a [routes] document. Pass [routeDocument] so `pointA` / `start_location`
+  /// etc. on the **parent** doc are used for terminal pins (not only first/last array slot).
+  static List<Marker> markersFromStopsArray(
+    dynamic raw,
+    BitmapDescriptor icon, {
+    BitmapDescriptor? routeEndpointIcon,
+    Map<String, dynamic>? routeDocument,
+  }) {
     if (raw is! List) return const [];
+    final ordered =
+        RouteStopDisplayUtils.orderRawStopList(List<dynamic>.from(raw));
+    final terminals = routeDocument != null
+        ? RouteStopDisplayUtils.terminalsFromRouteDocument(routeDocument)
+        : (start: null, end: null);
+    final pointA = terminals.start;
+    final pointB = terminals.end;
+    final hasExplicitEndpoints = pointA != null || pointB != null;
+
+    var anyDeclaredStart = false;
+    var anyDeclaredEnd = false;
+    for (final item in ordered) {
+      final m = asStringKeyedMap(item);
+      if (m != null) {
+        if (RouteStopDisplayUtils.stopMapDeclaredStart(m)) {
+          anyDeclaredStart = true;
+        }
+        if (RouteStopDisplayUtils.stopMapDeclaredEnd(m)) {
+          anyDeclaredEnd = true;
+        }
+      }
+    }
+
     final used = <String>{};
     final out = <Marker>[];
-    for (var i = 0; i < raw.length; i++) {
-      final item = raw[i];
-      final itemMap = asStringKeyedMap(item);
-      if (itemMap == null) continue;
-      final name = itemMap['name'] as String? ?? 'Stop ${i + 1}';
-      final pos = latLngFromStopMap(itemMap);
+    final n = ordered.length;
+    for (var i = 0; i < n; i++) {
+      final item = ordered[i];
+      LatLng? pos;
+      Map<String, dynamic>? itemMap;
+      String name = 'Stop ${i + 1}';
+
+      if (item is GeoPoint) {
+        pos = LatLng(item.latitude, item.longitude);
+      } else {
+        itemMap = asStringKeyedMap(item);
+        if (itemMap == null) continue;
+        name = itemMap['name'] as String? ?? name;
+        pos = latLngFromStopMap(itemMap);
+      }
       if (pos == null) continue;
+
+      final declaredStart =
+          itemMap != null && RouteStopDisplayUtils.stopMapDeclaredStart(itemMap);
+      final declaredEnd =
+          itemMap != null && RouteStopDisplayUtils.stopMapDeclaredEnd(itemMap);
+
+      final matchesA = pointA != null &&
+          routeEndpointIcon != null &&
+          RouteStopDisplayUtils.nearTerminal(pointA, pos);
+      final matchesB = pointB != null &&
+          routeEndpointIcon != null &&
+          RouteStopDisplayUtils.nearTerminal(pointB, pos);
+      final useEndpoint = routeEndpointIcon != null &&
+          (n == 1 ||
+              matchesA ||
+              matchesB ||
+              declaredStart ||
+              declaredEnd ||
+              (!hasExplicitEndpoints &&
+                  !anyDeclaredStart &&
+                  !anyDeclaredEnd &&
+                  (i == 0 || i == n - 1)));
+
+      final markerIcon = useEndpoint ? routeEndpointIcon : icon;
       final idVal = allocateMarkerId(name, 'r$i', used);
       used.add(idVal);
-      out.add(
-        Marker(
-          markerId: MarkerId(idVal),
-          position: pos,
-          icon: icon,
-          infoWindow: InfoWindow(
-            title: name,
-            snippet: buildSnippet(
+
+      final baseSnippet = itemMap != null
+          ? buildSnippet(
               route: itemMap['route'] as String?,
               status: itemMap['status'] as String?,
+            )
+          : '';
+
+      String endpointSnippet;
+      if (n == 1) {
+        endpointSnippet = 'Bus stop';
+      } else if (matchesA) {
+        endpointSnippet = 'Route start (terminal)';
+      } else if (matchesB) {
+        endpointSnippet = 'Route end (terminal)';
+      } else if (declaredStart) {
+        endpointSnippet = 'Route start';
+      } else if (declaredEnd) {
+        endpointSnippet = 'Route end';
+      } else if (!hasExplicitEndpoints &&
+          !anyDeclaredStart &&
+          !anyDeclaredEnd &&
+          i == 0) {
+        endpointSnippet = 'Route start';
+      } else if (!hasExplicitEndpoints &&
+          !anyDeclaredStart &&
+          !anyDeclaredEnd &&
+          i == n - 1) {
+        endpointSnippet = 'Route end';
+      } else {
+        endpointSnippet = '';
+      }
+      final snippet = endpointSnippet.isEmpty
+          ? baseSnippet
+          : (baseSnippet.isEmpty
+              ? endpointSnippet
+              : '$endpointSnippet · $baseSnippet');
+
+      String startEndSuffix = '';
+      if (useEndpoint && n > 1) {
+        if (matchesA) {
+          startEndSuffix = 'Start';
+        } else if (matchesB) {
+          startEndSuffix = 'End';
+        } else if (declaredStart) {
+          startEndSuffix = 'Start';
+        } else if (declaredEnd) {
+          startEndSuffix = 'End';
+        } else if (!hasExplicitEndpoints &&
+            !anyDeclaredStart &&
+            !anyDeclaredEnd &&
+            i == 0) {
+          startEndSuffix = 'Start';
+        } else if (!hasExplicitEndpoints &&
+            !anyDeclaredStart &&
+            !anyDeclaredEnd &&
+            i == n - 1) {
+          startEndSuffix = 'End';
+        }
+      }
+      final title =
+          startEndSuffix.isEmpty ? name : '$name · $startEndSuffix';
+
+      if (useEndpoint) {
+        out.add(
+          Marker(
+            markerId: MarkerId(idVal),
+            position: pos,
+            icon: markerIcon,
+            anchor: const Offset(0.5, 1.0),
+            infoWindow: InfoWindow(title: title, snippet: snippet),
+          ),
+        );
+      } else {
+        out.add(
+          Marker(
+            markerId: MarkerId(idVal),
+            position: pos,
+            icon: markerIcon,
+            infoWindow: InfoWindow(
+              title: name,
+              snippet: baseSnippet,
             ),
           ),
-        ),
-      );
+        );
+      }
     }
     return out;
   }
@@ -146,53 +384,167 @@ class FirestoreBusStopMarkersStream {
   /// [route_code] document: [busStops] and optionally endpoints.
   static List<Marker> markersFromRouteCodeDocument(
     Map<String, dynamic> data,
-    BitmapDescriptor icon,
-  ) {
+    BitmapDescriptor icon, {
+    BitmapDescriptor? routeEndpointIcon,
+  }) {
     final used = <String>{};
     final out = <Marker>[];
+    final terminals = RouteStopDisplayUtils.terminalsFromRouteDocument(data);
+    final pointA = terminals.start;
+    final pointB = terminals.end;
     final raw = data['busStops'] ?? data['bus_stop'];
-    final stopsList = raw is List ? List<dynamic>.from(raw) : <dynamic>[];
-    for (var i = 0; i < stopsList.length; i++) {
+    final rawList = raw is List ? List<dynamic>.from(raw) : <dynamic>[];
+    final stopsList = RouteStopDisplayUtils.orderRawStopList(rawList);
+    final ns = stopsList.length;
+    final hasExplicitEndpoints = pointA != null || pointB != null;
+
+    var anyDeclaredStart = false;
+    var anyDeclaredEnd = false;
+    for (final s in stopsList) {
+      final m = asStringKeyedMap(s);
+      if (m != null) {
+        if (RouteStopDisplayUtils.stopMapDeclaredStart(m)) {
+          anyDeclaredStart = true;
+        }
+        if (RouteStopDisplayUtils.stopMapDeclaredEnd(m)) {
+          anyDeclaredEnd = true;
+        }
+      }
+    }
+
+    for (var i = 0; i < ns; i++) {
       final s = stopsList[i];
+      LatLng? pos;
+      String defaultTitle = 'Stop ${i + 1}';
+      Map<String, dynamic>? sm;
+
       if (s is GeoPoint) {
-        final idVal = allocateMarkerId('Stop ${i + 1}', 'bs$i', used);
-        used.add(idVal);
+        pos = LatLng(s.latitude, s.longitude);
+      } else {
+        sm = asStringKeyedMap(s);
+        if (sm == null) continue;
+        defaultTitle = sm['name'] as String? ?? defaultTitle;
+        pos = latLngFromStopMap(sm);
+      }
+      if (pos == null) continue;
+
+      final declaredStart =
+          sm != null && RouteStopDisplayUtils.stopMapDeclaredStart(sm);
+      final declaredEnd =
+          sm != null && RouteStopDisplayUtils.stopMapDeclaredEnd(sm);
+
+      final matchesA = pointA != null &&
+          routeEndpointIcon != null &&
+          RouteStopDisplayUtils.nearTerminal(pointA, pos);
+      final matchesB = pointB != null &&
+          routeEndpointIcon != null &&
+          RouteStopDisplayUtils.nearTerminal(pointB, pos);
+      final useEndpoint = routeEndpointIcon != null &&
+          (ns == 1 ||
+              matchesA ||
+              matchesB ||
+              declaredStart ||
+              declaredEnd ||
+              (!hasExplicitEndpoints &&
+                  !anyDeclaredStart &&
+                  !anyDeclaredEnd &&
+                  (i == 0 || i == ns - 1)));
+
+      final markerIcon = useEndpoint ? routeEndpointIcon : icon;
+      final idVal =
+          allocateMarkerId(sm != null ? (sm['name'] as String? ?? defaultTitle) : defaultTitle, 'bs$i', used);
+      used.add(idVal);
+
+      final baseSnippet = sm != null
+          ? buildSnippet(
+              route: sm['route'] as String?,
+              status: sm['status'] as String?,
+            )
+          : '';
+      String endpointSnippet;
+      if (ns == 1) {
+        endpointSnippet = 'Bus stop';
+      } else if (matchesA) {
+        endpointSnippet = 'Route start (terminal)';
+      } else if (matchesB) {
+        endpointSnippet = 'Route end (terminal)';
+      } else if (declaredStart) {
+        endpointSnippet = 'Route start';
+      } else if (declaredEnd) {
+        endpointSnippet = 'Route end';
+      } else if (!hasExplicitEndpoints &&
+          !anyDeclaredStart &&
+          !anyDeclaredEnd &&
+          i == 0) {
+        endpointSnippet = 'Route start';
+      } else if (!hasExplicitEndpoints &&
+          !anyDeclaredStart &&
+          !anyDeclaredEnd &&
+          i == ns - 1) {
+        endpointSnippet = 'Route end';
+      } else {
+        endpointSnippet = '';
+      }
+      final snippet = endpointSnippet.isEmpty
+          ? baseSnippet
+          : (baseSnippet.isEmpty ? endpointSnippet : '$endpointSnippet · $baseSnippet');
+
+      final titleLabel = sm != null ? (sm['name'] as String? ?? defaultTitle) : defaultTitle;
+      String startEndSuffix = '';
+      if (useEndpoint && ns > 1) {
+        if (matchesA) {
+          startEndSuffix = 'Start';
+        } else if (matchesB) {
+          startEndSuffix = 'End';
+        } else if (declaredStart) {
+          startEndSuffix = 'Start';
+        } else if (declaredEnd) {
+          startEndSuffix = 'End';
+        } else if (!hasExplicitEndpoints &&
+            !anyDeclaredStart &&
+            !anyDeclaredEnd &&
+            i == 0) {
+          startEndSuffix = 'Start';
+        } else if (!hasExplicitEndpoints &&
+            !anyDeclaredStart &&
+            !anyDeclaredEnd &&
+            i == ns - 1) {
+          startEndSuffix = 'End';
+        }
+      }
+      final title =
+          startEndSuffix.isEmpty ? titleLabel : '$titleLabel · $startEndSuffix';
+
+      if (useEndpoint) {
         out.add(
           Marker(
             markerId: MarkerId(idVal),
-            position: LatLng(s.latitude, s.longitude),
-            icon: icon,
-            infoWindow: InfoWindow(title: 'Stop ${i + 1}', snippet: ''),
+            position: pos,
+            icon: markerIcon,
+            anchor: const Offset(0.5, 1.0),
+            infoWindow: InfoWindow(title: title, snippet: snippet),
           ),
         );
-        continue;
-      }
-      final sm = asStringKeyedMap(s);
-      if (sm == null) continue;
-      final name = sm['name'] as String? ?? 'Stop ${i + 1}';
-      final pos = latLngFromStopMap(sm);
-      if (pos == null) continue;
-      final idVal = allocateMarkerId(name, 'bs$i', used);
-      used.add(idVal);
-      out.add(
-        Marker(
-          markerId: MarkerId(idVal),
-          position: pos,
-          icon: icon,
-          infoWindow: InfoWindow(
-            title: name,
-            snippet: buildSnippet(
-              route: sm['route'] as String?,
-              status: sm['status'] as String?,
+      } else {
+        out.add(
+          Marker(
+            markerId: MarkerId(idVal),
+            position: pos,
+            icon: markerIcon,
+            infoWindow: InfoWindow(
+              title: titleLabel,
+              snippet: baseSnippet,
             ),
           ),
-        ),
-      );
+        );
+      }
     }
     if (out.isNotEmpty) return out;
 
-    final a = latLngFromPointField(data['pointA']);
-    final b = latLngFromPointField(data['pointB']);
+    final pin = routeEndpointIcon ?? icon;
+    final fb = RouteStopDisplayUtils.terminalsFromRouteDocument(data);
+    final a = fb.start;
+    final b = fb.end;
     if (a != null) {
       final idA = allocateMarkerId('Point A', 'pa', used);
       used.add(idA);
@@ -200,7 +552,8 @@ class FirestoreBusStopMarkersStream {
         Marker(
           markerId: MarkerId(idA),
           position: a,
-          icon: icon,
+          icon: pin,
+          anchor: const Offset(0.5, 1.0),
           infoWindow: const InfoWindow(title: 'Point A', snippet: 'Route start'),
         ),
       );
@@ -212,7 +565,8 @@ class FirestoreBusStopMarkersStream {
         Marker(
           markerId: MarkerId(idB),
           position: b,
-          icon: icon,
+          icon: pin,
+          anchor: const Offset(0.5, 1.0),
           infoWindow: const InfoWindow(title: 'Point B', snippet: 'Route end'),
         ),
       );
@@ -272,17 +626,6 @@ class FirestoreBusStopMarkersStream {
     final lat = toDouble(m['lat']) ?? toDouble(m['latitude']);
     final lng = toDouble(m['lng']) ?? toDouble(m['longitude']);
     if (lat != null && lng != null) return LatLng(lat, lng);
-    return null;
-  }
-
-  static LatLng? latLngFromPointField(dynamic v) {
-    if (v is GeoPoint) return LatLng(v.latitude, v.longitude);
-    final m = asStringKeyedMap(v);
-    if (m != null) {
-      final lat = toDouble(m['latitude']);
-      final lng = toDouble(m['longitude']);
-      if (lat != null && lng != null) return LatLng(lat, lng);
-    }
     return null;
   }
 

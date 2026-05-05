@@ -5,19 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/models/nearby_operator.dart';
+import '../../core/models/route_map_label_point.dart';
 import '../../core/services/nearby_operators_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/map/map_service.dart';
+import '../../core/services/route_path_coordinates_service.dart';
 import 'services/bus_stop_icon_service.dart';
 import 'services/firestore_bus_stop_markers_stream.dart';
 import 'services/operator_bus_icon_service.dart';
+import 'services/route_endpoint_pin_icon_service.dart';
 import 'services/route_service.dart';
 import 'services/map_style_service.dart';
 
-/// Main map screen: transportation-focused map with bus stops from Firestore streams.
+/// Main map screen: transportation-focused map with bus stop markers.
 ///
 /// - Custom map style hides POIs and transit; keeps roads, road names, and city/neighborhood labels.
-/// - Bus stop [Marker]s from [FirestoreBusStopMarkersStream] ([bus_stops] or route doc [stops]).
+/// - Bus stop [Marker]s from [FirestoreBusStopMarkersStream]: global [bus_stops] in Firestore,
+///   or **Mongo/Vercel** route detail when a catalog route is selected.
 /// - User location remains visible (blue dot).
 /// - When [routeOrigin] and [routeDestination] are set, draws driving route polyline.
 class MapScreen extends StatefulWidget {
@@ -35,6 +39,7 @@ class MapScreen extends StatefulWidget {
     this.onMapControllerReady,
     this.routeCatalogHighlightPoints,
     this.selectedRouteCodeForStopsStream,
+    this.routeDetailPoints,
   });
 
   /// Start of the route (e.g. closest bus stop to user). When set with [routeDestination], route is drawn.
@@ -59,11 +64,14 @@ class MapScreen extends StatefulWidget {
   /// Called when the [GoogleMap] is ready; use for [GoogleMapController.animateCamera] from parent.
   final ValueChanged<GoogleMapController>? onMapControllerReady;
 
-  /// Near Me: Firestore route path (coordinates / stops / route_code) as a blue polyline.
+  /// Near Me: catalog route polyline (Mongo-first via [RoutePathCoordinatesService], then Firestore fallback).
   final List<LatLng>? routeCatalogHighlightPoints;
 
-  /// When null, stream loads [bus_stops]; when set, loads [stops] from [routes] or [route_code] doc.
+  /// When null, stream loads Firestore [bus_stops]; when set, polls Vercel `/api/routes` for that code.
   final String? selectedRouteCodeForStopsStream;
+
+  /// Routes tab: only these labeled pins (start / bus stops / end); disables global bus-stop stream.
+  final List<RouteMapLabelPoint>? routeDetailPoints;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -141,6 +149,96 @@ class _MapScreenState extends State<MapScreen> {
     return true;
   }
 
+  static bool _sameRouteDetailPoints(
+    List<RouteMapLabelPoint>? a,
+    List<RouteMapLabelPoint>? b,
+  ) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return a == b;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].name != b[i].name) return false;
+      if (a[i].position.latitude != b[i].position.latitude ||
+          a[i].position.longitude != b[i].position.longitude) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<List<Marker>> _buildRouteDetailMarkers(List<RouteMapLabelPoint> points) async {
+    await RouteEndpointPinIconService.instance.load();
+    final endpointPin = RouteEndpointPinIconService.instance.descriptor;
+    final busIcon = _iconService.defaultIcon;
+    final n = points.length;
+    final out = <Marker>[];
+    for (var i = 0; i < n; i++) {
+      final p = points[i];
+      final isEndpoint = n == 1 || i == 0 || i == n - 1;
+      final icon = isEndpoint ? endpointPin : busIcon;
+      out.add(
+        Marker(
+          markerId: MarkerId('route_detail_$i'),
+          position: p.position,
+          icon: icon,
+          anchor: const Offset(0.5, 1.0),
+          zIndexInt: isEndpoint ? 2 : 1,
+          infoWindow: InfoWindow(
+            title: p.name,
+            snippet: 'Route stop',
+          ),
+        ),
+      );
+    }
+    return out;
+  }
+
+  Future<void> _attachBusStopMarkersStream() async {
+    if (widget.routeDetailPoints != null && widget.routeDetailPoints!.isNotEmpty) {
+      final markers = await _buildRouteDetailMarkers(widget.routeDetailPoints!);
+      if (!mounted) return;
+      setState(() {
+        _mapStopIconsReady = true;
+        _busStopMarkersStream = Stream<List<Marker>>.value(markers);
+        _rebuildOverlayMarkers();
+      });
+      Future.microtask(() {
+        if (mounted) _fitCameraToRouteDetail();
+      });
+      return;
+    }
+    setState(() {
+      _mapStopIconsReady = true;
+      _busStopMarkersStream = FirestoreBusStopMarkersStream.watchStopMarkers(
+        routeCode: widget.selectedRouteCodeForStopsStream,
+        icon: _iconService.defaultIcon,
+        routeEndpointIcon: RouteEndpointPinIconService.instance.descriptor,
+      );
+      _rebuildOverlayMarkers();
+    });
+  }
+
+  void _fitCameraToRouteDetail() {
+    final c = _mapController;
+    if (c == null) return;
+    final pts = widget.routeDetailPoints;
+    final hl = widget.routeCatalogHighlightPoints;
+    final all = <LatLng>[];
+    if (pts != null) {
+      for (final p in pts) {
+        all.add(p.position);
+      }
+    }
+    if (hl != null && hl.length >= 2) {
+      all.addAll(hl);
+    }
+    if (all.length < 2) return;
+    try {
+      final b = RoutePathCoordinatesService.latLngBoundsFromPoints(all);
+      c.animateCamera(CameraUpdate.newLatLngBounds(b, 56));
+    } catch (_) {}
+  }
+
   void _applyCatalogRouteHighlight(List<LatLng>? pts) {
     if (pts == null || pts.length < 2) {
       _catalogRouteHighlightPolyline = null;
@@ -169,15 +267,11 @@ class _MapScreenState extends State<MapScreen> {
       try {
         await _operatorBusIcon.load(context);
       } catch (_) {}
+      try {
+        await RouteEndpointPinIconService.instance.load();
+      } catch (_) {}
       if (!mounted) return;
-      setState(() {
-        _mapStopIconsReady = true;
-        _busStopMarkersStream = FirestoreBusStopMarkersStream.watchStopMarkers(
-          routeCode: widget.selectedRouteCodeForStopsStream,
-          icon: _iconService.defaultIcon,
-        );
-        _rebuildOverlayMarkers();
-      });
+      await _attachBusStopMarkersStream();
       if (mounted && widget.routeOrigin != null && widget.routeDestination != null) {
         _fetchAndDrawRoute(widget.routeOrigin!, widget.routeDestination!);
       }
@@ -204,6 +298,12 @@ class _MapScreenState extends State<MapScreen> {
       widget.routeCatalogHighlightPoints,
     )) {
       setState(() => _applyCatalogRouteHighlight(widget.routeCatalogHighlightPoints));
+      if (widget.routeDetailPoints != null &&
+          widget.routeDetailPoints!.isNotEmpty) {
+        Future.microtask(() {
+          if (mounted) _fitCameraToRouteDetail();
+        });
+      }
     }
     if (!listEquals(oldWidget.nearbyOperators, widget.nearbyOperators) ||
         !setEquals(
@@ -231,14 +331,14 @@ class _MapScreenState extends State<MapScreen> {
       setState(_rebuildOverlayMarkers);
     }
     if (oldWidget.selectedRouteCodeForStopsStream !=
-            widget.selectedRouteCodeForStopsStream &&
-        _mapStopIconsReady) {
-      setState(() {
-        _busStopMarkersStream = FirestoreBusStopMarkersStream.watchStopMarkers(
-          routeCode: widget.selectedRouteCodeForStopsStream,
-          icon: _iconService.defaultIcon,
-        );
-      });
+            widget.selectedRouteCodeForStopsStream ||
+        !_sameRouteDetailPoints(
+          oldWidget.routeDetailPoints,
+          widget.routeDetailPoints,
+        )) {
+      if (_mapStopIconsReady) {
+        unawaited(_attachBusStopMarkersStream());
+      }
     }
   }
 
@@ -638,6 +738,14 @@ class _MapScreenState extends State<MapScreen> {
     }
     if (_currentPosition != null || widget.nearbyOperators.isNotEmpty) {
       setState(() => _rebuildOverlayMarkers());
+    }
+    final routeDetail = widget.routeDetailPoints;
+    if (routeDetail != null && routeDetail.isNotEmpty) {
+      _hasSetInitialCameraPosition = true;
+      Future.microtask(() {
+        if (mounted) _fitCameraToRouteDetail();
+      });
+      return;
     }
     // Set initial camera position if we have a position and haven't set it yet
     if (_currentPosition != null && !_hasSetInitialCameraPosition) {

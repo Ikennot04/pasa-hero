@@ -163,6 +163,96 @@ class DirectionsService {
     return result?.polyline ?? [];
   }
 
+  /// Follows drivable roads through [anchors] in order (Google Directions `mode=driving`).
+  ///
+  /// Chunks requests so each leg respects the API limit (origin + up to 25 waypoints +
+  /// destination). Returns `null` if the key is missing or routing fails.
+  Future<List<LatLng>?> getRoadFollowingPolyline(List<LatLng> anchors) async {
+    if (anchors.length < 2) return anchors.isEmpty ? const <LatLng>[] : List<LatLng>.from(anchors);
+    final key = await _getApiKey();
+    if (key.isEmpty) {
+      print('⚠️ [Directions] getRoadFollowingPolyline: no API key');
+      return null;
+    }
+
+    /// Max anchor points per Directions request (origin + 25 intermediate + destination).
+    const maxPointsPerRequest = 27;
+
+    final merged = <LatLng>[];
+    var startIdx = 0;
+    while (startIdx < anchors.length - 1) {
+      final endIdx = (startIdx + maxPointsPerRequest - 1) < anchors.length - 1
+          ? startIdx + maxPointsPerRequest - 1
+          : anchors.length - 1;
+      final chunk = anchors.sublist(startIdx, endIdx + 1);
+      final segment = await _fetchDirectionsForAnchorChunk(chunk, key);
+      if (segment == null || segment.isEmpty) {
+        print('⚠️ [Directions] getRoadFollowingPolyline: chunk failed ($startIdx→$endIdx)');
+        return null;
+      }
+      if (merged.isEmpty) {
+        merged.addAll(segment);
+      } else if (_coordsVeryClose(merged.last, segment.first)) {
+        merged.addAll(segment.skip(1));
+      } else {
+        merged.addAll(segment);
+      }
+      startIdx = endIdx;
+    }
+    return merged;
+  }
+
+  Future<List<LatLng>?> _fetchDirectionsForAnchorChunk(
+    List<LatLng> chunk,
+    String key,
+  ) async {
+    if (chunk.length < 2) return null;
+    try {
+      final origin = chunk.first;
+      final dest = chunk.last;
+      final params = <String, String>{
+        'origin': '${origin.latitude},${origin.longitude}',
+        'destination': '${dest.latitude},${dest.longitude}',
+        'key': key,
+        'mode': 'driving',
+        'region': 'ph',
+      };
+      if (chunk.length > 2) {
+        params['waypoints'] = chunk
+            .sublist(1, chunk.length - 1)
+            .map((p) => '${p.latitude},${p.longitude}')
+            .join('|');
+      }
+
+      final uri = Uri.parse(_baseUrl).replace(queryParameters: params);
+      final response = await http.get(uri).timeout(const Duration(seconds: 20));
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final status = data['status'] as String?;
+      if (status != 'OK') {
+        print(
+          '⚠️ [Directions] chunk status: $status ${data['error_message'] ?? ''}',
+        );
+        return null;
+      }
+      final routes = data['routes'] as List<dynamic>?;
+      if (routes == null || routes.isEmpty) return null;
+      final route = routes.first as Map<String, dynamic>;
+      final overview = route['overview_polyline'] as Map<String, dynamic>?;
+      final encoded = overview?['points'] as String?;
+      if (encoded == null || encoded.isEmpty) return null;
+      return _decodePolyline(encoded);
+    } catch (e) {
+      print('⚠️ [Directions] _fetchDirectionsForAnchorChunk: $e');
+      return null;
+    }
+  }
+
+  static bool _coordsVeryClose(LatLng a, LatLng b) {
+    const eps = 1e-5;
+    return (a.latitude - b.latitude).abs() < eps &&
+        (a.longitude - b.longitude).abs() < eps;
+  }
+
   /// Formats distance in meters to a human-readable string.
   static String _formatDistance(double meters) {
     if (meters < 1000) {

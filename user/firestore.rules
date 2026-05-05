@@ -45,9 +45,10 @@ service cloud.firestore {
       allow read, create, update, delete: if request.auth != null;
     }
 
-    // Live operator GPS for "buses near you" (passenger reads; operator writes own doc)
+    // Live operator GPS for "buses near you".
+    // Read is public so riders always see live buses once the app loads (writes stay scoped).
     match /operator_locations/{operatorId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow create, update, delete: if request.auth != null && request.auth.uid == operatorId;
     }
 

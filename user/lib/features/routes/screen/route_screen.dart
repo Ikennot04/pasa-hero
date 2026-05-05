@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -69,16 +70,16 @@ class _RouteScreenState extends State<RouteScreen> with WidgetsBindingObserver {
     }
     try {
       final routes = await _routeOptionsService.fetchAvailableRoutes();
-      final counts = <String, int>{};
-      for (final r in routes) {
-        try {
-          final ops = await _nearbyOperatorsService.fetchNearby(
-            routeCodeFilter: r.code,
-          );
-          counts[r.code.toUpperCase()] = ops.length;
-        } catch (_) {
-          counts[r.code.toUpperCase()] = 0;
-        }
+      Map<String, int> counts;
+      try {
+        counts = await _nearbyOperatorsService.liveCountsByCatalogRouteCodes(
+          routes.map((r) => r.code).toList(),
+          source: Source.server,
+        );
+      } catch (_) {
+        counts = {
+          for (final r in routes) r.code.toUpperCase(): 0,
+        };
       }
 
       String? backendUserId;
@@ -125,10 +126,7 @@ class _RouteScreenState extends State<RouteScreen> with WidgetsBindingObserver {
     required String? backendUserId,
     required Map<String, String> mongoRouteIdByCode,
   }) async {
-    final firebaseUid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    final effectiveUserId = (backendUserId != null && backendUserId.isNotEmpty)
-        ? backendUserId
-        : firebaseUid;
+    final effectiveUserId = backendUserId?.trim() ?? '';
     if (effectiveUserId.isEmpty) {
       return <String>{};
     }

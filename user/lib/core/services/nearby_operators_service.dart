@@ -12,6 +12,7 @@ class NearbyOperatorsService {
   final FirebaseFirestore _db;
 
   static const String collectionName = 'operator_locations';
+  static const String _driverStatusCollection = 'driver_status';
   /// Staleness window for **live map** presence. Operator GPS ticks about every 30s;
   /// if [updatedAt] is older than this, the doc is treated as offline (app killed, sync stopped).
   static const Duration maxAge = Duration(minutes: 5);
@@ -32,12 +33,40 @@ class NearbyOperatorsService {
     return n;
   }
 
+  /// True when [s] looks like a Mongo ObjectId (not a jeepney route code).
+  static bool _looksLikeMongoObjectId(String s) {
+    final t = s.trim();
+    if (t.length != 24) return false;
+    return RegExp(r'^[a-fA-F0-9]{24}$').hasMatch(t);
+  }
+
   /// Firestore may store [routeCode] as String or int (e.g. 25).
+  /// Operator app uses [routeCode]/[route_code]; support extra keys from merges / legacy.
+  /// Skips 24-hex [route_id] values so we do not treat Mongo ids as route labels.
   static String? _routeCodeFromData(Map<String, dynamic> data) {
-    final v = data['routeCode'] ?? data['route_code'];
-    if (v == null) return null;
-    if (v is String) return v;
-    return v.toString();
+    final candidates = <dynamic>[
+      data['routeCode'],
+      data['route_code'],
+      data['assignedRoute'],
+      data['assigned_route'],
+      data['currentRoute'],
+      data['current_route'],
+      data['selectedRoute'],
+      data['selected_route'],
+      data['line'],
+      data['line_code'],
+      data['lineCode'],
+      data['route_id'],
+      data['routeId'],
+    ];
+    for (final v in candidates) {
+      if (v == null) continue;
+      final s = v is String ? v.trim() : v.toString().trim();
+      if (s.isEmpty) continue;
+      if (_looksLikeMongoObjectId(s)) continue;
+      return s;
+    }
+    return null;
   }
 
   static double? _toDouble(dynamic v) {
@@ -110,6 +139,22 @@ class NearbyOperatorsService {
     return _routeMatchesFilter(a, y) || _routeMatchesFilter(b, x);
   }
 
+  /// Uppercase / alnum / `RouteNN` body variants for one label (Near Me, notifications, `driver_status`).
+  static Set<String> routeCodeMatchTokens(String? raw) {
+    final out = <String>{};
+    final t = raw?.trim() ?? '';
+    if (t.isEmpty) return out;
+    out.add(t.toUpperCase());
+    final alnum = t.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (alnum.isNotEmpty) {
+      out.add(alnum);
+      if (alnum.startsWith('ROUTE') && alnum.length > 5) {
+        out.add(alnum.substring(5));
+      }
+    }
+    return out;
+  }
+
   /// Same rules as the passenger map: Mongo/API free-ride line + operator [routeCode] tokens.
   static bool operatorOnMongoFreeRideLine(
     NearbyOperator op, {
@@ -122,18 +167,7 @@ class NearbyOperatorsService {
     if (mongoFreeRideRouteCodes.isEmpty) return false;
     final raw = op.routeCode;
     if (raw == null) return false;
-    final t = raw.trim();
-    if (t.isEmpty) return false;
-    final variants = <String>{
-      t.toUpperCase(),
-    };
-    final alnum = t.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    if (alnum.isNotEmpty) {
-      variants.add(alnum);
-      if (alnum.startsWith('ROUTE') && alnum.length > 5) {
-        variants.add(alnum.substring(5));
-      }
-    }
+    final variants = routeCodeMatchTokens(raw);
     for (final v in variants) {
       if (mongoFreeRideRouteCodes.contains(v)) return true;
     }
@@ -153,6 +187,12 @@ class NearbyOperatorsService {
     final fk = _routeNumericOrBodyKey(filterRaw);
     final ok = _routeNumericOrBodyKey(operatorRoute ?? '');
     if (fk.isNotEmpty && ok.isNotEmpty && fk == ok) return true;
+    // Catalog vs GPS: shared normalized tokens (e.g. API `Route-01` vs Firestore `ROUTE01`).
+    final filterToks = routeCodeMatchTokens(filterRaw);
+    final opToks = routeCodeMatchTokens(operatorRoute);
+    for (final t in filterToks) {
+      if (t.isNotEmpty && opToks.contains(t)) return true;
+    }
     return false;
   }
 
@@ -219,6 +259,15 @@ class NearbyOperatorsService {
       final s = status.trim().toLowerCase();
       if (s == '1' || s == 'active' || s == 'online' || s == 'on') return true;
     }
+    // Fresh [updatedAt] + coordinates without an explicit offline flag ⇒ treat as live
+    // (older clients or partial merges may omit [online]/[status]).
+    if (!_hasExplicitOfflinePresence(data)) {
+      final updated = _readUpdatedAt(data);
+      if (updated != null &&
+          DateTime.now().difference(updated) <= maxAge) {
+        return true;
+      }
+    }
     return false;
   }
 
@@ -239,7 +288,7 @@ class NearbyOperatorsService {
         if (f.isEmpty) continue;
         for (final doc in snap.docs) {
           try {
-            final data = doc.data();
+            final data = Map<String, dynamic>.from(doc.data());
             if (_hasExplicitOfflinePresence(data)) continue;
             if (!_isExplicitlyOnline(data)) continue;
             final coords = _coordsFromData(data);
@@ -280,7 +329,8 @@ class NearbyOperatorsService {
 
     for (final doc in snap.docs) {
       try {
-        final data = doc.data();
+        final raw = doc.data();
+        final data = Map<String, dynamic>.from(raw);
         if (_hasExplicitOfflinePresence(data)) continue;
         if (!_isExplicitlyOnline(data)) continue;
 
@@ -357,6 +407,118 @@ class NearbyOperatorsService {
       });
     }
 
+    return out;
+  }
+
+  /// Route label on a [driver_status] document (same idea as Near Me free-ride listener).
+  static String _driverStatusRouteFromMap(
+    Map<String, dynamic> data,
+    String documentId,
+  ) {
+    final rid = data['route_id']?.toString().trim();
+    if (rid != null && rid.isNotEmpty && !_looksLikeMongoObjectId(rid)) {
+      return rid;
+    }
+    final rc = data['route_code'] ?? data['routeCode'];
+    final s = rc?.toString().trim();
+    if (s != null && s.isNotEmpty && !_looksLikeMongoObjectId(s)) {
+      return s;
+    }
+    return documentId.trim();
+  }
+
+  static void _driverStatusOperatorIdsLower(
+    Map<String, dynamic> data,
+    Set<String> outLower,
+  ) {
+    for (final key in const [
+      'operator_id',
+      'operatorId',
+      'uid',
+      'firebase_uid',
+      'firebaseUid',
+    ]) {
+      final v = data[key];
+      if (v == null) continue;
+      final s = v.toString().trim().toLowerCase();
+      if (s.isNotEmpty) outLower.add(s);
+    }
+  }
+
+  /// Live bus counts per catalog route code for the Routes tab — one Firestore read
+  /// for [operator_locations] and one for [driver_status], then in-memory matching
+  /// (GPS [routeCode] **or** [driver_status] operator id, same as Near Me).
+  Future<Map<String, int>> liveCountsByCatalogRouteCodes(
+    List<String> catalogCodes, {
+    double? userLat,
+    double? userLng,
+    Source source = Source.serverAndCache,
+  }) async {
+    final orderedUnique = <String>[];
+    final seenUpper = <String>{};
+    for (final raw in catalogCodes) {
+      final t = raw.trim();
+      if (t.isEmpty) continue;
+      final u = t.toUpperCase();
+      if (seenUpper.add(u)) orderedUnique.add(t);
+    }
+    if (orderedUnique.isEmpty) return {};
+
+    final trustedByUpper = <String, Set<String>>{
+      for (final c in orderedUnique) c.toUpperCase(): <String>{},
+    };
+
+    final snapOps = await _db
+        .collection(collectionName)
+        .get(GetOptions(source: source));
+    final allOps = _parseSnapshot(
+      snapOps,
+      userLat: userLat,
+      userLng: userLng,
+      routeCodeFilter: null,
+    );
+
+    try {
+      final ds = await _db
+          .collection(_driverStatusCollection)
+          .get(GetOptions(source: source));
+      for (final doc in ds.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        final docRoute = _driverStatusRouteFromMap(data, doc.id);
+        final ids = <String>{};
+        _driverStatusOperatorIdsLower(data, ids);
+        if (ids.isEmpty) continue;
+        for (final catalog in orderedUnique) {
+          if (!_routeMatchesFilter(docRoute, catalog)) continue;
+          trustedByUpper[catalog.toUpperCase()]!.addAll(ids);
+        }
+      }
+    } catch (e, st) {
+      debugPrint('NearbyOperatorsService.liveCounts driver_status: $e\n$st');
+    }
+
+    final out = <String, int>{};
+    for (final catalog in orderedUnique) {
+      final cu = catalog.toUpperCase();
+      final trusted = trustedByUpper[cu] ?? {};
+      var n = 0;
+      for (final op in allOps) {
+        if (_routeMatchesFilter(op.routeCode, catalog)) {
+          n++;
+          continue;
+        }
+        final id = op.operatorId.trim().toLowerCase();
+        if (trusted.contains(id)) {
+          n++;
+          continue;
+        }
+        final u = op.locationAuthUid?.trim().toLowerCase();
+        if (u != null && u.isNotEmpty && trusted.contains(u)) {
+          n++;
+        }
+      }
+      out[cu] = n;
+    }
     return out;
   }
 

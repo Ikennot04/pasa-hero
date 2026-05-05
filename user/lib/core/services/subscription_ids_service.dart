@@ -25,10 +25,45 @@ class SubscriptionIdsService {
   /// Avoids repeat lookups of the same Firebase account during a session.
   static final Map<String, String> _backendUserIdByFirebaseUid = {};
 
+  static const Duration _usersListTimeout = Duration(seconds: 22);
+
+  static void clearBackendUserIdCache() {
+    _backendUserIdByFirebaseUid.clear();
+  }
+
+  /// Call after backend auth/signup returns a Mongo user object so follow/inbox
+  /// do not need a full `GET /api/users` scan.
+  static void rememberMongoUserIdForFirebaseUid(
+    String firebaseUid,
+    String mongoUserId,
+  ) {
+    final f = firebaseUid.trim();
+    final m = mongoUserId.trim();
+    if (f.isEmpty || m.isEmpty || m == f) return;
+    _backendUserIdByFirebaseUid[f] = m;
+  }
+
+  /// Parses `{ "success": true, "data": { "_id": "..." } }` (sign-in / sign-up).
+  static String? parseMongoUserIdFromAuthUserEnvelope(String responseBody) {
+    try {
+      final decoded = jsonDecode(responseBody);
+      if (decoded is! Map<String, dynamic>) return null;
+      final data = decoded['data'];
+      if (data is Map<String, dynamic>) {
+        return mongoIdFromJson(data['_id']);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Map<String, dynamic>? _asUserRow(dynamic raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
   static const String routesApiUrl =
       'https://pasa-hero-server.vercel.app/api/routes';
-  static const String usersByFirebaseUidBaseUrl =
-      'https://pasa-hero-server.vercel.app/api/users/firebase';
   static const String usersApiUrl =
       'https://pasa-hero-server.vercel.app/api/users';
 
@@ -102,78 +137,31 @@ class SubscriptionIdsService {
 
   /// Resolves the MongoDB `User._id` used by `/api/user-subscriptions/`.
   ///
-  /// Email/password signup creates the Mongo user before Firebase, so [firebase_id]
-  /// is often still null; in that case we match [email] to `User.email`.
-  static String? _parseBackendUserIdFromJson(
-    Map<String, dynamic> decoded,
-    String firebaseUid,
-  ) {
-    final rootId = decoded['_id']?.toString().trim();
-    if (rootId != null && rootId.isNotEmpty) return rootId;
-
-    final rootDocId = decoded['id']?.toString().trim();
-    if (rootDocId != null &&
-        rootDocId.isNotEmpty &&
-        rootDocId != firebaseUid) {
-      return rootDocId;
-    }
-
-    final data = decoded['data'];
-    if (data is Map<String, dynamic>) {
-      final dataId = data['_id']?.toString().trim();
-      if (dataId != null && dataId.isNotEmpty) return dataId;
-
-      final dataDocId = data['id']?.toString().trim();
-      if (dataDocId != null &&
-          dataDocId.isNotEmpty &&
-          dataDocId != firebaseUid) {
-        return dataDocId;
-      }
-
-      final user = data['user'];
-      if (user is Map<String, dynamic>) {
-        final userId = user['_id']?.toString().trim();
-        if (userId != null && userId.isNotEmpty) return userId;
-      }
-    }
-    return null;
+  /// Uses `GET /api/users` only (Mongo). Does not use `/api/users/firebase/…`
+  /// (Firestore) or Firebase Auth uid — those are not Mongo user ids.
+  ///
+  /// Email/password signup may leave `firebase_id` null; then we match [email]
+  /// to `User.email`.
+  static String? _mongoUserIdFromRow(Map<String, dynamic> item) {
+    return mongoIdFromJson(item['_id']);
   }
 
   static Future<String?> backendUserIdForFirebaseUid(
     String firebaseUid, {
     String? email,
   }) async {
-    if (firebaseUid.isEmpty) return null;
+    final uidTrim = firebaseUid.trim();
+    if (uidTrim.isEmpty) return null;
 
-    final memo = _backendUserIdByFirebaseUid[firebaseUid];
-    if (memo != null && memo.isNotEmpty) return memo;
-
-    final uri = Uri.parse('$usersByFirebaseUidBaseUrl/$firebaseUid');
-    final response = await http.get(uri).timeout(const Duration(seconds: 12));
-
-    String? fromFirebase;
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      try {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) {
-          fromFirebase = _parseBackendUserIdFromJson(decoded, firebaseUid);
-        }
-      } catch (_) {}
+    final memo = _backendUserIdByFirebaseUid[uidTrim];
+    if (memo != null &&
+        memo.isNotEmpty &&
+        memo.trim() != uidTrim) {
+      return memo;
     }
-    if (fromFirebase != null && fromFirebase.isNotEmpty) {
-      _backendUserIdByFirebaseUid[firebaseUid] = fromFirebase;
-      return fromFirebase;
-    }
-
-    // Downloading `/api/users` is very slow on large datasets. Only do it when the
-    // firebase-by-uid endpoint indicates the user doc is missing (404) or returns
-    // 200 without a usable id — not on 5xx (server errors).
-    final tryUsersList = response.statusCode == 404 ||
-        (response.statusCode >= 200 && response.statusCode < 300);
-    if (!tryUsersList) return null;
 
     final usersResponse =
-        await http.get(Uri.parse(usersApiUrl)).timeout(const Duration(seconds: 12));
+        await http.get(Uri.parse(usersApiUrl)).timeout(_usersListTimeout);
     if (usersResponse.statusCode < 200 || usersResponse.statusCode >= 300) {
       return null;
     }
@@ -182,26 +170,28 @@ class SubscriptionIdsService {
       if (decoded is Map<String, dynamic>) {
         final data = decoded['data'];
         if (data is List) {
-          for (final item in data) {
-            if (item is! Map<String, dynamic>) continue;
-            final uid = item['firebase_id']?.toString().trim();
-            if (uid == firebaseUid) {
-              final id = item['_id']?.toString().trim();
-              if (id != null && id.isNotEmpty) {
-                _backendUserIdByFirebaseUid[firebaseUid] = id;
+          for (final raw in data) {
+            final item = _asUserRow(raw);
+            if (item == null) continue;
+            final fid = item['firebase_id']?.toString().trim();
+            if (fid != null && fid == uidTrim) {
+              final id = _mongoUserIdFromRow(item);
+              if (id != null && id.isNotEmpty && id.trim() != uidTrim) {
+                _backendUserIdByFirebaseUid[uidTrim] = id;
                 return id;
               }
             }
           }
           final emailNorm = email?.trim().toLowerCase();
           if (emailNorm != null && emailNorm.isNotEmpty) {
-            for (final item in data) {
-              if (item is! Map<String, dynamic>) continue;
+            for (final raw in data) {
+              final item = _asUserRow(raw);
+              if (item == null) continue;
               final e = item['email']?.toString().trim().toLowerCase();
               if (e == emailNorm) {
-                final id = item['_id']?.toString().trim();
-                if (id != null && id.isNotEmpty) {
-                  _backendUserIdByFirebaseUid[firebaseUid] = id;
+                final id = _mongoUserIdFromRow(item);
+                if (id != null && id.isNotEmpty && id.trim() != uidTrim) {
+                  _backendUserIdByFirebaseUid[uidTrim] = id;
                   return id;
                 }
               }
@@ -304,32 +294,20 @@ class SubscriptionIdsService {
     }
   }
 
-  /// Subscriptions may be stored under Mongo `User._id` **or** Firebase Auth `uid`.
-  /// Merges results so followed routes still resolve when only one id has rows.
+  /// Followed route codes for the Mongo `User._id` only (not Firebase Auth uid).
   static Future<Set<String>> fetchSubscribedRouteCodesMerged({
     required String? backendMongoUserId,
-    required String firebaseUid,
     required Map<String, String> routeIdByCode,
   }) async {
-    final out = <String>{};
-    final tried = <String>{};
-
-    Future<void> pull(String userId) async {
-      final t = userId.trim();
-      if (t.isEmpty || tried.contains(t)) return;
-      tried.add(t);
-      final s = await fetchSubscribedRouteCodes(
-        effectiveUserId: t,
-        routeIdByCode: routeIdByCode,
-      );
-      out.addAll(s);
+    final mongo = backendMongoUserId?.trim() ?? '';
+    if (mongo.isEmpty) {
+      return {};
     }
-
-    if (backendMongoUserId != null && backendMongoUserId.trim().isNotEmpty) {
-      await pull(backendMongoUserId.trim());
-    }
-    await pull(firebaseUid.trim());
-    return out
+    final s = await fetchSubscribedRouteCodes(
+      effectiveUserId: mongo,
+      routeIdByCode: routeIdByCode,
+    );
+    return s
         .map((c) => c.trim().toUpperCase())
         .where((c) => c.isNotEmpty)
         .toSet();

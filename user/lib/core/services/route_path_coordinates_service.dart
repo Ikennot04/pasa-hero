@@ -1,12 +1,23 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-/// Reads route geometry from Firestore [routes] and [route_code] for map fit + highlight.
+import 'backend_route_geometry.dart';
+import 'directions_service.dart';
+import 'route_stop_display_utils.dart';
+
+/// Route geometry for map fit + highlight: **Mongo (Vercel `/api/routes`) first**, then
+/// Firestore [`routes`]/[`route_code`] only if the API has no usable points.
+/// Highlight polylines use Google **Directions** (`mode=driving`) when anchor points are
+/// sparse so the line follows roads; dense pre-recorded coordinate arrays skip rerouting.
 class RoutePathCoordinatesService {
-  RoutePathCoordinatesService({FirebaseFirestore? firestore})
-      : _db = firestore ?? FirebaseFirestore.instance;
+  RoutePathCoordinatesService({
+    FirebaseFirestore? firestore,
+    DirectionsService? directionsService,
+  })  : _db = firestore ?? FirebaseFirestore.instance,
+        _directions = directionsService ?? DirectionsService();
 
   final FirebaseFirestore _db;
+  final DirectionsService _directions;
 
   static const String routesCollection = 'routes';
   static const String routeCodeCollection = 'route_code';
@@ -15,35 +26,79 @@ class RoutePathCoordinatesService {
   static List<LatLng> geoPointsToLatLng(Iterable<GeoPoint> geo) =>
       geo.map((g) => LatLng(g.latitude, g.longitude)).toList();
 
-  /// Ordered path for polyline + bounds: prefers [coordinates], then [routes.stops], then [route_code].
+  /// Polyline: Mongo/Vercel route detail first (aligned with map pins), then Firestore
+  /// [`routes.coordinates`], [`route_code`] stops, [`routes`] stops.
+  ///
+  /// Sparse anchor lists are snapped to roads via [DirectionsService.getRoadFollowingPolyline].
   Future<List<LatLng>> fetchRoutePathLatLng(String routeCode) async {
     final code = routeCode.trim();
     if (code.isEmpty) return const [];
 
+    final detail = await BackendRouteGeometry.fetchRouteDetailByCode(code);
+    if (detail != null) {
+      final anchors = BackendRouteGeometry.pathLatLngFromDetail(detail);
+      if (anchors.length >= 2) {
+        final path = await _snapAnchorsToRoads(anchors);
+        return _dedupeConsecutive(path);
+      }
+    }
+
     final routesData = await _getRoutesDocumentData(code);
     if (routesData != null) {
       final fromCoords = _latLngsFromCoordinatesField(routesData['coordinates']);
-      if (fromCoords.length >= 2) return _dedupeConsecutive(fromCoords);
-
-      final fromStops = _latLngsFromStopsField(routesData['stops']);
-      if (fromStops.length >= 2) return _dedupeConsecutive(fromStops);
+      if (fromCoords.length >= 2) {
+        final path = await _snapAnchorsToRoads(fromCoords);
+        return _dedupeConsecutive(path);
+      }
     }
 
     final rcData = await _getRouteCodeDocumentData(code);
     if (rcData != null) {
       final fromRc = _latLngsFromRouteCodeMap(rcData);
-      if (fromRc.length >= 2) return _dedupeConsecutive(fromRc);
+      if (fromRc.length >= 2) {
+        final path = await _snapAnchorsToRoads(fromRc);
+        return _dedupeConsecutive(path);
+      }
+    }
+
+    if (routesData != null) {
+      final fromStops =
+          _latLngsFromStopsField(routesData['stops'] ?? routesData['bus_stop']);
+      if (fromStops.length >= 2) {
+        final path = await _snapAnchorsToRoads(fromStops);
+        return _dedupeConsecutive(path);
+      }
     }
 
     return const [];
   }
 
-  /// Stop positions for camera bounds (routes [stops] + route_code [busStops] / endpoints).
+  /// Uses Directions API when there are few anchors; leaves dense polylines unchanged.
+  Future<List<LatLng>> _snapAnchorsToRoads(List<LatLng> anchors) async {
+    if (anchors.length < 2) return anchors;
+    const densePolylineThreshold = 72;
+    if (anchors.length > densePolylineThreshold) return anchors;
+    try {
+      final road = await _directions.getRoadFollowingPolyline(anchors);
+      if (road != null && road.length >= 2) return road;
+    } catch (_) {}
+    return anchors;
+  }
+
+  /// Stop positions for camera bounds: Mongo anchors first, then Firestore fallbacks.
   Future<List<LatLng>> fetchRouteStopPositionsLatLng(String routeCode) async {
     final code = routeCode.trim();
     if (code.isEmpty) return const [];
 
     final out = <LatLng>[];
+
+    final detail = await BackendRouteGeometry.fetchRouteDetailByCode(code);
+    if (detail != null) {
+      out.addAll(BackendRouteGeometry.allAnchorPointsFromDetail(detail));
+    }
+
+    if (out.length >= 2) return _dedupeConsecutive(out);
+
     final routesData = await _getRoutesDocumentData(code);
     if (routesData != null) {
       out.addAll(_latLngsFromStopsField(routesData['stops']));
@@ -52,12 +107,15 @@ class RoutePathCoordinatesService {
     if (rcData != null) {
       out.addAll(_busStopsOnlyFromRouteCode(rcData));
     }
+
     return _dedupeConsecutive(out);
   }
 
   static List<LatLng> _busStopsOnlyFromRouteCode(Map<String, dynamic> data) {
     final rawBs = data['busStops'] ?? data['bus_stop'];
-    final stopsList = rawBs is List ? List<dynamic>.from(rawBs) : <dynamic>[];
+    final stopsList = rawBs is List
+        ? RouteStopDisplayUtils.orderRawStopList(List<dynamic>.from(rawBs))
+        : <dynamic>[];
     final fromStops = <LatLng>[];
     for (final s in stopsList) {
       if (s is GeoPoint) {
@@ -65,17 +123,18 @@ class RoutePathCoordinatesService {
         continue;
       }
       if (s is! Map) continue;
-      final lat = (s['latitude'] as num?)?.toDouble();
-      final lng = (s['longitude'] as num?)?.toDouble();
+      final lat = (s['latitude'] as num?)?.toDouble() ??
+          (s['lat'] as num?)?.toDouble();
+      final lng = (s['longitude'] as num?)?.toDouble() ??
+          (s['lng'] as num?)?.toDouble();
       if (lat != null && lng != null) {
         fromStops.add(LatLng(lat, lng));
       }
     }
     if (fromStops.isNotEmpty) return fromStops;
 
-    final a = _latLngFromPointField(data['pointA']);
-    final b = _latLngFromPointField(data['pointB']);
-    if (a != null && b != null) return [a, b];
+    final se = RouteStopDisplayUtils.terminalsFromRouteDocument(data);
+    if (se.start != null && se.end != null) return [se.start!, se.end!];
     return const [];
   }
 
@@ -158,8 +217,9 @@ class RoutePathCoordinatesService {
 
   static List<LatLng> _latLngsFromStopsField(dynamic raw) {
     if (raw is! List) return const [];
+    final ordered = RouteStopDisplayUtils.orderRawStopList(List<dynamic>.from(raw));
     final out = <LatLng>[];
-    for (final item in raw) {
+    for (final item in ordered) {
       if (item is GeoPoint) {
         out.add(LatLng(item.latitude, item.longitude));
         continue;
@@ -176,7 +236,9 @@ class RoutePathCoordinatesService {
 
   static List<LatLng> _latLngsFromRouteCodeMap(Map<String, dynamic> data) {
     final rawBs = data['busStops'] ?? data['bus_stop'];
-    final stopsList = rawBs is List ? List<dynamic>.from(rawBs) : <dynamic>[];
+    final stopsList = rawBs is List
+        ? RouteStopDisplayUtils.orderRawStopList(List<dynamic>.from(rawBs))
+        : <dynamic>[];
     final fromStops = <LatLng>[];
     for (final s in stopsList) {
       if (s is GeoPoint) {
@@ -184,32 +246,21 @@ class RoutePathCoordinatesService {
         continue;
       }
       if (s is! Map) continue;
-      final lat = (s['latitude'] as num?)?.toDouble();
-      final lng = (s['longitude'] as num?)?.toDouble();
+      final lat = (s['latitude'] as num?)?.toDouble() ??
+          (s['lat'] as num?)?.toDouble();
+      final lng = (s['longitude'] as num?)?.toDouble() ??
+          (s['lng'] as num?)?.toDouble();
       if (lat != null && lng != null) {
         fromStops.add(LatLng(lat, lng));
       }
     }
     if (fromStops.length >= 2) return fromStops;
 
-    final pointA = data['pointA'];
-    final pointB = data['pointB'];
-    final LatLng? a = _latLngFromPointField(pointA);
-    final LatLng? b = _latLngFromPointField(pointB);
-    if (a != null && b != null) {
-      return [a, b];
+    final se = RouteStopDisplayUtils.terminalsFromRouteDocument(data);
+    if (se.start != null && se.end != null) {
+      return [se.start!, se.end!];
     }
     return const [];
-  }
-
-  static LatLng? _latLngFromPointField(dynamic v) {
-    if (v is GeoPoint) return LatLng(v.latitude, v.longitude);
-    if (v is Map) {
-      final lat = (v['latitude'] as num?)?.toDouble();
-      final lng = (v['longitude'] as num?)?.toDouble();
-      if (lat != null && lng != null) return LatLng(lat, lng);
-    }
-    return null;
   }
 
   static List<LatLng> _dedupeConsecutive(List<LatLng> points) {

@@ -44,6 +44,8 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  web_socket_channel: ^3.0.3
+  flutter_local_notifications: ^21.0.0
 
 dev_dependencies:
   flutter_test:
@@ -95,6 +97,7 @@ flutter:
     - assets/images/logo/buspic.png
     - assets/images/logo/free_ride.png
     - assets/images/logo/bustopSign.png
+    - assets/images/map_pins.png
     - assets/map_styles/transportation_map_style.json
     
 

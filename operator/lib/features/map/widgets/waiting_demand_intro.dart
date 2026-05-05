@@ -36,8 +36,8 @@ Future<void> showWaitingDemandIntroIfNeeded(BuildContext context) async {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Colored pins group riders who are nearby. More riders in one area '
-                'means higher demand. Tap a pin to see the exact count.',
+                'Colored pins group passengers who are nearby. More passengers in one area '
+                'means higher demand. Tap a pin to see the exact number of passengers.',
                 style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
               ),
               const SizedBox(height: 18),

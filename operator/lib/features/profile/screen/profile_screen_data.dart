@@ -8,7 +8,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../core/services/backend_route_geometry.dart';
 import '../../../core/services/driver_status_service.dart';
+import '../../../core/services/operator_location_sync_service.dart';
+import '../../../core/services/route_stop_display_utils.dart';
 
 /// Firestore often returns [Map<Object?, Object?>]; normalize for parsing.
 Map<String, dynamic>? firestoreMap(dynamic value) {
@@ -440,10 +443,20 @@ class ProfileDataService {
 
   static String? _routeFieldFromMap(Map<String, dynamic>? data) {
     if (data == null) return null;
-    final v = data['routeCode'] ?? data['route_code'];
+    final v = data['routeCode'] ??
+        data['route_code'] ??
+        data['assignedRoute'] ??
+        data['assigned_route'] ??
+        data['currentRoute'] ??
+        data['current_route'];
     if (v == null) return null;
     if (v is String) return v;
     return v.toString();
+  }
+
+  /// Route string from Firestore `users/{uid}` document data (normalized map + aliases).
+  static String? routeCodeFromUserDocData(dynamic docData) {
+    return _routeFieldFromMap(firestoreMap(docData));
   }
 
   /// Get current operator's route code from Firestore.
@@ -458,7 +471,8 @@ class ProfileDataService {
           .get();
 
       if (doc.exists) {
-        final s = _routeFieldFromMap(doc.data())?.trim();
+        final map = firestoreMap(doc.data()) ?? doc.data();
+        final s = _routeFieldFromMap(map)?.trim();
         if (s != null && s.isNotEmpty) {
           setLocationSyncRouteFallback(s);
           return s;
@@ -527,6 +541,67 @@ class ProfileDataService {
     }
   }
 
+  /// Dedupe so live assignment polling does not rewrite Firestore every tick.
+  static String? _lastTerminalAssignmentRoutePushedUpper;
+
+  /// Call on sign-out so the next login always pushes a fresh terminal route.
+  static void resetTerminalAssignmentFirebaseSyncDedupe() {
+    _lastTerminalAssignmentRoutePushedUpper = null;
+  }
+
+  /// When a terminal bus assignment resolves to a catalog [routeCode], mirror it to
+  /// Firestore [users], [operator_locations], and [driver_status] (same as profile picker).
+  /// No Mongo/backend changes — only Firebase. Skips if [routeCode] empty or unchanged
+  /// since last successful push for this session.
+  static Future<void> syncAssignedRouteFromTerminal(String routeCode) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final trimmed = routeCode.trim();
+    if (trimmed.isEmpty) return;
+    final upper = trimmed.toUpperCase();
+    if (_lastTerminalAssignmentRoutePushedUpper == upper) return;
+
+    try {
+      final docRef =
+          FirebaseFirestore.instance.collection(_usersCollection).doc(user.uid);
+      final previousSnap = await docRef.get();
+      final previousRaw = previousSnap.exists
+          ? _routeFieldFromMap(
+              firestoreMap(previousSnap.data()) ?? previousSnap.data(),
+            )
+          : null;
+      final previousUpper = (previousRaw == null || previousRaw.trim().isEmpty)
+          ? null
+          : previousRaw.trim().toUpperCase();
+
+      await docRef.set(
+        {
+          'routeCode': upper,
+          'route_code': upper,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      setLocationSyncRouteFallback(trimmed);
+      await OperatorLocationSyncService.instance
+          .mergeRouteCodeIntoOperatorLocation(upper);
+      _lastTerminalAssignmentRoutePushedUpper = upper;
+      unawaited(RouteCodeService.syncRouteCodeWithGpsAndRoutes(upper));
+      await syncDriverStatusFreeRideWithMongoRoute(
+        operatorUid: user.uid,
+        previousRouteCodeUpper: previousUpper,
+        newRouteCodeUpper: upper,
+      );
+      debugPrint(
+        '[ProfileDataService] Terminal assignment route mirrored to Firebase: $upper',
+      );
+    } catch (e, st) {
+      debugPrint(
+        '⚠️ [ProfileDataService] syncAssignedRouteFromTerminal: $e\n$st',
+      );
+    }
+  }
+
   /// Update operator's route code in Firestore.
   static Future<bool> updateOperatorRouteCode(String routeCode) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -540,18 +615,25 @@ class ProfileDataService {
 
       final previousSnap = await docRef.get();
       final previousRaw = previousSnap.exists
-          ? _routeFieldFromMap(previousSnap.data())
+          ? _routeFieldFromMap(
+              firestoreMap(previousSnap.data()) ?? previousSnap.data(),
+            )
           : null;
       final previousUpper = (previousRaw == null || previousRaw.trim().isEmpty)
           ? null
           : previousRaw.trim().toUpperCase();
 
-      await docRef.update({
-        'routeCode': upper,
-        'route_code': upper,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      await docRef.set(
+        {
+          'routeCode': upper,
+          'route_code': upper,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
       setLocationSyncRouteFallback(trimmed);
+      await OperatorLocationSyncService.instance
+          .mergeRouteCodeIntoOperatorLocation(upper);
       print('✅ [ProfileDataService] Route code updated: $routeCode');
       unawaited(RouteCodeService.syncRouteCodeWithGpsAndRoutes(upper));
       await syncDriverStatusFreeRideWithMongoRoute(
@@ -593,35 +675,47 @@ const String _routesCollection = 'routes';
 
 /// Service to save and load route definitions (e.g. Route1 with bus stops) in Firestore.
 class RouteDataService {
-  static const String _routesApiBase = 'https://pasa-hero-server.vercel.app/api';
-
   static Map<String, dynamic>? _apiJsonObject(dynamic value) {
     if (value is Map<String, dynamic>) return value;
     if (value is Map) return Map<String, dynamic>.from(value);
     return null;
   }
 
-  /// Mongo [_id] from list/detail JSON (string or extended JSON map).
-  static String? _mongoIdToString(dynamic raw) {
-    if (raw == null) return null;
-    if (raw is String) {
-      final t = raw.trim();
-      return t.isEmpty ? null : t;
-    }
-    if (raw is Map) {
-      final m = Map<String, dynamic>.from(raw);
-      for (final k in const [r'$oid', 'oid', '_id']) {
-        final v = m[k];
-        if (v is String && v.trim().isNotEmpty) return v.trim();
+  /// Prepends/appends physical terminals when they are not ~coincident with first/last [route_stops].
+  static List<({String name, LatLng position})> _mergeExplicitTerminalStops(
+    Map<String, dynamic> payload,
+    List<({String name, LatLng position})> orderedStops,
+  ) {
+    if (orderedStops.isEmpty) return orderedStops;
+    final se = BackendRouteGeometry.startEndFromRouteDetail(payload);
+    final out = <({String name, LatLng position})>[];
+    if (se.start != null) {
+      final nearFirst = RouteStopDisplayUtils.nearTerminal(
+        se.start!,
+        orderedStops.first.position,
+      );
+      if (!nearFirst) {
+        out.add((name: 'Route start', position: se.start!));
       }
     }
-    final s = raw.toString().trim();
-    if (s.isEmpty || s == 'null') return null;
-    return s;
+    out.addAll(orderedStops);
+    if (se.end != null) {
+      final nearLast = RouteStopDisplayUtils.nearTerminal(
+        se.end!,
+        orderedStops.last.position,
+      );
+      if (!nearLast) {
+        out.add((name: 'Route end', position: se.end!));
+      }
+    }
+    return out;
   }
 
   /// Loads ordered bus stops from the same Vercel/Mongo API as the admin app
   /// (`GET /api/routes`, then `GET /api/routes/:id` with [route_stops]).
+  ///
+  /// When [route_stops] has fewer than two points, falls back to Mongo [Route]
+  /// [start_location]/[end_location] or populated terminals (same as backend model).
   static Future<List<({String name, LatLng position})>> _getRouteStopsFromVercelApi(
     String routeCode,
   ) async {
@@ -629,75 +723,58 @@ class RouteDataService {
     if (want.isEmpty) return const [];
 
     try {
-      final listUri = Uri.parse('${_routesApiBase}/routes');
-      final listResp = await http
-          .get(listUri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 20));
-      if (listResp.statusCode < 200 || listResp.statusCode >= 300) {
-        return const [];
-      }
-
-      final listDecoded = _apiJsonObject(jsonDecode(listResp.body));
-      if (listDecoded == null || listDecoded['success'] == false) {
-        return const [];
-      }
-
-      final rowsRaw = listDecoded['data'] ?? listDecoded['routes'];
-      if (rowsRaw is! List) return const [];
-
-      String? routeId;
-      for (final row in rowsRaw) {
-        final sm = _apiJsonObject(row);
-        if (sm == null) continue;
-        final code =
-            (sm['route_code'] ?? sm['routeCode'])?.toString().trim() ?? '';
-        if (code.toUpperCase() != want) continue;
-        routeId = _mongoIdToString(sm['_id'] ?? sm['id']);
-        break;
-      }
-      if (routeId == null || routeId.isEmpty) return const [];
-
-      final detailUri = Uri.parse('${_routesApiBase}/routes/$routeId');
-      final detailResp = await http
-          .get(detailUri, headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 20));
-      if (detailResp.statusCode < 200 || detailResp.statusCode >= 300) {
-        return const [];
-      }
-
-      final detailDecoded = _apiJsonObject(jsonDecode(detailResp.body));
-      if (detailDecoded == null || detailDecoded['success'] == false) {
-        return const [];
-      }
-
-      final payload = _apiJsonObject(detailDecoded['data']);
+      final payload = await BackendRouteGeometry.fetchRouteDetailByCode(routeCode);
       if (payload == null) return const [];
 
       final rawStops = payload['route_stops'] ?? payload['routeStops'];
-      if (rawStops is! List || rawStops.isEmpty) return const [];
-
-      final parsed = <({String name, LatLng position, int order})>[];
-      for (var i = 0; i < rawStops.length; i++) {
-        final sm = _apiJsonObject(rawStops[i]);
-        if (sm == null) continue;
-        final order = (sm['stop_order'] as num?)?.toInt() ??
-            (sm['route_order'] as num?)?.toInt() ??
-            (sm['order'] as num?)?.toInt() ??
-            i;
-        final nameRaw =
-            (sm['stop_name'] ?? sm['name'])?.toString().trim() ?? '';
-        final lat = (sm['latitude'] as num?)?.toDouble();
-        final lng = (sm['longitude'] as num?)?.toDouble();
-        if (lat == null || lng == null) continue;
-        parsed.add((
-          name: nameRaw.isNotEmpty ? nameRaw : 'Stop ${i + 1}',
-          position: LatLng(lat, lng),
-          order: order,
-        ));
+      final parsed = <({String name, LatLng position, int order, int index})>[];
+      if (rawStops is List) {
+        for (var i = 0; i < rawStops.length; i++) {
+          final sm = _apiJsonObject(rawStops[i]);
+          if (sm == null) continue;
+          final order = (sm['stop_order'] as num?)?.toInt() ??
+              (sm['route_order'] as num?)?.toInt() ??
+              (sm['order'] as num?)?.toInt() ??
+              i;
+          final nameRaw =
+              (sm['stop_name'] ?? sm['name'])?.toString().trim() ?? '';
+          final lat = (sm['latitude'] as num?)?.toDouble();
+          final lng = (sm['longitude'] as num?)?.toDouble();
+          if (lat == null || lng == null) continue;
+          parsed.add((
+            name: nameRaw.isNotEmpty ? nameRaw : 'Stop ${i + 1}',
+            position: LatLng(lat, lng),
+            order: order,
+            index: i,
+          ));
+        }
       }
-      if (parsed.isEmpty) return const [];
-      parsed.sort((a, b) => a.order.compareTo(b.order));
-      return parsed.map((e) => (name: e.name, position: e.position)).toList();
+
+      if (parsed.isNotEmpty) {
+        parsed.sort((a, b) {
+          final c = a.order.compareTo(b.order);
+          return c != 0 ? c : a.index.compareTo(b.index);
+        });
+        final ordered =
+            parsed.map((e) => (name: e.name, position: e.position)).toList();
+        return _mergeExplicitTerminalStops(payload, ordered);
+      }
+
+      final path = BackendRouteGeometry.pathLatLngFromDetail(payload);
+      if (path.length >= 2) {
+        return List.generate(path.length, (i) {
+          final isFirst = i == 0;
+          final isLast = i == path.length - 1;
+          final name = isFirst
+              ? 'Route start'
+              : isLast
+                  ? 'Route end'
+                  : 'Stop ${i + 1}';
+          return (name: name, position: path[i]);
+        });
+      }
+
+      return const [];
     } catch (e) {
       debugPrint('⚠️ [RouteDataService] Vercel route stops failed: $e');
       return const [];

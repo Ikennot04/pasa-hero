@@ -11,6 +11,9 @@ class FromToForm extends StatelessWidget {
   /// When true, shows a loading indicator (e.g. while bus stops are being fetched).
   final bool isLoading;
 
+  /// Nearest stop used as route origin (POINT_A), if known — same as map / distance logic.
+  final String? startingPointLabel;
+
   /// Called when the user selects a destination from the list.
   final ValueChanged<Map<String, dynamic>>? onDestinationSelected;
 
@@ -19,6 +22,7 @@ class FromToForm extends StatelessWidget {
     required this.destinations,
     this.selectedDestination,
     this.isLoading = false,
+    this.startingPointLabel,
     this.onDestinationSelected,
   });
 
@@ -49,6 +53,24 @@ class FromToForm extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (startingPointLabel != null &&
+                        startingPointLabel!.trim().isNotEmpty) ...[
+                      Text(
+                        'From (nearest stop)',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                      Text(
+                        startingPointLabel!.trim(),
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blueGrey.shade800,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     Text(
                       'Destination',
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade600),

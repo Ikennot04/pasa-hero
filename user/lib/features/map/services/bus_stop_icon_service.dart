@@ -24,8 +24,8 @@ class BusStopIconService {
   /// Path to the custom bus stop icon asset.
   static const String _iconAssetPath = 'assets/images/logo/bustopSign.png';
 
-  /// Target width for resizing the icon (in pixels).
-  static const int _iconTargetWidth = 65;
+  /// Decode width for bus stop and route start/end pin bitmaps (keep in sync).
+  static const int mapMarkerDecodeWidth = 65;
 
   /// Loads the custom bus stop icon from assets and resizes it.
   /// Should be called during app initialization.
@@ -40,7 +40,7 @@ class BusStopIconService {
       // Decode and resize the image
       final ui.Codec codec = await ui.instantiateImageCodec(
         bytes,
-        targetWidth: _iconTargetWidth,
+        targetWidth: mapMarkerDecodeWidth,
       );
       final ui.FrameInfo frameInfo = await codec.getNextFrame();
       final ui.Image image = frameInfo.image;

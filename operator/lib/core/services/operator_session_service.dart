@@ -28,13 +28,53 @@ class OperatorSessionService {
 
   static String? mongoIdFromUserMap(Map<String, dynamic>? u) {
     if (u == null) return null;
-    final id = u['_id'];
+    final id = u['_id'] ?? u['id'];
     if (id is String && id.isNotEmpty) return id;
     if (id is Map) {
       final oid = id[r'$oid'] ?? id['oid'];
       if (oid is String && oid.isNotEmpty) return oid;
     }
-    return id?.toString();
+    final s = id?.toString();
+    if (s == null || s.isEmpty || s == 'null') return null;
+    return s;
+  }
+
+  /// `userId` from the login JWT — matches [attachAuthUser] / pending-assignment URL checks on the server.
+  static String? mongoUserIdFromJwt(String? token) {
+    if (token == null || token.trim().isEmpty) return null;
+    try {
+      final parts = token.split('.');
+      if (parts.length < 2) return null;
+      var normalized = parts[1].replaceAll('-', '+').replaceAll('_', '/');
+      final pad = normalized.length % 4;
+      if (pad == 2) {
+        normalized += '==';
+      } else if (pad == 3) {
+        normalized += '=';
+      } else if (pad == 1) {
+        return null;
+      }
+      final json = utf8.decode(base64.decode(normalized));
+      final map = jsonDecode(json) as Map<String, dynamic>;
+      final uid = map['userId'];
+      if (uid is String && uid.isNotEmpty) return uid;
+      if (uid is Map) {
+        final oid = uid[r'$oid'] ?? uid['oid'];
+        if (oid is String && oid.isNotEmpty) return oid;
+      }
+      final s = uid?.toString();
+      if (s == null || s.isEmpty || s == 'null') return null;
+      return s;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Prefer JWT subject id (authoritative for API auth), then sign-in payload.
+  String? resolveMongoUserId() {
+    final fromJwt = mongoUserIdFromJwt(_jwt);
+    if (fromJwt != null && fromJwt.isNotEmpty) return fromJwt.trim();
+    return mongoIdFromUserMap(_userMap)?.trim();
   }
 
   Future<void> loadFromPrefs() async {
@@ -149,13 +189,19 @@ class OperatorSessionService {
       final prevMongo = prev['mongo_user_id']?.toString() ?? '';
       final prevEmail = prev['email']?.toString().trim().toLowerCase() ?? '';
       if (prevMongo == mongoId && prevEmail == incomingEmail) {
-        await doc.set(
-          {
-            'updatedAt': FieldValue.serverTimestamp(),
-            'last_mongo_login_sync_at': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
+        // Still merge route/name from Mongo — otherwise repeat logins never refresh
+        // Firestore [users.routeCode] and riders keep seeing stale / empty route.
+        final patch = <String, dynamic>{
+          'updatedAt': FieldValue.serverTimestamp(),
+          'last_mongo_login_sync_at': FieldValue.serverTimestamp(),
+        };
+        if (data.containsKey('routeCode')) {
+          patch['routeCode'] = data['routeCode'];
+          patch['route_code'] = data['route_code'];
+        }
+        if (data.containsKey('f_name')) patch['f_name'] = data['f_name'];
+        if (data.containsKey('l_name')) patch['l_name'] = data['l_name'];
+        await doc.set(patch, SetOptions(merge: true));
         return;
       }
     }

@@ -72,6 +72,27 @@ class BackendApiService {
     }
   }
 
+  /// PATCH request to [path] with optional [body].
+  Future<BackendResponse> patch(
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, String>? headers,
+  }) async {
+    try {
+      final uri = Uri.parse('$_base$path');
+      final resp = await http
+          .patch(
+            uri,
+            headers: _headers(headers),
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(const Duration(seconds: 15));
+      return _toResponse(resp);
+    } catch (e) {
+      return BackendResponse.error(e.toString());
+    }
+  }
+
   BackendResponse _toResponse(http.Response response) {
     final ok = response.statusCode >= 200 && response.statusCode < 300;
     Map<String, dynamic>? data;

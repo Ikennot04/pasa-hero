@@ -64,7 +64,10 @@ class AuthService {
     _cachedGoogleAccount = account;
   }
 
-  /// Syncs the passenger profile to MongoDB via multipart `/api/users/auth/signup`.
+  /// Syncs the passenger profile to MongoDB via
+  /// `POST https://pasa-hero-server.vercel.app/api/users/auth/signup`
+  /// (same `/api/users` module as the list route; this is the passenger create endpoint).
+  ///
   /// Fields match the API: [f_name], [l_name], [email], [password], [role] (always `user`),
   /// [assigned_terminal] (null for passengers), [firebase_id].
   Future<void> _postPassengerSignupToBackend({
@@ -103,6 +106,15 @@ class AuthService {
         }
       } catch (_) {}
       throw Exception(message);
+    }
+
+    final mongoId =
+        SubscriptionIdsService.parseMongoUserIdFromAuthUserEnvelope(signupBody);
+    if (mongoId != null && mongoId.isNotEmpty) {
+      SubscriptionIdsService.rememberMongoUserIdForFirebaseUid(
+        firebaseUid,
+        mongoId,
+      );
     }
   }
 
@@ -155,7 +167,44 @@ class AuthService {
   bool _isBackendEmailAlreadyExistsError(Object error) {
     final message = error.toString().toLowerCase();
     return message.contains('email already exists') ||
-        message.contains('email already exist');
+        message.contains('email already exist') ||
+        message.contains('already registered') ||
+        message.contains('duplicate key') ||
+        message.contains('e11000');
+  }
+
+  /// Persists Firebase Auth uid on the Mongo user (`firebase_id`). Best-effort
+  /// when [throwOnFailure] is false (e.g. after login).
+  Future<void> _syncFirebaseIdToMongoUser({
+    required String mongoUserId,
+    required String firebaseUid,
+    bool throwOnFailure = false,
+    bool setActive = false,
+  }) async {
+    final payload = <String, dynamic>{
+      'firebase_id': firebaseUid,
+    };
+    if (setActive) {
+      payload['status'] = 'active';
+    }
+    final updateRequest = http.MultipartRequest(
+      'PATCH',
+      Uri.parse('$_usersApiBase/$mongoUserId'),
+    );
+    updateRequest.fields['data'] = jsonEncode(payload);
+
+    final response = await updateRequest.send();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await response.stream.bytesToString();
+      if (throwOnFailure) {
+        throw Exception(
+          'Failed to link Mongo user (HTTP ${response.statusCode}): $body',
+        );
+      }
+      print(
+        '⚠️ firebase_id sync to Mongo failed (HTTP ${response.statusCode}): $body',
+      );
+    }
   }
 
   Future<void> _linkExistingBackendUserToFirebase({
@@ -172,22 +221,33 @@ class AuthService {
       );
     }
 
-    final updateRequest = http.MultipartRequest(
-      'PATCH',
-      Uri.parse('$_usersApiBase/$backendUserId'),
+    await _syncFirebaseIdToMongoUser(
+      mongoUserId: backendUserId,
+      firebaseUid: firebaseUid,
+      throwOnFailure: true,
+      setActive: true,
     );
-    updateRequest.fields['data'] = jsonEncode({
-      'firebase_id': firebaseUid,
-      'status': 'active',
-    });
+  }
 
-    final response = await updateRequest.send();
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await response.stream.bytesToString();
-      throw Exception(
-        'Failed to link existing backend account (HTTP ${response.statusCode}): $body',
+  Future<void> _ensureMongoUserFirebaseIdLinked(User user) async {
+    try {
+      final mongoId = await SubscriptionIdsService.backendUserIdForFirebaseUid(
+        user.uid,
+        email: user.email,
       );
+      if (mongoId == null || mongoId.isEmpty) return;
+      await _syncFirebaseIdToMongoUser(
+        mongoUserId: mongoId,
+        firebaseUid: user.uid,
+      );
+    } catch (e) {
+      print('⚠️ _ensureMongoUserFirebaseIdLinked: $e');
     }
+  }
+
+  Future<void> _finalizePassengerMongoLink(User? user) async {
+    if (user == null) return;
+    await _ensureMongoUserFirebaseIdLinked(user);
   }
 
   Future<void> _syncGoogleUserToBackend({
@@ -311,10 +371,28 @@ class AuthService {
         throw Exception(message);
       }
 
+      final mongoIdFromBackend = SubscriptionIdsService
+          .parseMongoUserIdFromAuthUserEnvelope(signinResponse.body);
+
       final credential = await _auth.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
       );
+      final fbUser = credential.user;
+      if (fbUser != null) {
+        if (mongoIdFromBackend != null && mongoIdFromBackend.isNotEmpty) {
+          SubscriptionIdsService.rememberMongoUserIdForFirebaseUid(
+            fbUser.uid,
+            mongoIdFromBackend,
+          );
+          await _syncFirebaseIdToMongoUser(
+            mongoUserId: mongoIdFromBackend,
+            firebaseUid: fbUser.uid,
+          );
+        } else {
+          await _ensureMongoUserFirebaseIdLinked(fbUser);
+        }
+      }
       return credential;
     } on FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
@@ -350,10 +428,28 @@ class AuthService {
           lastName: lastName,
         );
       } catch (e) {
-        try {
-          await fbUser.delete();
-        } catch (_) {}
-        rethrow;
+        if (_isBackendEmailAlreadyExistsError(e)) {
+          // Mongo user already exists (retry after partial failure, admin seed, etc.):
+          // attach this Firebase account instead of failing OTP registration.
+          try {
+            await _linkExistingBackendUserToFirebase(
+              firebaseUid: fbUser.uid,
+              email: email.trim(),
+            );
+          } catch (linkErr) {
+            try {
+              await fbUser.delete();
+            } catch (_) {}
+            throw Exception(
+              'Could not link your account to the server: $linkErr',
+            );
+          }
+        } else {
+          try {
+            await fbUser.delete();
+          } catch (_) {}
+          rethrow;
+        }
       }
 
       // Update user display name and save to Firestore
@@ -542,6 +638,7 @@ class AuthService {
               }
             }
 
+            await _finalizePassengerMongoLink(userCredential.user);
             return userCredential;
           } catch (e) {
             if (e is GoogleLoginNeedsOtp) rethrow;
@@ -597,6 +694,7 @@ class AuthService {
         }
       }
 
+      await _finalizePassengerMongoLink(userCredential.user);
       return userCredential;
     } on FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
@@ -851,6 +949,7 @@ class AuthService {
                   .get();
 
               if (userDoc.exists) {
+                await _finalizePassengerMongoLink(userCredential.user);
                 return userCredential;
               }
               // User doesn't exist - create user record in Firestore
@@ -901,6 +1000,7 @@ class AuthService {
               }
             }
 
+            await _finalizePassengerMongoLink(userCredential.user);
             return userCredential;
           } catch (e) {
             throw Exception(
@@ -945,7 +1045,7 @@ class AuthService {
             .get();
 
         if (userDoc.exists) {
-          // User already exists - this is fine, just return the credential
+          await _finalizePassengerMongoLink(userCredential.user);
           return userCredential;
         }
 
@@ -1000,6 +1100,7 @@ class AuthService {
         }
       }
 
+      await _finalizePassengerMongoLink(userCredential.user);
       return userCredential;
     } on FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
@@ -1051,6 +1152,7 @@ class AuthService {
         // Mark Mongo user as inactive in backend.
         await _notifyBackendLogout(user);
       }
+      SubscriptionIdsService.clearBackendUserIdCache();
       await _auth.signOut();
       await googleSignIn.signOut(); // Also sign out from Google
       setCachedGoogleAccount(null); // Clear cached Google account (static)
